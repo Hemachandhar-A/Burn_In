@@ -36,3 +36,24 @@ def test_verdict_vocabularies_are_closed():
         contracts.RiskAssessment(
             component_id="c", lot_id="l", verdict="MAYBE", module_a_rank=0, module_b_rank=0, worst_parameter="iddq"
         )
+
+
+def test_unrecognized_parameter_is_a_valid_reading():
+    # context.md 5.9: an unknown parameter must be accepted, never rejected by the type.
+    r = contracts.Reading(
+        component_id="c1", lot_id="L1", part_number="P", manufacturer="m", date_code="2601",
+        parameter="gain", checkpoint_hour=0.0, value=1.0, unit="dB",
+    )
+    assert r.parameter == "gain"
+
+
+def test_feature_frame_is_scoped_to_one_component_parameter_pair():
+    frame = contracts.FeatureFrame(
+        component_id="c1", lot_id="L1", part_number="P", parameter="iddq",
+        value_0h=1.0, value_24h=1.1, value_96h=None, delta_24h=0.1, delta_96h=None,
+        lot_median_0h=1.0, lot_median_24h=1.05,
+        robust_z={"0h": 0.0, "24h": 0.4}, lot_size=77, used_pooled_fallback=False,
+        elapsed_hours={"0h": 0.0, "24h": 24.5},
+    )
+    assert (frame.part_number, frame.parameter) == ("P", "iddq")
+    assert frame.elapsed_hours["24h"] == 24.5

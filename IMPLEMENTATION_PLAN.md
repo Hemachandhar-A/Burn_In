@@ -167,7 +167,7 @@ Written by P1's harness to `config/harness_thresholds.yaml` (session P1.7, once 
 class Reading(BaseModel):
     component_id: str; lot_id: str; part_number: str
     manufacturer: str; date_code: str
-    parameter: Literal["iddq", "leakage", "prop_delay"]
+    parameter: str           # str, not Literal: an unrecognized parameter is a VALID Reading (context.md 5.9)
     checkpoint_hour: float   # explicit numeric, not an assumed 0/24/96/168 — context.md 5.9
     value: float; unit: str
 
@@ -177,13 +177,15 @@ class LotDataset(BaseModel):
     account_id: str          # ingestion attribution — context.md 7.3
 
 class FeatureFrame(BaseModel):
+    # One frame per (component, parameter) pair — value_* are scalars, so the frame is already parameter-scoped.
     component_id: str; lot_id: str
+    part_number: str; parameter: str    # part_number lets Module B pick its per-part-number model; parameter says which one this frame is about
     value_0h: float; value_24h: float; value_96h: float | None
     delta_24h: float; delta_96h: float | None
     lot_median_0h: float; lot_median_24h: float
-    robust_z: dict[str, float]          # per parameter, per checkpoint
+    robust_z: dict[str, float]          # keyed per checkpoint label ("0h", "24h", "96h") — parameter is the frame's own field
     lot_size: int; used_pooled_fallback: bool   # < 30 parts — context.md 5.16
-    elapsed_hours: list[float]
+    elapsed_hours: dict[str, float]     # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h") — a bare list couldn't say which entry was which
 ```
 
 **Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it; `FeatureFrame` fields feeding Module B are `None` for that parameter, which Module B's contract (5.3) must treat as "forecast unavailable," never as zero or a silent drop.

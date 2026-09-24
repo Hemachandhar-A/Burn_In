@@ -157,7 +157,7 @@ Each feature below follows the same shape: what it is, how to build it, how prac
 **What it is.** The transformation step between raw ingested readings and model-ready inputs.
 
 **How to build it.**
-1. Compute delta features per parameter (Δ24h, Δ96h if present).
+1. Compute delta features per parameter (Δ24h, Δ96h if present), and emit **one `FeatureFrame` per (component, parameter) pair** — each frame carries its own `parameter` and `part_number` fields (so Module B can select its per-part-number model), `robust_z` keyed by checkpoint label (`"0h"`, `"24h"`, `"96h"`), and `elapsed_hours` as a dict keyed the same way, holding each checkpoint's actual elapsed hours (irregular checkpoints are allowed, `context.md` 5.9).
 2. Compute lot-level robust statistics (median, IQR/1.35) per parameter per checkpoint.
 3. Implement the small-lot fallback: **fewer than 30 parts** (the exact AEC-Q001 minimum, not an approximation) falls back to a pooled cross-lot reference for that part number, with a visible UI flag stating this happened — never a silent substitution; 30 or more parts uses lot-relative statistics directly.
 4. Compute per-part robust z-scores at each available checkpoint.
