@@ -1,0 +1,14 @@
+# Disclosed-default values (IMPLEMENTATION_PLAN.md Part 5.1). Mirrors ScreeningConfig in contracts.py.
+# REVIEW/REJECT thresholds are NOT here - see config/harness_thresholds.yaml (written by P1's harness).
+fn_fp_cost_ratio: 10.0
+pda_threshold: 0.05
+confirmed_outcome_fn_ceiling: 0.05
+min_confirmed_outcomes_for_ceiling: 10
+small_lot_fallback_threshold: 30
+signoff_timing_flag_minutes: 2
+report_history_cap_runs: 10
+lot_size_default: 77
+defect_prevalence_range: [0.01, 0.08]
+power_law_exponent_range: [0.15, 0.30]
+activation_energy_range_eV: [0.3, 2.0]
+schema_version: "1.0"

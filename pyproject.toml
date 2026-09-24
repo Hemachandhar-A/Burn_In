@@ -1,0 +1,38 @@
+[project]
+name = "burnin-screening"
+version = "0.1.0"
+description = "SIH 26170 burn-in anomaly detection and early-rejection screening"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic>=2",
+    "pandas",
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "pyod",
+    "lightgbm",
+    "mapie",
+    "shap",
+    "sqlalchemy",
+    "PyJWT>=2.13.0",
+    "argon2-cffi",
+    "fpdf2",
+    "pyyaml",
+    "python-multipart",
+    "python-dotenv",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov", "httpx", "ruff"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
