@@ -116,7 +116,7 @@ burnin-screening/
 │   ├── demo.py                               [CLI walkthrough: seeds one demo lot via generator/ and prints a console summary — a rehearsal aid distinct from build_demo.sh, which starts the actual servers]
 │   ├── dev.sh                                [two-process dev loop — Part 5.6]
 │   └── build_demo.sh                         [single-process demo build — Part 5.6]
-└── docs/                                     [context.md, essential-features.md, non-essential-features.md, this file, AGENTS.md]
+└── (repo root)                               [context.md, essential-features.md, non-essential-features.md, IMPLEMENTATION_PLAN.md, AGENTS.md live at the root, not in a docs/ folder — every AGENTS.md prompt references them there]
 ```
 
 `app/` (the old Streamlit screens directory) is retired — no replacement directory carries its name; its content is split between `frontend/` (the screens themselves) and each backend owner's `router.py` (the data those screens need).
@@ -230,7 +230,19 @@ class LotDisposition(BaseModel):
 
 ## 5.5 Database schema — six tables, fully typed, all append-only (transcribed from `context.md` 5.10, unchanged by the stack switch)
 
-**P2 owns every table's schema and write path, full stop, and exposes a small repository API — `save_project(...)`, `save_analysis_run(...)`, `save_disposition_signoff(...)`, `save_confirmed_outcome(...)`, `log_event(...)`, `save_account(...)`, and their `query_*` counterparts. Every other stage calls that API from its own directory; nobody but P2 ever writes SQL or touches a table definition directly.** `save_project` and `save_analysis_run` are named explicitly here because an earlier pass of this document defined the `projects` and `project_data` tables below without ever naming the function that writes to them — a real gap, not a stylistic omission, since without it nothing explains how a row gets into either table. `save_analysis_run(project_id, raw_data, results: AnalysisResults) -> ProjectData` is where the diff-against-prior-run computation actually happens (E11 step 4) — it reads the immediately prior row for the same `project_id`, computes the three-part diff (module activated for the first time, a prediction resolved into an actual, a verdict moved), and writes both the new row and its diff in one call. (`AnalysisResults` is defined in 5.6, not here — it's referenced ahead of its definition because it belongs naturally with the REST response models it's shared by; nothing about that ordering changes what it means.)
+**P2 owns proposing changes to the schema (through `CONTRACT_CHANGES.md`, Part 6) and 100% of the functions that read and write these tables — not a separate file holding the class definitions.** The table classes below live in `contracts.py`, the one shared, Lead-maintained file everyone reads from; a table is a frozen shape, same as any Pydantic model. P2 exposes a small repository API, and every other stage calls it from its own directory; nobody but P2 ever writes SQL against these tables. Signatures (auto-generated fields — `created_at`, `timestamp`, `recorded_at`, `event_id` — are set inside each function, never passed in):
+
+```python
+def save_account(account_id: str, display_name: str, role: str, pin_hash: str) -> Account: ...
+def save_project(project_id: str, lot_id: str, part_number: str, created_by: str) -> Project: ...
+def save_disposition_signoff(project_id: str, component_id: str, analysis_run_id: str,
+                             account_id: str, verdict: str, rationale: str) -> DispositionSignoff: ...
+def save_confirmed_outcome(project_id: str, component_id: str, analysis_run_id: str, account_id: str,
+                           confirmed_outcome: str, note: str | None = None) -> ConfirmedOutcome: ...
+def log_event(project_id: str, account_id: str, event_type: str, payload: dict) -> Event: ...
+```
+
+Each has a `query_*` counterpart. `save_project` and `save_analysis_run` are named explicitly because an earlier pass of this document defined the `projects` and `project_data` tables below without ever naming the function that writes to them — a real gap, since without it nothing explains how a row gets into either table. `save_analysis_run(project_id, raw_data, results: AnalysisResults) -> ProjectData` is where the diff-against-prior-run computation actually happens (E11 step 4) — it reads the immediately prior row for the same `project_id`, computes the three-part diff (module activated for the first time, a prediction resolved into an actual, a verdict moved), and writes both the new row and its diff in one call. (`AnalysisResults` is defined in 5.6, not here — it's referenced ahead of its definition because it belongs naturally with the REST response models it's shared by; nothing about that ordering changes what it means.)
 
 ```python
 from datetime import datetime
