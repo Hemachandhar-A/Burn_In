@@ -186,7 +186,13 @@ I am [Person]. Continuing [track]. Session: [session name from Part 10]. Objecti
 git checkout [my track's branch from Part 8's table] — confirm with git branch that I'm actually on it,
 not develop or wherever the last session left off. git log --oneline -10 && git status. Read my
 directory's existing code and tests. Confirm this session's prerequisite (from Part 10) is actually
-closed before starting.
+closed before starting. If the prerequisite is a session on someone else's branch: run
+git fetch origin && git log origin/develop --oneline -10 before doing anything else. If its work is
+visible there, get it into my branch with git rebase origin/develop (a rebase, not git pull), and
+push my branch with git push --force-with-lease (never plain push, never --force) when the session
+closes. If it is NOT visible there, it hasn't landed — ask directly (or check CONTRACT_CHANGES.md /
+BLOCKERS.md) rather than start and build against a branch missing what I need. Never guess from
+elapsed time. Full reasoning: the Git section below.
 </orient>
 <task>
 [Paste the specific Part 7.3 checklist row(s) this session targets.]
@@ -196,7 +202,7 @@ Test first. Stay in my owned directories. Log contract gaps, never guess or edit
 the generated client by hand.
 </rules>
 <end_of_session>
-Commit and push whatever isn't already pushed from this session's incremental commits — including if
+Commit and push (git push --force-with-lease if this session rebased) whatever isn't already pushed from this session's incremental commits — including if
 this session isn't actually finished, marked plainly as in-progress if so. Report: what's built, which
 Part 7.3 rows now pass (or which screens passed screenshot-verification), any CONTRACT_CHANGES.md or
 BLOCKERS.md entries added, which session is next and whether its prerequisite is met.
@@ -204,6 +210,12 @@ BLOCKERS.md entries added, which session is next and whether its prerequisite is
 ```
 
 ## Git
+
+**Checking a prerequisite that lives on someone else's branch.** Part 10 names a prerequisite session, but nothing in git says "P2.4 is done" — you have to look. Run `git fetch origin`, then `git log origin/develop --oneline -10`. If the prerequisite session's work isn't visible there, it hasn't merged into `develop`, and starting now means building against a branch that's missing what you need. If it's unclear, ask directly or check `CONTRACT_CHANGES.md` / `BLOCKERS.md` — don't guess from how much time has passed.
+
+**Getting a landed prerequisite into your own branch is a rebase, not a pull.** `git pull` merges `develop` into your branch with a merge commit, which is not what "rebase onto `develop` daily" means. The correct sequence is `git fetch origin`, then `git rebase origin/develop`.
+
+**Pushing a rebased branch needs `git push --force-with-lease`, not a plain push.** A rebase rewrites history, so the remote rejects an ordinary push — every time anyone rebases, which is often given the daily-rebase rule. Use `--force-with-lease` specifically, not `--force`: it fails safely if someone else pushed to the branch since your last fetch, instead of silently overwriting their work.
 
 **Backend tracks:** branch per track (e.g. `p3-module-a`), off `develop`. Rebase onto `develop` daily, regardless of merge order position, and **push the rebased branch back to the remote every time** — a rebase that stays local doesn't help the Lead, who can only merge what's actually on the remote. PR into `develop` only when your Part 7.3 checklist is fully green and one other person has reviewed.
 
