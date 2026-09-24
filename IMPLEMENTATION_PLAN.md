@@ -188,7 +188,7 @@ class FeatureFrame(BaseModel):
     elapsed_hours: dict[str, float]     # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h") — a bare list couldn't say which entry was which
 ```
 
-**Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it; `FeatureFrame` fields feeding Module B are `None` for that parameter, which Module B's contract (5.3) must treat as "forecast unavailable," never as zero or a silent drop.
+**Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it. `FeatureFrame` is always built with real, populated values for any parameter present in the readings, recognized or not — it never goes `None` for an unrecognized parameter. "Unrecognized" is expressed on Module B's output instead: `ModuleBResult` (5.3) carries `forecast_unavailable=True` and `predicted_168h=None` (and the other forecast fields `None`), which downstream must treat as "forecast unavailable," never as zero or a silent drop.
 
 ## 5.3 Features → Module A / Module B (P2 → P3, P4)
 

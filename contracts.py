@@ -93,9 +93,10 @@ class FeatureFrame(BaseModel):
 
 
 # Unrecognized-parameter handling (context.md 5.9): a `parameter` outside
-# {iddq, leakage, prop_delay} is a valid Reading - Module A must accept it;
-# FeatureFrame fields feeding Module B are None for that parameter, which Module B
-# must treat as "forecast unavailable," never as zero or a silent drop.
+# {iddq, leakage, prop_delay} is a valid Reading - Module A must accept it.
+# FeatureFrame is always fully populated for any parameter present in the readings;
+# "unrecognized" shows up on ModuleBResult (forecast_unavailable=True, predicted_168h=None),
+# which downstream must treat as "forecast unavailable," never as zero or a silent drop.
 
 # ---------------------------------------------------------------------------
 # 5.3 Features -> Module A / Module B (P2 -> P3, P4)
