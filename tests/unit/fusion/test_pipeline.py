@@ -42,6 +42,29 @@ def test_run_full_pipeline_stub():
     assert disposition.lot_id == "LOT-123"
     assert disposition.status == "COMPLETE"
     assert disposition.verdict == "ACCEPT"
+    assert disposition.is_forecast is False
+
+def test_run_full_pipeline_stub_in_progress():
+    """
+    Verify that an IN_PROGRESS input produces is_forecast=True and 
+    forecast-vocabulary verdict.
+    """
+    lot = LotDataset(
+        lot_id="LOT-456",
+        part_number="PN-DEF",
+        status="IN_PROGRESS",
+        readings=[],
+        account_id="ACC-001"
+    )
+    config = ScreeningConfig()
+    
+    result = run_full_pipeline(lot, config)
+    
+    disposition = result.disposition
+    assert disposition.status == "IN_PROGRESS"
+    assert disposition.is_forecast is True
+    assert disposition.verdict == "LOT_ON_TRACK"  # Forecast vocabulary
+
 
 def test_run_full_pipeline_stub_edge_cases():
     """
