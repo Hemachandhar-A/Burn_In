@@ -42,3 +42,34 @@ def test_run_full_pipeline_stub():
     assert disposition.lot_id == "LOT-123"
     assert disposition.status == "COMPLETE"
     assert disposition.verdict == "ACCEPT"
+
+def test_run_full_pipeline_stub_edge_cases():
+    """
+    Test edge cases for the pipeline stub to ensure it handles 
+    empty readings and special characters in lot_id safely.
+    """
+    # Edge case 1: Empty readings and special characters in lot_id
+    lot_empty = LotDataset(
+        lot_id="LOT!@#-$%^&*(",
+        part_number="PN-EDGE",
+        status="IN_PROGRESS",
+        readings=[],
+        account_id="ACC-002"
+    )
+    config = ScreeningConfig()
+    
+    result_empty = run_full_pipeline(lot_empty, config)
+    assert result_empty.assessments[0].lot_id == "LOT!@#-$%^&*("
+    assert result_empty.disposition.lot_id == "LOT!@#-$%^&*("
+    
+    # Edge case 2: Empty lot_id string
+    lot_no_id = LotDataset(
+        lot_id="",
+        part_number="PN-EDGE",
+        status="COMPLETE",
+        readings=[],
+        account_id="ACC-002"
+    )
+    result_no_id = run_full_pipeline(lot_no_id, config)
+    assert result_no_id.assessments[0].lot_id == ""
+    assert result_no_id.disposition.lot_id == ""
