@@ -169,7 +169,9 @@ def generate_lot(
     dataset = LotDataset(
         lot_id=baselines.lot_id,
         part_number=baselines.part_number,
-        status="COMPLETE" if nominal[-1] >= _FULL_CAMPAIGN_HOURS else "IN_PROGRESS",
+        # COMPLETE only when the 168h read exists (see module docstring): a schedule that runs past 168h
+        # without reading it has no measured 168h value for Full Disposition to use.
+        status="COMPLETE" if _FULL_CAMPAIGN_HOURS in nominal else "IN_PROGRESS",
         readings=readings,
         account_id=account_id,
     )

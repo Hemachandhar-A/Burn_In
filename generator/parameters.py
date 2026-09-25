@@ -15,7 +15,9 @@ not measured values: healthy parts drift a few to ~10 percent of baseline over 1
 typical defect roughly doubles Iddq by 168h - enough to be separable from healthy drift, which is
 the point of the problem statement's worked example (lot median 10 uA, suspect part at 45 uA).
 """
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 
 @dataclass(frozen=True)
@@ -32,7 +34,9 @@ class ParameterSpec:
     defect_scale: float  # E1 step 5: defect-term magnitude at 168h, as a fraction of baseline, at severity 1
 
 
-PARAMETERS: dict[str, ParameterSpec] = {
+# Read-only, like DEFECT_ARCHETYPES and FAMILIES: every lot draws from this registry in its order, so a caller
+# mutating it would silently change every later lot in the process.
+PARAMETERS: Mapping[str, ParameterSpec] = MappingProxyType({
     "iddq": ParameterSpec(
         name="iddq", unit="uA",
         lot_center_mu=2.48,  # exp(2.48) ~= 12 uA
@@ -63,4 +67,4 @@ PARAMETERS: dict[str, ParameterSpec] = {
         healthy_drift_frac_sigma=0.4,
         defect_scale=0.3,  # timing moves proportionally far less than leakage currents do
     ),
-}
+})
