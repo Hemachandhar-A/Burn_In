@@ -246,9 +246,22 @@ def checkpoint_frame(dataset: LotDataset, nominal_hours: Iterable[float] = DEFAU
     if mixed:
         raise ValueError(f"parameters recorded in more than one unit within lot {dataset.lot_id!r}: {mixed}")
     frame.loc[~np.isfinite(frame.value), "value"] = math.nan
+    return _within_horizon(frame, horizon)
+
+
+def _within_horizon(frame: pd.DataFrame, horizon: float | None) -> pd.DataFrame:
     if horizon is not None:
         frame = frame[frame.checkpoint <= horizon]
     return frame.sort_values(["component_id", "parameter", "checkpoint"], kind="stable").reset_index(drop=True)
+
+
+def _prepare(dataset: LotDataset, nominal_hours, horizon_hours) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(every measured (component, parameter) pair, the readings within the horizon). The pair set is taken
+    before the horizon cut, so a part read only after the horizon stays in the output as unevaluable - the
+    row set never depends on the horizon."""
+    horizon = _horizon(horizon_hours)
+    full = checkpoint_frame(dataset, nominal_hours)
+    return _all_pairs(full), _within_horizon(full, horizon)
 
 
 def _frame_units(frame: pd.DataFrame) -> dict[str, str]:
@@ -327,7 +340,7 @@ def static_limit_scores(dataset: LotDataset, limits: Mapping[str, Limit],
                         horizon_hours: float | None = None) -> pd.DataFrame:
     """Datasheet min/max at every checkpoint. Score = max(reading / upper, lower / reading)."""
     _require_mapping("limits", limits, Limit)
-    frame = checkpoint_frame(dataset, nominal_hours, horizon_hours)
+    pairs, frame = _prepare(dataset, nominal_hours, horizon_hours)
     _check_limit_units(frame, limits, "datasheet limit")
     ratio = np.full(len(frame), np.nan)
     for name, limit in limits.items():
@@ -344,7 +357,7 @@ def static_limit_scores(dataset: LotDataset, limits: Mapping[str, Limit],
         side_max = np.max(np.vstack(sides), axis=0)
         side_max[np.isnan(values)] = np.nan
         ratio[rows] = _reconcile(side_max, outside)
-    return _summarize(_all_pairs(frame), frame.assign(ratio=ratio))
+    return _summarize(pairs, frame.assign(ratio=ratio))
 
 
 # --- fixed delta limits --------------------------------------------------------------
@@ -356,7 +369,11 @@ def fixed_delta_scores(dataset: LotDataset, limits: Mapping[str, DeltaLimit],
     Always measured from the 0h read, not the previous checkpoint - a slow cumulative drift must still fail.
     A part with no finite 0h read is unevaluable: its delta is never taken from a guessed initial value."""
     _require_mapping("limits", limits, DeltaLimit)
-    frame = checkpoint_frame(dataset, nominal_hours, horizon_hours)
+    schedule = _nominal_schedule(nominal_hours)
+    if PRE_BURN_IN_CHECKPOINT not in schedule:
+        raise ValueError("fixed delta limits are measured from the pre-burn-in (0h) read, but the nominal schedule "
+                         f"{list(schedule)} has no 0h checkpoint")
+    pairs, frame = _prepare(dataset, schedule, horizon_hours)
     _check_limit_units(frame, {p: lim for p, lim in limits.items() if lim.absolute is not None}, "delta limit")
     initial = frame[frame.checkpoint == PRE_BURN_IN_CHECKPOINT][["component_id", "parameter", "value"]]
     later = frame[frame.checkpoint != PRE_BURN_IN_CHECKPOINT].merge(
@@ -366,7 +383,7 @@ def fixed_delta_scores(dataset: LotDataset, limits: Mapping[str, DeltaLimit],
         rows = (later.parameter == name).to_numpy()
         init = later.initial.to_numpy()[rows]
         ratio[rows] = _band_ratio(later.value.to_numpy()[rows], init, limit.allowed(init))
-    return _summarize(_all_pairs(frame), later.assign(ratio=ratio))
+    return _summarize(pairs, later.assign(ratio=ratio))
 
 
 # --- AEC-Q001 PAT --------------------------------------------------------------------
@@ -376,11 +393,26 @@ def robust_center_sigma(values: Iterable[float]) -> tuple[float, float]:
     linear interpolation between order statistics (numpy/scipy's default)."""
     if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
         raise TypeError(f"values must be an iterable of numbers, got {type(values).__name__}")
-    array = np.asarray(list(values), dtype=float)
+    array = np.asarray(list(values))
+    if array.size and array.dtype.kind not in "fiu":  # rejects numeric strings, bools, None, mixed types
+        raise TypeError(f"values must be numbers, got elements of dtype {array.dtype}")
+    array = array.astype(float)
     array = array[np.isfinite(array)]
     if array.size == 0:
         raise ValueError("robust statistics need at least one finite value")
     return float(np.median(array)), float(iqr(array) / ROBUST_SIGMA_DIVISOR)
+
+
+def _group_key(key, schedule: tuple[float, ...]) -> tuple[str, float]:
+    if not isinstance(key, tuple) or len(key) != 2:
+        raise TypeError(f"PAT group keys must be (parameter, checkpoint) pairs, got {key!r}")
+    parameter, checkpoint = key
+    if not isinstance(parameter, str):
+        raise TypeError(f"PAT group parameter must be a str, got {parameter!r}")
+    checkpoint = _real("checkpoint", checkpoint)
+    if checkpoint not in schedule:
+        raise ValueError(f"PAT group checkpoint {checkpoint}h is not on the limits' schedule {list(schedule)}")
+    return parameter, checkpoint
 
 
 @dataclass(frozen=True)
@@ -402,11 +434,15 @@ class PatLimits:
     def __post_init__(self) -> None:
         if not isinstance(self.part_number, str) or not self.part_number.strip():
             raise ValueError(f"PatLimits.part_number must be a non-empty str, got {self.part_number!r}")
+        if isinstance(self.reference_lot_ids, (str, bytes)):
+            raise TypeError("PatLimits.reference_lot_ids must be a collection of lot ids, not one string")
         ids = frozenset(self.reference_lot_ids)
         if not all(isinstance(i, str) for i in ids):
             raise TypeError("PatLimits.reference_lot_ids must be lot id strings")
-        center = {(str(p), _real("checkpoint", h)): _real("center", v) for (p, h), v in dict(self.center).items()}
-        sigma = {(str(p), _real("checkpoint", h)): _real("sigma", v) for (p, h), v in dict(self.sigma).items()}
+        schedule = _nominal_schedule(self.nominal_hours)
+        center = {_group_key(k, schedule): _real("center", v) for k, v in dict(self.center).items()}
+        sigma = {_group_key(k, schedule): _real("sigma", v) for k, v in dict(self.sigma).items()}
+        insufficient = frozenset(_group_key(k, schedule) for k in self.insufficient)
         if set(center) != set(sigma):
             raise ValueError("PatLimits.center and PatLimits.sigma must have the same (parameter, checkpoint) keys")
         if not all(math.isfinite(v) for v in center.values()):
@@ -423,8 +459,8 @@ class PatLimits:
         object.__setattr__(self, "center", MappingProxyType(center))
         object.__setattr__(self, "sigma", MappingProxyType(sigma))
         object.__setattr__(self, "units", MappingProxyType(units))
-        object.__setattr__(self, "nominal_hours", _nominal_schedule(self.nominal_hours))
-        object.__setattr__(self, "insufficient", frozenset(self.insufficient))
+        object.__setattr__(self, "nominal_hours", schedule)
+        object.__setattr__(self, "insufficient", insufficient)
         object.__setattr__(self, "multiplier", _positive_finite("PatLimits.multiplier", self.multiplier))
 
     def center_sigma(self, parameter: str, checkpoint: float) -> tuple[float, float]:
@@ -523,9 +559,9 @@ def static_pat_scores(dataset: LotDataset, limits: PatLimits, nominal_hours: Ite
     limits were fitted on."""
     _require_dataset(dataset)
     _check_pat_scope(dataset, limits)
-    frame = checkpoint_frame(dataset, _pat_schedule(nominal_hours, limits), horizon_hours)
+    pairs, frame = _prepare(dataset, _pat_schedule(nominal_hours, limits), horizon_hours)
     _check_pat_units(frame, limits)
-    return _summarize(_all_pairs(frame), frame.assign(ratio=_score_with_pooled(frame, limits)))
+    return _summarize(pairs, frame.assign(ratio=_score_with_pooled(frame, limits)))
 
 
 def dynamic_pat_scores(dataset: LotDataset, config: ScreeningConfig | None = None,
@@ -543,7 +579,7 @@ def dynamic_pat_scores(dataset: LotDataset, config: ScreeningConfig | None = Non
     _require_dataset(dataset)
     if fallback is not None:
         _check_pat_scope(dataset, fallback)
-    frame = checkpoint_frame(dataset, _pat_schedule(nominal_hours, fallback), horizon_hours)
+    pairs, frame = _prepare(dataset, _pat_schedule(nominal_hours, fallback), horizon_hours)
     if fallback is not None:
         _check_pat_units(frame, fallback)
     ratio = np.full(len(frame), np.nan)
@@ -559,11 +595,11 @@ def dynamic_pat_scores(dataset: LotDataset, config: ScreeningConfig | None = Non
             ratio[rows] = _score_with_pooled(group, fallback)
             source[rows] = "pooled"
     scored = frame.assign(ratio=ratio, source=source)
-    out = _summarize(_all_pairs(frame), scored)
-    sources = scored.groupby(["component_id", "parameter"]).source.agg(set)
+    out = _summarize(pairs, scored)
+    sources = scored.groupby(["component_id", "parameter"]).source.agg(set).to_dict()
     out["limit_source"] = [
         "pooled" if "pooled" in s else "lot" if "lot" in s else "none"
-        for s in (sources[(c, p)] for c, p in zip(out.component_id, out.parameter))
+        for s in (sources.get((c, p), set()) for c, p in zip(out.component_id, out.parameter))
     ]
     return out
 
@@ -574,6 +610,11 @@ def part_level(scores: pd.DataFrame) -> pd.DataFrame:
     """One row per component: flagged if any parameter is flagged, score = its worst evaluable parameter's
     score, worst_parameter = that parameter (alphabetically first on a tie; None if nothing about the part
     was evaluable)."""
+    if not isinstance(scores, pd.DataFrame):
+        raise TypeError(f"scores must be a baseline score DataFrame, got {type(scores).__name__}")
+    missing = [c for c in ("component_id", "parameter", "score", "flagged", "evaluable") if c not in scores.columns]
+    if missing:
+        raise ValueError(f"scores is missing columns {missing}")
     rows = []
     for component_id, group in scores.groupby("component_id", sort=True):
         evaluable = group[group.evaluable].sort_values("parameter", kind="stable")

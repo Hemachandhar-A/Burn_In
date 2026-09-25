@@ -66,7 +66,7 @@ def archetype_counts(lots: Iterable[GeneratedLot]) -> dict[str, int]:
 
 def ground_truth_labels(lot: GeneratedLot) -> pd.DataFrame:
     """One row per part: lot_id, component_id, family, is_defective, defect_type (None if healthy)."""
-    truth = lot.ground_truth
+    truth = _require_lot(lot).ground_truth
     return pd.DataFrame(
         [(part.lot_id, part.component_id, truth.family, bool(part.is_defective), part.defect_type)
          for part in truth.trajectories.parts],
@@ -92,9 +92,18 @@ class HeldOutTestSet:
         object.__setattr__(self, "min_per_archetype", _positive_int("min_per_archetype", self.min_per_archetype))
         object.__setattr__(self, "min_lots", _positive_int("min_lots", self.min_lots))
         object.__setattr__(self, "seed", _seed(self.seed))
+        if not isinstance(self.family, str) or not self.family.strip():
+            raise ValueError(f"family must be a non-empty str, got {self.family!r}")
         strays = sorted({lot.ground_truth.family for lot in lots} - {self.family})
         if strays:
             raise ValueError(f"held-out set for family {self.family!r} contains lots from family {strays}")
+        seeds = sorted({lot.ground_truth.seed for lot in lots} - {self.seed})
+        if seeds:
+            raise ValueError(f"held-out set claims seed {self.seed} but contains lots generated with seed {seeds}")
+        part_numbers = sorted({lot.dataset.part_number for lot in lots})
+        if len(part_numbers) > 1:
+            # One part number per set: pooling (static PAT, cross-lot models) is scoped to a part number.
+            raise ValueError(f"held-out set mixes part numbers {part_numbers}")
         ids = [lot.dataset.lot_id for lot in lots]
         if len(set(ids)) != len(ids):
             raise ValueError(f"duplicate lot ids in held-out set: {sorted({i for i in ids if ids.count(i) > 1})}")
