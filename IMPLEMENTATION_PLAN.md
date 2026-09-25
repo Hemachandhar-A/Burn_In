@@ -181,11 +181,13 @@ class FeatureFrame(BaseModel):
     component_id: str; lot_id: str
     part_number: str; parameter: str    # part_number lets Module B pick its per-part-number model; parameter says which one this frame is about
     value_0h: float; value_24h: float; value_96h: float | None
+    value_168h: float | None            # populated only on a Complete lot — Module A screens the full series post-hoc (context.md 7.1); Module B never reads it
     delta_24h: float; delta_96h: float | None
+    delta_168h: float | None
     lot_median_0h: float; lot_median_24h: float
-    robust_z: dict[str, float]          # keyed per checkpoint label ("0h", "24h", "96h") — parameter is the frame's own field
+    robust_z: dict[str, float]          # keyed per checkpoint label ("0h", "24h", "96h", "168h") — parameter is the frame's own field
     lot_size: int; used_pooled_fallback: bool   # < 30 parts — context.md 5.16
-    elapsed_hours: dict[str, float]     # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h") — a bare list couldn't say which entry was which
+    elapsed_hours: dict[str, float]     # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h", "168h") — a bare list couldn't say which entry was which
 ```
 
 **Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it. `FeatureFrame` is always built with real, populated values for any parameter present in the readings, recognized or not — it never goes `None` for an unrecognized parameter. "Unrecognized" is expressed on Module B's output instead: `ModuleBResult` (5.3) carries `forecast_unavailable=True` and `predicted_168h=None` (and the other forecast fields `None`), which downstream must treat as "forecast unavailable," never as zero or a silent drop.

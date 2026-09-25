@@ -82,14 +82,16 @@ class FeatureFrame(BaseModel):
     value_0h: float
     value_24h: float
     value_96h: float | None
+    value_168h: float | None  # populated only on a Complete lot - Module A's post-hoc screening (context.md 7.1)
     delta_24h: float
     delta_96h: float | None
+    delta_168h: float | None
     lot_median_0h: float
     lot_median_24h: float
-    robust_z: dict[str, float]  # keyed per checkpoint label ("0h", "24h", "96h"); parameter is the frame's own field
+    robust_z: dict[str, float]  # keyed per checkpoint label ("0h", "24h", "96h", "168h"); parameter is the frame's own field
     lot_size: int
     used_pooled_fallback: bool  # < 30 parts - context.md 5.16
-    elapsed_hours: dict[str, float]  # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h"); irregular checkpoints allowed
+    elapsed_hours: dict[str, float]  # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h", "168h"); irregular checkpoints allowed
 
 
 # Unrecognized-parameter handling (context.md 5.9): a `parameter` outside

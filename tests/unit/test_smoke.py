@@ -50,10 +50,25 @@ def test_unrecognized_parameter_is_a_valid_reading():
 def test_feature_frame_is_scoped_to_one_component_parameter_pair():
     frame = contracts.FeatureFrame(
         component_id="c1", lot_id="L1", part_number="P", parameter="iddq",
-        value_0h=1.0, value_24h=1.1, value_96h=None, delta_24h=0.1, delta_96h=None,
+        value_0h=1.0, value_24h=1.1, value_96h=None, value_168h=None,
+        delta_24h=0.1, delta_96h=None, delta_168h=None,
         lot_median_0h=1.0, lot_median_24h=1.05,
         robust_z={"0h": 0.0, "24h": 0.4}, lot_size=77, used_pooled_fallback=False,
         elapsed_hours={"0h": 0.0, "24h": 24.5},
     )
     assert (frame.part_number, frame.parameter) == ("P", "iddq")
     assert frame.elapsed_hours["24h"] == 24.5
+
+
+def test_feature_frame_carries_168h_on_a_complete_lot():
+    # context.md 7.1: Module A is the post-hoc full-series screen, so a Complete lot's frame holds 168h.
+    frame = contracts.FeatureFrame(
+        component_id="c1", lot_id="L1", part_number="P", parameter="iddq",
+        value_0h=1.0, value_24h=1.1, value_96h=1.2, value_168h=1.3,
+        delta_24h=0.1, delta_96h=0.2, delta_168h=0.3,
+        lot_median_0h=1.0, lot_median_24h=1.05,
+        robust_z={"0h": 0.0, "24h": 0.4, "96h": 0.5, "168h": 0.6}, lot_size=77, used_pooled_fallback=False,
+        elapsed_hours={"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0},
+    )
+    assert (frame.value_168h, frame.delta_168h) == (1.3, 0.3)
+    assert frame.robust_z["168h"] == 0.6 and frame.elapsed_hours["168h"] == 168.0
