@@ -43,7 +43,14 @@ def _positive_int(name: str, value) -> int:
     return int(value)
 
 
+def _require_lot(lot) -> GeneratedLot:
+    if not isinstance(lot, GeneratedLot):
+        raise TypeError(f"expected a GeneratedLot, got {type(lot).__name__}")
+    return lot
+
+
 def _defect_types(lot: GeneratedLot) -> list[str]:
+    _require_lot(lot)
     return [part.defect_type for part in lot.ground_truth.trajectories.parts if part.is_defective]
 
 
@@ -69,6 +76,9 @@ def ground_truth_labels(lot: GeneratedLot) -> pd.DataFrame:
 
 @dataclass(frozen=True)
 class HeldOutTestSet:
+    """Self-certifying: an instance can only exist if it actually meets its guarantee - every lot from
+    `family`, unique lot ids, at least `min_lots` lots and `min_per_archetype` defects of every archetype."""
+
     family: str
     seed: int
     min_per_archetype: int
@@ -77,8 +87,24 @@ class HeldOutTestSet:
     archetype_counts: Mapping[str, int] = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "lots", tuple(self.lots))
-        object.__setattr__(self, "archetype_counts", MappingProxyType(archetype_counts(self.lots)))
+        lots = tuple(_require_lot(lot) for lot in self.lots)
+        object.__setattr__(self, "lots", lots)
+        object.__setattr__(self, "min_per_archetype", _positive_int("min_per_archetype", self.min_per_archetype))
+        object.__setattr__(self, "min_lots", _positive_int("min_lots", self.min_lots))
+        object.__setattr__(self, "seed", _seed(self.seed))
+        strays = sorted({lot.ground_truth.family for lot in lots} - {self.family})
+        if strays:
+            raise ValueError(f"held-out set for family {self.family!r} contains lots from family {strays}")
+        ids = [lot.dataset.lot_id for lot in lots]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate lot ids in held-out set: {sorted({i for i in ids if ids.count(i) > 1})}")
+        if len(lots) < self.min_lots:
+            raise ValueError(f"held-out set has {len(lots)} lots, below min_lots={self.min_lots}")
+        counts = archetype_counts(lots)
+        short = {name: n for name, n in counts.items() if n < self.min_per_archetype}
+        if short:
+            raise ValueError(f"held-out set is below the {self.min_per_archetype}-per-archetype minimum: {short}")
+        object.__setattr__(self, "archetype_counts", MappingProxyType(counts))
 
     @property
     def lot_ids(self) -> tuple[str, ...]:
@@ -96,6 +122,22 @@ class HeldOutTestSet:
         return pd.concat([ground_truth_labels(lot) for lot in self.lots], ignore_index=True)
 
 
+def _seed(seed) -> int:
+    if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
+        raise TypeError(f"seed must be an int, got {type(seed).__name__}")
+    if seed < 0:
+        raise ValueError(f"seed must be >= 0, got {seed}")
+    return int(seed)
+
+
+def _prefix(prefix) -> str:
+    if not isinstance(prefix, str):
+        raise TypeError(f"lot_id_prefix must be a str, got {type(prefix).__name__}")
+    if not prefix.strip():
+        raise ValueError(f"lot_id_prefix must be a non-empty string, got {prefix!r}")
+    return prefix
+
+
 def generate_held_out_set(
     family: str | GeneratorFamily,
     *,
@@ -107,20 +149,21 @@ def generate_held_out_set(
     part_number: str = HELD_OUT_PART_NUMBER,
     lot_id_prefix: str = HELD_OUT_LOT_PREFIX,
     account_id: str = HELD_OUT_ACCOUNT_ID,
+    checkpoint_jitter_hours: float = 0.0,
 ) -> HeldOutTestSet:
     """Generate lots of one family, in index order, until every archetype has at least `min_per_archetype`
     defective parts and at least `min_lots` lots exist - then stop. Deterministic in all arguments.
-    Raises RuntimeError if `max_lots` lots don't reach the minimum."""
+    Raises RuntimeError if `max_lots` lots don't reach the minimum. `checkpoint_jitter_hours` is passed to the
+    generator (E1 step 8) to test robustness to irregular readout times; the schedule itself stays the full
+    0/24/96/168h campaign, so every counted defect - latent ones included - is active before the last read."""
     family = resolve_family(family)
     min_per_archetype = _positive_int("min_per_archetype", min_per_archetype)
     min_lots = _positive_int("min_lots", min_lots)
     max_lots = _positive_int("max_lots", max_lots)
     if max_lots < min_lots:
         raise ValueError(f"max_lots ({max_lots}) must be >= min_lots ({min_lots})")
-    if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
-        raise TypeError(f"seed must be an int, got {type(seed).__name__}")
-    if seed < 0:
-        raise ValueError(f"seed must be >= 0, got {seed}")
+    seed = _seed(seed)
+    lot_id_prefix = _prefix(lot_id_prefix)
     if family.config.defect_prevalence_range[1] <= 0:
         raise ValueError(f"family {family.name!r} has defect prevalence range {family.config.defect_prevalence_range}"
                          " - it can never produce a defective part, so no archetype minimum is reachable")
@@ -132,11 +175,12 @@ def generate_held_out_set(
             raise RuntimeError(f"family {family.name!r}: {max_lots} lots (max_lots) gave archetype counts {counts}, "
                                f"short of the {min_per_archetype}-per-archetype minimum")
         lot = generate_lot(f"{lot_id_prefix}-{family.name}-{len(lots):04d}", part_number, seed,
-                           account_id=account_id, family=family, n_parts=n_parts)
+                           account_id=account_id, family=family, n_parts=n_parts,
+                           checkpoint_jitter_hours=checkpoint_jitter_hours)
         lots.append(lot)
         for defect_type in _defect_types(lot):
             counts[defect_type] += 1
-    return HeldOutTestSet(family=family.name, seed=int(seed), min_per_archetype=min_per_archetype,
+    return HeldOutTestSet(family=family.name, seed=seed, min_per_archetype=min_per_archetype,
                           min_lots=min_lots, lots=tuple(lots))
 
 
@@ -147,7 +191,11 @@ def generate_held_out_sets(
     **kwargs,
 ) -> Mapping[str, HeldOutTestSet]:
     """One held-out set per family (all five by default), keyed by family name in the order given."""
+    if isinstance(families, (str, bytes, GeneratorFamily)) or not isinstance(families, Iterable):
+        raise TypeError(f"families must be a collection of family names or GeneratorFamily objects, got {families!r}")
     resolved = [resolve_family(f) for f in families]
+    if not resolved:
+        raise ValueError("families must name at least one generator family")
     names = [f.name for f in resolved]
     if len(set(names)) != len(names):
         raise ValueError(f"duplicate families requested: {names}")

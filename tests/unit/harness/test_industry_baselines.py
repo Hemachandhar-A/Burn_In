@@ -174,10 +174,13 @@ def test_dpat_zero_robust_sigma_flags_any_deviation():
     assert not _row(frame, "C000").flagged
 
 
-def test_dpat_small_lot_without_fallback_raises():
-    # 29 parts is below the AEC-Q001 30-part minimum (ScreeningConfig.small_lot_fallback_threshold).
-    with pytest.raises(ValueError, match="30"):
-        dynamic_pat_scores(_single_checkpoint_lot([10.0] * 29))
+def test_dpat_small_lot_without_fallback_is_unevaluable():
+    # 29 parts is below the AEC-Q001 30-part minimum (ScreeningConfig.small_lot_fallback_threshold). Without
+    # pooled limits the lot is not judged at all - neither flagged nor passed - rather than judged on robust
+    # statistics too small to hold (and without one short group crashing the whole lot).
+    frame = dynamic_pat_scores(_single_checkpoint_lot([10.0] * 28 + [45.0]))
+    assert not frame.evaluable.any() and not frame.flagged.any()
+    assert set(frame.limit_source) == {"none"}
 
 
 def test_dpat_small_lot_uses_pooled_static_pat_fallback():
@@ -195,8 +198,8 @@ def test_dpat_small_lot_threshold_comes_from_config():
     lot = _single_checkpoint_lot([9.0, 10.0, 10.0, 11.0, 45.0] * 4)  # 20 parts
     frame = dynamic_pat_scores(lot, config=ScreeningConfig(small_lot_fallback_threshold=20))
     assert set(frame.limit_source) == {"lot"}
-    with pytest.raises(ValueError):
-        dynamic_pat_scores(lot, config=ScreeningConfig(small_lot_fallback_threshold=21))
+    too_small = dynamic_pat_scores(lot, config=ScreeningConfig(small_lot_fallback_threshold=21))
+    assert set(too_small.limit_source) == {"none"} and not too_small.evaluable.any()
 
 
 def test_dpat_excludes_nan_readings_from_the_limits_without_flagging_them():
@@ -261,7 +264,7 @@ def test_static_pat_rejects_bad_reference_populations():
     lot = _single_checkpoint_lot(PAT_VALUES, lot_id="R1")
     with pytest.raises(ValueError, match="duplicate"):
         fit_static_pat([lot, lot])
-    with pytest.raises(ValueError, match="30"):
+    with pytest.raises(ValueError, match="30"):  # no group reaches the minimum -> nothing to fit at all
         fit_static_pat([_single_checkpoint_lot([10.0] * 29, lot_id="R1")])
     with pytest.raises(TypeError):
         fit_static_pat([{"lot_id": "R1"}])

@@ -12,12 +12,18 @@ Every baseline returns the same frame, one row per (component, parameter):
 `score` is the part's worst exceedance ratio across checkpoints - measured deviation over allowed deviation -
 so score > 1 is exactly "outside the limit" and a value on the limit passes. A continuous score (not just a
 flag) is what lets the harness compare baselines and models at a fixed flag rate (E5 step 4).
+"Outside" is decided against the limit as a reviewer computes it by hand (center + 6 sigma, initial +
+allowance), and the score is reconciled to that decision, so float rounding in the ratio can never flag a
+value sitting exactly on its published limit, or pass one a single ulp beyond it.
 `evaluable` is False where a baseline cannot judge the part at all (no limit for that parameter, no
-pre-burn-in read for a delta, no finite reading): such a part is neither flagged nor passed, and is never
-silently dropped or scored from an imputed value (AGENTS.md rule 7, context.md 5.9).
+pre-burn-in read for a delta, no finite reading, a population below the PAT minimum with no pooled fallback):
+such a part is neither flagged nor passed, and is never silently dropped or scored from an imputed value
+(AGENTS.md rule 7, context.md 5.9). A non-finite reading is treated as no measurement, not as a flag.
 
 PAT and DPAT are grouped by (parameter, checkpoint); each actual readout hour is aligned to its nominal
 checkpoint first, so a jittered 23.6h read is pooled with the other lots' 24h reads (E1 step 8).
+`horizon_hours` drops every checkpoint after the horizon before anything is computed - DPAT statistics
+included - so a baseline compared against an early 0h/24h decision never sees later reads (AGENTS.md rule 6).
 """
 import math
 import numbers
@@ -39,6 +45,8 @@ ROBUST_SIGMA_DIVISOR = 1.35  # robust sigma = IQR / 1.35, as published (context.
 PRE_BURN_IN_CHECKPOINT = 0.0
 
 SCORE_COLUMNS = ["component_id", "parameter", "score", "flagged", "worst_checkpoint", "evaluable"]
+_FRAME_COLUMNS = ["component_id", "parameter", "checkpoint", "checkpoint_hour", "value", "unit"]
+_JUST_OVER_ONE = math.nextafter(1.0, math.inf)
 
 # Disclosed harness defaults (context.md Part 8), not datasheet values - the generator is synthetic, so no
 # real datasheet exists for its parts. Both are set from the generator's own healthy-population spread,
@@ -52,22 +60,91 @@ _DEFAULT_DELTA_RELATIVE = MappingProxyType({
 })
 
 
-def _positive_finite(name: str, value) -> float:
+# --- argument validation -------------------------------------------------------------
+
+def _real(name: str, value) -> float:
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise TypeError(f"{name} must be a real number, got {value!r}")
-    value = float(value)
+    try:
+        return float(value)
+    except OverflowError:  # an int too large for a float (e.g. 10**400)
+        raise ValueError(f"{name} is too large to represent as a float") from None
+
+
+def _positive_finite(name: str, value) -> float:
+    value = _real(name, value)
     if not math.isfinite(value) or value <= 0:
         raise ValueError(f"{name} must be a positive finite number, got {value!r}")
     return value
 
 
+def _optional_unit(name: str, unit) -> str | None:
+    if unit is None:
+        return None
+    if not isinstance(unit, str):
+        raise TypeError(f"{name} must be a str or None, got {type(unit).__name__}")
+    if not unit.strip():
+        raise ValueError(f"{name} must be a non-empty string, got {unit!r}")
+    return unit
+
+
+def _nominal_schedule(nominal_hours) -> tuple[float, ...]:
+    if isinstance(nominal_hours, (str, bytes)) or not isinstance(nominal_hours, Iterable):
+        raise TypeError(f"nominal_hours must be a sequence of hours, got {nominal_hours!r}")
+    hours = [_real("nominal_hours entry", h) for h in nominal_hours]
+    if not hours:
+        raise ValueError("nominal_hours must not be empty")
+    if not all(math.isfinite(h) and h >= 0 for h in hours):
+        raise ValueError(f"nominal_hours must be finite and >= 0, got {hours}")
+    if len(set(hours)) != len(hours):
+        raise ValueError(f"nominal_hours must not repeat a checkpoint, got {hours}")
+    return tuple(sorted(hours))
+
+
+def _horizon(horizon_hours) -> float | None:
+    if horizon_hours is None:
+        return None
+    horizon = _real("horizon_hours", horizon_hours)
+    if not (math.isfinite(horizon) and horizon >= 0):
+        raise ValueError(f"horizon_hours must be finite and >= 0, got {horizon_hours!r}")
+    return horizon
+
+
+def _require_dataset(dataset) -> LotDataset:
+    if not isinstance(dataset, LotDataset):
+        raise TypeError(f"expected a LotDataset, got {type(dataset).__name__}")
+    return dataset
+
+
+def _require_mapping(name: str, value, item_type: type) -> Mapping:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a mapping of parameter -> {item_type.__name__}, got {type(value).__name__}")
+    for key, item in value.items():
+        if not isinstance(item, item_type):
+            raise TypeError(f"{name}[{key!r}] must be a {item_type.__name__}, got {type(item).__name__}")
+    return value
+
+
+def _min_population(config: ScreeningConfig | None) -> int:
+    config = ScreeningConfig() if config is None else config
+    if not isinstance(config, ScreeningConfig):
+        raise TypeError(f"config must be a ScreeningConfig, got {type(config).__name__}")
+    if config.small_lot_fallback_threshold < 1:
+        raise ValueError(f"config.small_lot_fallback_threshold must be >= 1, got {config.small_lot_fallback_threshold}")
+    return config.small_lot_fallback_threshold
+
+
+# --- limit types -----------------------------------------------------------------------
+
 @dataclass(frozen=True)
 class Limit:
     """A static datasheet limit. Positive values only: the limit is scored as a ratio (reading / max,
-    min / reading), which is what a positive physical quantity (current, delay) makes meaningful."""
+    min / reading), which is what a positive physical quantity (current, delay) makes meaningful.
+    `unit`, if given, must match the readings' unit - a uA limit never judges nA readings."""
 
     lower: float | None = None
     upper: float | None = None
+    unit: str | None = None
 
     def __post_init__(self) -> None:
         if self.lower is None and self.upper is None:
@@ -77,14 +154,17 @@ class Limit:
                 object.__setattr__(self, name, _positive_finite(f"Limit.{name}", getattr(self, name)))
         if self.lower is not None and self.upper is not None and not self.lower < self.upper:
             raise ValueError(f"Limit.lower must be < Limit.upper, got {self.lower} >= {self.upper}")
+        object.__setattr__(self, "unit", _optional_unit("Limit.unit", self.unit))
 
 
 @dataclass(frozen=True)
 class DeltaLimit:
-    """Allowed |reading - pre-burn-in reading|: max(absolute, relative * |pre-burn-in reading|)."""
+    """Allowed |reading - pre-burn-in reading|: max(absolute, relative * |pre-burn-in reading|).
+    `unit` is only meaningful for an absolute allowance; a relative one is unit-free."""
 
     absolute: float | None = None
     relative: float | None = None
+    unit: str | None = None
 
     def __post_init__(self) -> None:
         if self.absolute is None and self.relative is None:
@@ -92,66 +172,95 @@ class DeltaLimit:
         for name in ("absolute", "relative"):
             if getattr(self, name) is not None:
                 object.__setattr__(self, name, _positive_finite(f"DeltaLimit.{name}", getattr(self, name)))
+        object.__setattr__(self, "unit", _optional_unit("DeltaLimit.unit", self.unit))
 
     def allowed(self, initial: np.ndarray) -> np.ndarray:
-        absolute = np.full_like(initial, self.absolute or 0.0, dtype=float)
-        relative = (self.relative or 0.0) * np.abs(initial)
-        return np.maximum(absolute, relative)
+        initial = np.asarray(initial, dtype=float)
+        return np.maximum(np.full_like(initial, self.absolute or 0.0), (self.relative or 0.0) * np.abs(initial))
 
 
 def default_datasheet_limits() -> dict[str, Limit]:
-    """A max limit per trained parameter, placed where the generator's healthy population almost never
-    reaches - the way a datasheet guard-bands. See _DATASHEET_GUARD_SIGMAS."""
+    """A max limit per trained parameter, in the generator's unit, placed where the generator's healthy
+    population almost never reaches - the way a datasheet guard-bands. See _DATASHEET_GUARD_SIGMAS.
+    A fresh dict on every call."""
     limits = {}
     for name, spec in PARAMETERS.items():
         total_log_sigma = math.hypot(spec.lot_center_sigma, spec.die_sigma_base)
-        limits[name] = Limit(upper=math.exp(spec.lot_center_mu + _DATASHEET_GUARD_SIGMAS * total_log_sigma))
+        limits[name] = Limit(upper=math.exp(spec.lot_center_mu + _DATASHEET_GUARD_SIGMAS * total_log_sigma),
+                             unit=spec.unit)
     return limits
 
 
 def default_delta_limits() -> dict[str, DeltaLimit]:
+    """Relative-only, so unit-free. A fresh dict on every call."""
     return {name: DeltaLimit(relative=_DEFAULT_DELTA_RELATIVE[name]) for name in PARAMETERS}
 
 
 # --- shared plumbing -----------------------------------------------------------------
 
-def _require_dataset(dataset) -> LotDataset:
-    if not isinstance(dataset, LotDataset):
-        raise TypeError(f"expected a LotDataset, got {type(dataset).__name__}")
-    return dataset
-
-
-def checkpoint_frame(dataset: LotDataset, nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS) -> pd.DataFrame:
+def checkpoint_frame(dataset: LotDataset, nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS,
+                     horizon_hours: float | None = None) -> pd.DataFrame:
     """Long frame of the lot's readings with each actual readout hour aligned to its nominal checkpoint.
-    Columns: component_id, parameter, checkpoint (nominal), checkpoint_hour (actual), value.
+    Columns: component_id, parameter, checkpoint (nominal), checkpoint_hour (actual), value, unit.
 
-    A reading must lie strictly within half the tightest nominal gap of one checkpoint - the same bound the
-    generator's jitter obeys - and each (component, parameter, checkpoint) may be read once."""
+    Rejects a malformed lot rather than guessing: a reading from another lot or part number, a negative or
+    non-finite readout hour, an hour not strictly within half the tightest nominal gap of one checkpoint (the
+    bound the generator's jitter obeys), two readings of one (component, parameter, checkpoint), or one
+    parameter recorded in two units. Non-finite values become NaN (no measurement). Checkpoints after
+    `horizon_hours` are dropped."""
     _require_dataset(dataset)
-    nominal = np.asarray(sorted(float(h) for h in nominal_hours), dtype=float)
-    if nominal.size == 0:
-        raise ValueError("nominal_hours must not be empty")
-    tolerance = min((b - a for a, b in pairwise(nominal)), default=math.inf) / 2
+    nominal = np.asarray(_nominal_schedule(nominal_hours))
+    horizon = _horizon(horizon_hours)
+    for reading in dataset.readings:
+        if reading.lot_id != dataset.lot_id:
+            raise ValueError(f"reading for {reading.component_id!r} belongs to lot {reading.lot_id!r}, "
+                             f"not the dataset's lot {dataset.lot_id!r}")
+        if reading.part_number != dataset.part_number:
+            raise ValueError(f"reading for {reading.component_id!r} has part number {reading.part_number!r}, "
+                             f"not the dataset's part number {dataset.part_number!r}")
     frame = pd.DataFrame(
-        [(r.component_id, r.parameter, r.checkpoint_hour, r.value) for r in dataset.readings],
-        columns=["component_id", "parameter", "checkpoint_hour", "value"],
-    ).astype({"checkpoint_hour": float, "value": float})
+        [(r.component_id, r.parameter, math.nan, r.checkpoint_hour, r.value, r.unit) for r in dataset.readings],
+        columns=_FRAME_COLUMNS,
+    ).astype({"checkpoint": float, "checkpoint_hour": float, "value": float})
     if frame.empty:
-        frame.insert(2, "checkpoint", pd.Series(dtype=float))
         return frame
     hours = frame.checkpoint_hour.to_numpy()
+    if not np.isfinite(hours).all():
+        raise ValueError(f"readout hours must be finite, got {sorted(set(hours[~np.isfinite(hours)].tolist()))}")
+    if (hours < 0).any():
+        raise ValueError(f"readout hours must not be negative, got {sorted(set(hours[hours < 0].tolist()))}")
+    tolerance = min((b - a for a, b in pairwise(nominal)), default=math.inf) / 2
     nearest = nominal[np.abs(hours[:, None] - nominal[None, :]).argmin(axis=1)]
     off = ~(np.abs(hours - nearest) < tolerance)
     if off.any():
         bad = sorted(set(hours[off].tolist()))
         raise ValueError(f"readout hours {bad} are not within {tolerance}h of any nominal checkpoint {nominal.tolist()}")
-    frame.insert(2, "checkpoint", nearest)
+    frame["checkpoint"] = nearest
     duplicated = frame.duplicated(["component_id", "parameter", "checkpoint"], keep=False)
     if duplicated.any():
         first = frame[duplicated].iloc[0]
         raise ValueError(f"duplicate readings for {first.component_id!r} {first.parameter!r} at checkpoint "
                          f"{first.checkpoint}h - ambiguous which one the baseline should judge")
+    units = frame.groupby("parameter").unit.unique()
+    mixed = {p: sorted(u) for p, u in units.items() if len(u) > 1}
+    if mixed:
+        raise ValueError(f"parameters recorded in more than one unit within lot {dataset.lot_id!r}: {mixed}")
+    frame.loc[~np.isfinite(frame.value), "value"] = math.nan
+    if horizon is not None:
+        frame = frame[frame.checkpoint <= horizon]
     return frame.sort_values(["component_id", "parameter", "checkpoint"], kind="stable").reset_index(drop=True)
+
+
+def _frame_units(frame: pd.DataFrame) -> dict[str, str]:
+    return dict(zip(frame.parameter, frame.unit))
+
+
+def _check_limit_units(frame: pd.DataFrame, limits: Mapping, what: str) -> None:
+    units = _frame_units(frame)
+    for parameter, limit in limits.items():
+        if limit.unit is not None and parameter in units and units[parameter] != limit.unit:
+            raise ValueError(f"{what} for {parameter!r} is in unit {limit.unit!r} but the readings are in "
+                             f"{units[parameter]!r}")
 
 
 def _ratio(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
@@ -167,6 +276,15 @@ def _ratio(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
     return out
 
 
+def _reconcile(ratio: np.ndarray, outside: np.ndarray) -> np.ndarray:
+    """Make `ratio > 1` agree exactly with the limit comparison, which is the authority."""
+    ratio = np.array(ratio, dtype=float)
+    measured = ~np.isnan(ratio)
+    ratio[measured & outside & ~(ratio > 1.0)] = _JUST_OVER_ONE
+    ratio[measured & ~outside & (ratio > 1.0)] = 1.0
+    return ratio
+
+
 def _all_pairs(frame: pd.DataFrame) -> pd.DataFrame:
     return frame[["component_id", "parameter"]].drop_duplicates().reset_index(drop=True)
 
@@ -176,10 +294,11 @@ def _summarize(pairs: pd.DataFrame, scored: pd.DataFrame) -> pd.DataFrame:
     the checkpoint it came from. Pairs with no finite ratio are kept as unevaluable."""
     finite = scored[scored.ratio.notna()]
     if finite.empty:
-        worst = pd.DataFrame(columns=["component_id", "parameter", "score", "worst_checkpoint"])
+        worst = pd.DataFrame({"component_id": pd.Series(dtype=object), "parameter": pd.Series(dtype=object),
+                              "score": pd.Series(dtype=float), "worst_checkpoint": pd.Series(dtype=float)})
     else:
         # First checkpoint wins a tie, so the result doesn't depend on row order.
-        idx = finite.sort_values("checkpoint", kind="stable").groupby(
+        idx = finite.sort_values(["component_id", "parameter", "checkpoint"], kind="stable").groupby(
             ["component_id", "parameter"], sort=False).ratio.idxmax()
         worst = finite.loc[idx, ["component_id", "parameter", "ratio", "checkpoint"]].rename(
             columns={"ratio": "score", "checkpoint": "worst_checkpoint"})
@@ -187,43 +306,58 @@ def _summarize(pairs: pd.DataFrame, scored: pd.DataFrame) -> pd.DataFrame:
     out["score"] = out.score.astype(float)
     out["worst_checkpoint"] = out.worst_checkpoint.astype(float)
     out["evaluable"] = out.score.notna()
-    out["flagged"] = (out.score > 1.0).fillna(False).astype(bool)
+    out["flagged"] = (out.score > 1.0).astype(bool)
     return out[SCORE_COLUMNS].sort_values(["component_id", "parameter"], kind="stable").reset_index(drop=True)
+
+
+def _band_ratio(values: np.ndarray, center, half_width) -> np.ndarray:
+    """|value - center| / half_width, reconciled to the published band [center - half_width, center + half_width]."""
+    values = np.asarray(values, dtype=float)
+    center = np.asarray(center, dtype=float)
+    half_width = np.asarray(half_width, dtype=float)
+    with np.errstate(invalid="ignore"):
+        outside = (values > center + half_width) | (values < center - half_width)
+    return _reconcile(_ratio(np.abs(values - center), half_width), outside)
 
 
 # --- static absolute limits ----------------------------------------------------------
 
-def static_limit_scores(dataset: LotDataset, limits: Mapping[str, Limit]) -> pd.DataFrame:
+def static_limit_scores(dataset: LotDataset, limits: Mapping[str, Limit],
+                        nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS,
+                        horizon_hours: float | None = None) -> pd.DataFrame:
     """Datasheet min/max at every checkpoint. Score = max(reading / upper, lower / reading)."""
-    frame = checkpoint_frame(dataset)
-    for name, limit in limits.items():
-        if not isinstance(limit, Limit):
-            raise TypeError(f"limits[{name!r}] must be a Limit, got {type(limit).__name__}")
+    _require_mapping("limits", limits, Limit)
+    frame = checkpoint_frame(dataset, nominal_hours, horizon_hours)
+    _check_limit_units(frame, limits, "datasheet limit")
     ratio = np.full(len(frame), np.nan)
     for name, limit in limits.items():
         rows = (frame.parameter == name).to_numpy()
         values = frame.value.to_numpy()[rows]
-        sides = []
+        sides, outside = [], np.zeros(values.shape, dtype=bool)
         if limit.upper is not None:
             sides.append(values / limit.upper)
+            outside |= values > limit.upper
         if limit.lower is not None:
-            with np.errstate(divide="ignore"):
+            with np.errstate(divide="ignore", invalid="ignore"):
                 sides.append(np.where(values > 0, limit.lower / values, np.inf))
+            outside |= values < limit.lower
         side_max = np.max(np.vstack(sides), axis=0)
         side_max[np.isnan(values)] = np.nan
-        ratio[rows] = side_max
+        ratio[rows] = _reconcile(side_max, outside)
     return _summarize(_all_pairs(frame), frame.assign(ratio=ratio))
 
 
 # --- fixed delta limits --------------------------------------------------------------
 
-def fixed_delta_scores(dataset: LotDataset, limits: Mapping[str, DeltaLimit]) -> pd.DataFrame:
+def fixed_delta_scores(dataset: LotDataset, limits: Mapping[str, DeltaLimit],
+                       nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS,
+                       horizon_hours: float | None = None) -> pd.DataFrame:
     """|reading - pre-burn-in (0h) reading| against a fixed allowance, at every post-burn-in checkpoint.
-    Always measured from the 0h read, not the previous checkpoint - a slow cumulative drift must still fail."""
-    frame = checkpoint_frame(dataset)
-    for name, limit in limits.items():
-        if not isinstance(limit, DeltaLimit):
-            raise TypeError(f"limits[{name!r}] must be a DeltaLimit, got {type(limit).__name__}")
+    Always measured from the 0h read, not the previous checkpoint - a slow cumulative drift must still fail.
+    A part with no finite 0h read is unevaluable: its delta is never taken from a guessed initial value."""
+    _require_mapping("limits", limits, DeltaLimit)
+    frame = checkpoint_frame(dataset, nominal_hours, horizon_hours)
+    _check_limit_units(frame, {p: lim for p, lim in limits.items() if lim.absolute is not None}, "delta limit")
     initial = frame[frame.checkpoint == PRE_BURN_IN_CHECKPOINT][["component_id", "parameter", "value"]]
     later = frame[frame.checkpoint != PRE_BURN_IN_CHECKPOINT].merge(
         initial.rename(columns={"value": "initial"}), on=["component_id", "parameter"], how="left")
@@ -231,14 +365,17 @@ def fixed_delta_scores(dataset: LotDataset, limits: Mapping[str, DeltaLimit]) ->
     for name, limit in limits.items():
         rows = (later.parameter == name).to_numpy()
         init = later.initial.to_numpy()[rows]
-        ratio[rows] = _ratio(np.abs(later.value.to_numpy()[rows] - init), limit.allowed(init))
+        ratio[rows] = _band_ratio(later.value.to_numpy()[rows], init, limit.allowed(init))
     return _summarize(_all_pairs(frame), later.assign(ratio=ratio))
 
 
 # --- AEC-Q001 PAT --------------------------------------------------------------------
 
 def robust_center_sigma(values: Iterable[float]) -> tuple[float, float]:
-    """(median, IQR / 1.35) over the finite values - AEC-Q001's robust mean and robust sigma."""
+    """(median, IQR / 1.35) over the finite values - AEC-Q001's robust mean and robust sigma. Quartiles use
+    linear interpolation between order statistics (numpy/scipy's default)."""
+    if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+        raise TypeError(f"values must be an iterable of numbers, got {type(values).__name__}")
     array = np.asarray(list(values), dtype=float)
     array = array[np.isfinite(array)]
     if array.size == 0:
@@ -248,36 +385,68 @@ def robust_center_sigma(values: Iterable[float]) -> tuple[float, float]:
 
 @dataclass(frozen=True)
 class PatLimits:
-    """Static PAT limits fitted on a pooled reference population of one part number. Keyed by
-    (parameter, nominal checkpoint). Remembers its reference lots so it can refuse to score one of them."""
+    """Static PAT limits fitted on a pooled reference population of one part number, keyed by
+    (parameter, nominal checkpoint). Remembers its reference lots (so it can refuse to score one of them),
+    the unit of every parameter, the checkpoint schedule it was fitted on, and the groups that were too small
+    to fit (`insufficient`) - those are unevaluable when scored, not passed."""
 
     part_number: str
     reference_lot_ids: frozenset[str]
     center: Mapping[tuple[str, float], float] = field(repr=False)
     sigma: Mapping[tuple[str, float], float] = field(repr=False)
+    units: Mapping[str, str] = field(repr=False)
+    nominal_hours: tuple[float, ...]
+    insufficient: frozenset[tuple[str, float]] = frozenset()
     multiplier: float = PAT_SIGMA_MULTIPLIER
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "center", MappingProxyType(dict(self.center)))
-        object.__setattr__(self, "sigma", MappingProxyType(dict(self.sigma)))
+        if not isinstance(self.part_number, str) or not self.part_number.strip():
+            raise ValueError(f"PatLimits.part_number must be a non-empty str, got {self.part_number!r}")
+        ids = frozenset(self.reference_lot_ids)
+        if not all(isinstance(i, str) for i in ids):
+            raise TypeError("PatLimits.reference_lot_ids must be lot id strings")
+        center = {(str(p), _real("checkpoint", h)): _real("center", v) for (p, h), v in dict(self.center).items()}
+        sigma = {(str(p), _real("checkpoint", h)): _real("sigma", v) for (p, h), v in dict(self.sigma).items()}
+        if set(center) != set(sigma):
+            raise ValueError("PatLimits.center and PatLimits.sigma must have the same (parameter, checkpoint) keys")
+        if not all(math.isfinite(v) for v in center.values()):
+            raise ValueError("PatLimits.center values must be finite")
+        if not all(math.isfinite(v) and v >= 0 for v in sigma.values()):
+            raise ValueError("PatLimits.sigma values must be finite and >= 0")
+        units = dict(self.units)
+        missing = {p for p, _ in center} - set(units)
+        if missing:
+            raise ValueError(f"PatLimits.units is missing a unit for fitted parameters {sorted(missing)}")
+        for p, u in units.items():
+            _optional_unit(f"PatLimits.units[{p!r}]", u)
+        object.__setattr__(self, "reference_lot_ids", ids)
+        object.__setattr__(self, "center", MappingProxyType(center))
+        object.__setattr__(self, "sigma", MappingProxyType(sigma))
+        object.__setattr__(self, "units", MappingProxyType(units))
+        object.__setattr__(self, "nominal_hours", _nominal_schedule(self.nominal_hours))
+        object.__setattr__(self, "insufficient", frozenset(self.insufficient))
+        object.__setattr__(self, "multiplier", _positive_finite("PatLimits.multiplier", self.multiplier))
 
     def center_sigma(self, parameter: str, checkpoint: float) -> tuple[float, float]:
         key = (parameter, float(checkpoint))
         return self.center[key], self.sigma[key]
 
-
-def _min_population(config: ScreeningConfig) -> int:
-    if not isinstance(config, ScreeningConfig):
-        raise TypeError(f"config must be a ScreeningConfig, got {type(config).__name__}")
-    return config.small_lot_fallback_threshold
+    def limits(self, parameter: str, checkpoint: float) -> tuple[float, float]:
+        """The published (lower, upper) limits: center -/+ multiplier * sigma."""
+        center, sigma = self.center_sigma(parameter, checkpoint)
+        return center - self.multiplier * sigma, center + self.multiplier * sigma
 
 
 def fit_static_pat(reference_lots: Iterable[LotDataset], config: ScreeningConfig | None = None,
                    nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS) -> PatLimits:
-    """Pool the reference lots (one part number - E7 step 9's pooling scope) and fit median / IQR-1.35 per
-    (parameter, checkpoint). Each group needs at least the AEC-Q001 minimum population."""
-    minimum = _min_population(ScreeningConfig() if config is None else config)
-    nominal_hours = tuple(nominal_hours)
+    """Pool the reference lots (one part number - E7 step 9's pooling scope, one unit per parameter) and fit
+    median / IQR-1.35 per (parameter, checkpoint). A group below the AEC-Q001 minimum population is skipped
+    and recorded in `insufficient`; raises if no group reaches it."""
+    minimum = _min_population(config)
+    if isinstance(reference_lots, (LotDataset, str, bytes)) or not isinstance(reference_lots, Iterable):
+        raise TypeError("reference_lots must be a collection of LotDataset objects, "
+                        f"got {type(reference_lots).__name__}")
+    nominal_hours = _nominal_schedule(nominal_hours)
     lots = [_require_dataset(lot) for lot in reference_lots]
     if not lots:
         raise ValueError("static PAT needs at least one reference lot")
@@ -288,29 +457,24 @@ def fit_static_pat(reference_lots: Iterable[LotDataset], config: ScreeningConfig
     if len(set(lot_ids)) != len(lot_ids):
         raise ValueError(f"duplicate reference lot ids {sorted({i for i in lot_ids if lot_ids.count(i) > 1})}")
     pooled = pd.concat([checkpoint_frame(lot, nominal_hours) for lot in lots], ignore_index=True)
-    center, sigma = {}, {}
+    units = pooled.groupby("parameter").unit.unique()
+    mixed = {p: sorted(u) for p, u in units.items() if len(u) > 1}
+    if mixed:
+        raise ValueError(f"reference lots record parameters in different units: {mixed}")
+    center, sigma, insufficient = {}, {}, set()
     for (parameter, checkpoint), group in pooled.groupby(["parameter", "checkpoint"], sort=True):
+        key = (parameter, float(checkpoint))
         finite = group.value[np.isfinite(group.value)]
         if len(finite) < minimum:
-            raise ValueError(f"static PAT reference for {parameter!r} at {checkpoint}h has {len(finite)} finite "
-                             f"readings, below the {minimum}-part AEC-Q001 minimum")
-        center[(parameter, float(checkpoint))], sigma[(parameter, float(checkpoint))] = robust_center_sigma(finite)
-    return PatLimits(part_number=part_numbers.pop(), reference_lot_ids=frozenset(lot_ids),
-                     center=center, sigma=sigma)
-
-
-def _pat_ratio(values: np.ndarray, center: float, sigma: float, multiplier: float) -> np.ndarray:
-    return _ratio(np.abs(values - center), multiplier * sigma)
-
-
-def _score_with_pooled(frame: pd.DataFrame, limits: PatLimits) -> np.ndarray:
-    ratio = np.full(len(frame), np.nan)
-    for (parameter, checkpoint), group in frame.groupby(["parameter", "checkpoint"], sort=False):
-        key = (parameter, float(checkpoint))
-        if key in limits.center:  # no reference for this group -> unevaluable, not passed
-            ratio[group.index.to_numpy()] = _pat_ratio(group.value.to_numpy(), limits.center[key],
-                                                       limits.sigma[key], limits.multiplier)
-    return ratio
+            insufficient.add(key)
+            continue
+        center[key], sigma[key] = robust_center_sigma(finite)
+    if not center:
+        raise ValueError(f"no (parameter, checkpoint) group in the static PAT reference reaches the {minimum}-part "
+                         f"AEC-Q001 minimum of finite readings")
+    return PatLimits(part_number=part_numbers.pop(), reference_lot_ids=frozenset(lot_ids), center=center,
+                     sigma=sigma, units={p: u[0] for p, u in units.items()}, nominal_hours=nominal_hours,
+                     insufficient=frozenset(insufficient))
 
 
 def _check_pat_scope(dataset: LotDataset, limits: PatLimits) -> None:
@@ -325,48 +489,82 @@ def _check_pat_scope(dataset: LotDataset, limits: PatLimits) -> None:
                          "limits fitted without it")
 
 
-def static_pat_scores(dataset: LotDataset, limits: PatLimits,
-                      nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS) -> pd.DataFrame:
-    """|reading - pooled median| / (6 * pooled robust sigma), per (parameter, checkpoint)."""
+def _check_pat_units(frame: pd.DataFrame, limits: PatLimits) -> None:
+    for parameter, unit in _frame_units(frame).items():
+        if parameter in limits.units and limits.units[parameter] != unit:
+            raise ValueError(f"static PAT limits for {parameter!r} are in unit {limits.units[parameter]!r} but the "
+                             f"readings are in {unit!r}")
+
+
+def _pat_schedule(nominal_hours, limits: PatLimits | None) -> tuple[float, ...]:
+    if nominal_hours is None:
+        return limits.nominal_hours if limits is not None else tuple(DEFAULT_CHECKPOINT_HOURS)
+    schedule = _nominal_schedule(nominal_hours)
+    if limits is not None and schedule != limits.nominal_hours:
+        raise ValueError(f"nominal schedule {list(schedule)} differs from the schedule the static PAT limits were "
+                         f"fitted on {list(limits.nominal_hours)}")
+    return schedule
+
+
+def _score_with_pooled(frame: pd.DataFrame, limits: PatLimits) -> np.ndarray:
+    ratio = np.full(len(frame), np.nan)
+    for (parameter, checkpoint), group in frame.groupby(["parameter", "checkpoint"], sort=False):
+        key = (parameter, float(checkpoint))
+        if key in limits.center:  # no reference for this group -> unevaluable, not passed
+            center, sigma = limits.center[key], limits.sigma[key]
+            ratio[frame.index.get_indexer(group.index)] = _band_ratio(group.value.to_numpy(), center,
+                                                                      limits.multiplier * sigma)
+    return ratio
+
+
+def static_pat_scores(dataset: LotDataset, limits: PatLimits, nominal_hours: Iterable[float] | None = None,
+                      horizon_hours: float | None = None) -> pd.DataFrame:
+    """|reading - pooled median| / (6 * pooled robust sigma), per (parameter, checkpoint), on the schedule the
+    limits were fitted on."""
     _require_dataset(dataset)
     _check_pat_scope(dataset, limits)
-    frame = checkpoint_frame(dataset, nominal_hours)
+    frame = checkpoint_frame(dataset, _pat_schedule(nominal_hours, limits), horizon_hours)
+    _check_pat_units(frame, limits)
     return _summarize(_all_pairs(frame), frame.assign(ratio=_score_with_pooled(frame, limits)))
 
 
 def dynamic_pat_scores(dataset: LotDataset, config: ScreeningConfig | None = None,
-                       fallback: PatLimits | None = None,
-                       nominal_hours: Iterable[float] = DEFAULT_CHECKPOINT_HOURS) -> pd.DataFrame:
+                       fallback: PatLimits | None = None, nominal_hours: Iterable[float] | None = None,
+                       horizon_hours: float | None = None) -> pd.DataFrame:
     """DPAT: the PAT formula with limits recomputed from this lot alone, per (parameter, checkpoint).
 
     A group with fewer finite readings than ScreeningConfig.small_lot_fallback_threshold (the AEC-Q001
-    30-part minimum, context.md 5.16) is scored against the pooled `fallback` static PAT limits instead - or
-    raises if none was given, rather than fitting robust statistics to a population too small to hold them.
-    Adds a `limit_source` column: "pooled" if any of the row's checkpoints were judged against the pooled
-    fallback, else "lot"."""
-    minimum = _min_population(ScreeningConfig() if config is None else config)
+    30-part minimum, context.md 5.16) is judged against the pooled `fallback` static PAT limits instead, or
+    left unevaluable when there is no fallback (or it has no limits for that group) - never judged on robust
+    statistics too small to hold, and never taking the rest of the lot down with it. Adds a `limit_source`
+    column: "pooled" if any of the row's checkpoints used the fallback, else "lot" if any used the lot's own
+    limits, else "none"."""
+    minimum = _min_population(config)
     _require_dataset(dataset)
     if fallback is not None:
         _check_pat_scope(dataset, fallback)
-    frame = checkpoint_frame(dataset, nominal_hours)
+    frame = checkpoint_frame(dataset, _pat_schedule(nominal_hours, fallback), horizon_hours)
+    if fallback is not None:
+        _check_pat_units(frame, fallback)
     ratio = np.full(len(frame), np.nan)
-    source = np.full(len(frame), "lot", dtype=object)
+    source = np.full(len(frame), "none", dtype=object)
     for (parameter, checkpoint), group in frame.groupby(["parameter", "checkpoint"], sort=False):
-        rows = group.index.to_numpy()
+        rows = frame.index.get_indexer(group.index)
         n_finite = int(np.isfinite(group.value).sum())
         if n_finite >= minimum:
             center, sigma = robust_center_sigma(group.value)
-            ratio[rows] = _pat_ratio(group.value.to_numpy(), center, sigma, PAT_SIGMA_MULTIPLIER)
-        elif fallback is not None:
-            ratio[rows] = _score_with_pooled(group.reset_index(drop=True), fallback)
+            ratio[rows] = _band_ratio(group.value.to_numpy(), center, PAT_SIGMA_MULTIPLIER * sigma)
+            source[rows] = "lot"
+        elif fallback is not None and (parameter, float(checkpoint)) in fallback.center:
+            ratio[rows] = _score_with_pooled(group, fallback)
             source[rows] = "pooled"
-        else:
-            raise ValueError(f"lot {dataset.lot_id!r} has {n_finite} finite {parameter!r} readings at {checkpoint}h, "
-                             f"below the {minimum}-part AEC-Q001 minimum - pass pooled static PAT limits as fallback")
-    scored = frame.assign(ratio=ratio, pooled=source == "pooled")
+    scored = frame.assign(ratio=ratio, source=source)
     out = _summarize(_all_pairs(frame), scored)
-    pooled = scored.groupby(["component_id", "parameter"]).pooled.any()
-    out["limit_source"] = ["pooled" if pooled[(c, p)] else "lot" for c, p in zip(out.component_id, out.parameter)]
+    sources = scored.groupby(["component_id", "parameter"]).source.agg(set)
+    out["limit_source"] = [
+        "pooled" if "pooled" in s else "lot" if "lot" in s else "none"
+        for s in (sources[(c, p)] for c, p in zip(out.component_id, out.parameter))
+    ]
     return out
 
 
@@ -374,10 +572,11 @@ def dynamic_pat_scores(dataset: LotDataset, config: ScreeningConfig | None = Non
 
 def part_level(scores: pd.DataFrame) -> pd.DataFrame:
     """One row per component: flagged if any parameter is flagged, score = its worst evaluable parameter's
-    score, worst_parameter = that parameter (None if nothing about the part was evaluable)."""
+    score, worst_parameter = that parameter (alphabetically first on a tie; None if nothing about the part
+    was evaluable)."""
     rows = []
     for component_id, group in scores.groupby("component_id", sort=True):
-        evaluable = group[group.evaluable]
+        evaluable = group[group.evaluable].sort_values("parameter", kind="stable")
         if evaluable.empty:
             rows.append((component_id, math.nan, False, None, False))
             continue
