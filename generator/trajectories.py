@@ -28,6 +28,8 @@ and t, never on which later checkpoints were requested.
 """
 import math
 import numbers
+from collections.abc import Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -35,7 +37,7 @@ import numpy as np
 
 from contracts import ScreeningConfig
 from generator.parameters import PARAMETERS
-from generator.schema import LotBaseline, LotTrajectories, PartTrajectory
+from generator.schema import LotBaseline, LotTrajectories, PartBaseline, PartTrajectory
 
 BOLTZMANN_EV_PER_K = 8.617333262e-5
 KELVIN_OFFSET = 273.15
@@ -70,9 +72,20 @@ DEFECT_ARCHETYPES: dict[str, DefectArchetype] = {
 _ARCHETYPE_NAMES = tuple(DEFECT_ARCHETYPES)
 
 
-def _check_finite(name: str, value: float) -> None:
-    if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
-        raise ValueError(f"{name} must be a finite number, got {value!r}")
+def _check_finite(name: str, value: float) -> float:
+    """Non-numbers (incl. bool, which is an int subclass) are a TypeError; NaN/inf a ValueError.
+    Returns the value as a plain float."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise TypeError(f"{name} must be a real number, got {value!r}")
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite, got {value!r}")
+    return float(value)
+
+
+def _check_pair(name: str, value) -> tuple[float, float]:
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        raise TypeError(f"{name} must be a (lo, hi) pair, got {value!r}")
+    return _check_finite(f"{name}[0]", value[0]), _check_finite(f"{name}[1]", value[1])
 
 
 @dataclass(frozen=True)
@@ -88,12 +101,13 @@ class TrajectoryParams:
     severity_correlation: float = 0.8  # correlation of the log-severity across parameters, in [0, 1]
 
     def __post_init__(self) -> None:
+        # Normalize to plain floats / a tuple so equal params compare and hash equal whether they were
+        # given as numpy scalars or a list (object.__setattr__ because the dataclass is frozen).
         for name in ("reference_temp_c", "lot_temp_tolerance_c", "severity_median",
                      "severity_log_sigma", "severity_correlation"):
-            _check_finite(name, getattr(self, name))
-        lo, hi = self.self_heating_range_c
-        _check_finite("self_heating_range_c[0]", lo)
-        _check_finite("self_heating_range_c[1]", hi)
+            object.__setattr__(self, name, _check_finite(name, getattr(self, name)))
+        lo, hi = _check_pair("self_heating_range_c", self.self_heating_range_c)
+        object.__setattr__(self, "self_heating_range_c", (lo, hi))
         if self.reference_temp_c - self.lot_temp_tolerance_c + KELVIN_OFFSET <= 0:
             raise ValueError("reference_temp_c - lot_temp_tolerance_c must be above absolute zero")
         if self.lot_temp_tolerance_c < 0:
@@ -110,19 +124,28 @@ class TrajectoryParams:
 
 def arrhenius_acceleration_factor(activation_energy_eV: float, junction_temp_c: float, reference_temp_c: float) -> float:
     """AF = exp(Ea/k * (1/T_ref - 1/T_j)) - JEDEC JEP122 Arrhenius acceleration (context.md 1.4)."""
-    if not activation_energy_eV > 0:
+    ea = _check_finite("activation_energy_eV", activation_energy_eV)
+    t_j = _check_finite("junction_temp_c", junction_temp_c) + KELVIN_OFFSET
+    t_ref = _check_finite("reference_temp_c", reference_temp_c) + KELVIN_OFFSET
+    if ea <= 0:
         raise ValueError(f"activation_energy_eV must be > 0, got {activation_energy_eV}")
-    t_j = junction_temp_c + KELVIN_OFFSET
-    t_ref = reference_temp_c + KELVIN_OFFSET
     if not (t_j > 0 and t_ref > 0):
         raise ValueError("temperatures must be above absolute zero")
-    return float(math.exp(activation_energy_eV / BOLTZMANN_EV_PER_K * (1.0 / t_ref - 1.0 / t_j)))
+    try:
+        return math.exp(ea / BOLTZMANN_EV_PER_K * (1.0 / t_ref - 1.0 / t_j))
+    except OverflowError:
+        raise ValueError(
+            f"Arrhenius factor overflows for Ea={ea} eV at {junction_temp_c} C vs {reference_temp_c} C"
+        ) from None
 
 
 def _validate_range(name: str, rng: tuple[float, float], lo_bound: float, hi_bound: float | None) -> None:
     lo, hi = rng
-    _check_finite(f"{name}[0]", lo)
-    _check_finite(f"{name}[1]", hi)
+    try:
+        _check_finite(f"{name}[0]", lo)
+        _check_finite(f"{name}[1]", hi)
+    except TypeError as exc:  # ScreeningConfig coerces to float already; keep a bad range a ValueError
+        raise ValueError(str(exc)) from None
     upper_ok = hi_bound is None or hi < hi_bound
     if not (lo_bound < lo <= hi and upper_ok):
         bound = f"< {hi_bound}" if hi_bound is not None else "finite"
@@ -130,6 +153,10 @@ def _validate_range(name: str, rng: tuple[float, float], lo_bound: float, hi_bou
 
 
 def _validate_checkpoints(checkpoint_hours) -> tuple[float, ...]:
+    # Order is meaningful, so unordered containers (sets, dicts) and strings are rejected outright
+    # rather than trusting whatever iteration order they happen to have.
+    if isinstance(checkpoint_hours, (str, bytes, AbstractSet, Mapping)) or not isinstance(checkpoint_hours, Iterable):
+        raise TypeError(f"checkpoint_hours must be an ordered sequence of numbers, got {checkpoint_hours!r}")
     hours = tuple(checkpoint_hours)
     if not hours:
         raise ValueError("checkpoint_hours must be non-empty")
@@ -138,7 +165,7 @@ def _validate_checkpoints(checkpoint_hours) -> tuple[float, ...]:
             raise TypeError(f"checkpoint_hours entries must be numbers, got {h!r}")
         if not math.isfinite(h) or h < 0:
             raise ValueError(f"checkpoint_hours entries must be finite and >= 0, got {h!r}")
-    hours = tuple(float(h) for h in hours)
+    hours = tuple(float(h) + 0.0 for h in hours)  # + 0.0 turns -0.0 into 0.0
     if any(b <= a for a, b in pairwise(hours)):
         raise ValueError(f"checkpoint_hours must be strictly increasing, got {hours}")
     return hours
@@ -158,6 +185,32 @@ def _validate_inputs(lot, seed, config, params) -> None:
     # n in (0, 1): n <= 0 is no drift or decay, n >= 1 stops being sub-linear NBTI drift.
     _validate_range("config.power_law_exponent_range", config.power_law_exponent_range, 0.0, 1.0)
     _validate_range("config.activation_energy_range_eV", config.activation_energy_range_eV, 0.0, None)
+    _validate_lot(lot)
+
+
+def _validate_lot(lot: LotBaseline) -> None:
+    # generate_lot_baselines always produces a valid lot; this guards hand-built or edited ones.
+    seen = set()
+    for part in lot.parts:
+        if not isinstance(part, PartBaseline):
+            raise TypeError(f"lot.parts entries must be PartBaseline, got {type(part).__name__}")
+        if part.lot_id != lot.lot_id or part.part_number != lot.part_number:
+            raise ValueError(
+                f"part {part.component_id!r} belongs to ({part.lot_id!r}, {part.part_number!r}), "
+                f"not this lot ({lot.lot_id!r}, {lot.part_number!r})"
+            )
+        if part.component_id in seen:
+            raise ValueError(f"duplicate component_id {part.component_id!r}")
+        seen.add(part.component_id)
+        # Exactly the three grounded parameters - an extra one is never silently dropped (context.md 4.2c).
+        if set(part.baseline) != set(PARAMETERS):
+            raise ValueError(
+                f"part {part.component_id!r} baseline must cover exactly {sorted(PARAMETERS)}, "
+                f"got {sorted(part.baseline)}"
+            )
+        for name, value in part.baseline.items():
+            if _check_finite(f"{part.component_id} baseline[{name}]", value) <= 0:
+                raise ValueError(f"part {part.component_id!r} baseline[{name}] must be > 0, got {value}")
 
 
 def _growth(archetype: DefectArchetype, shape_param: float, t_eff: float) -> float:
@@ -193,31 +246,45 @@ def _generate_part(part, index, seed, chamber_temp_c, hours, config, params) -> 
     z_own = rng.standard_normal(len(PARAMETERS))
 
     rho = params.severity_correlation
-    severity = {
-        name: float(params.severity_median
-                    * np.exp(params.severity_log_sigma * (math.sqrt(rho) * z_shared + math.sqrt(1 - rho) * z_own[k])))
-        for k, name in enumerate(PARAMETERS)
-    }
     af = arrhenius_acceleration_factor(ea, junction_temp_c, params.reference_temp_c)
 
-    values = {}
-    for name, spec in PARAMETERS.items():
-        b = part.baseline[name]
-        series = []
-        for t in hours:
-            v = b + drift_amplitude[name] * t ** drift_exponent[name]
-            if part.is_defective:
-                t_eff = af * max(0.0, t - onset)
-                v += severity[name] * spec.defect_scale * b * _growth(archetype, shape_param, t_eff)
-            series.append(float(v))
-        values[name] = tuple(series)
+    # math (not numpy) so an overflow raises instead of silently producing inf; any overflow or
+    # non-finite result is surfaced as one clean ValueError rather than a corrupt trajectory.
+    try:
+        severity = {
+            name: params.severity_median * math.exp(
+                params.severity_log_sigma * (math.sqrt(rho) * z_shared + math.sqrt(1 - rho) * float(z_own[k]))
+            )
+            for k, name in enumerate(PARAMETERS)
+        }
+        values = {}
+        for name, spec in PARAMETERS.items():
+            b = float(part.baseline[name])
+            series = []
+            for t in hours:
+                v = b + drift_amplitude[name] * t ** drift_exponent[name]
+                if part.is_defective:
+                    t_eff = af * max(0.0, t - onset)
+                    v += severity[name] * spec.defect_scale * b * _growth(archetype, shape_param, t_eff)
+                series.append(float(v))
+            values[name] = tuple(series)
+        finite = all(math.isfinite(v) for v in severity.values()) and all(
+            math.isfinite(v) for series in values.values() for v in series
+        )
+    except OverflowError:
+        finite = False
+    if not finite:
+        raise ValueError(
+            f"trajectory for {part.component_id!r} is not finite - checkpoint_hours up to {hours[-1]} "
+            "or the severity/temperature params are outside a physically meaningful range"
+        )
 
     defective = part.is_defective
     return PartTrajectory(
         component_id=part.component_id,
         lot_id=part.lot_id,
         part_number=part.part_number,
-        baseline=dict(part.baseline),
+        baseline={name: float(v) for name, v in part.baseline.items()},
         values=values,
         is_defective=defective,
         drift_exponent=drift_exponent,
