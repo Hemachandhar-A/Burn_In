@@ -108,6 +108,42 @@ class FeatureFrame(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class ModuleBInput(BaseModel):
+    """What Module B is allowed to see: a FeatureFrame minus value_168h/delta_168h. 168h is Module B's
+    prediction target, so it is absent from this type by construction (AGENTS.md rule 6) - not filtered
+    later by convention. Build it with to_module_b_input(frame), never by hand."""
+
+    component_id: str
+    lot_id: str
+    part_number: str  # selects the per-part-number model
+    parameter: str
+    value_0h: float
+    value_24h: float
+    value_96h: float | None
+    delta_24h: float
+    delta_96h: float | None
+    # Pooled-fallback semantics: on a lot with < 30 parts (used_pooled_fallback=True) these hold the
+    # median of the pooled cross-lot reference for this part number when one was supplied, otherwise the
+    # lot's own median (still flagged) - not always this lot's own median.
+    lot_median_0h: float
+    lot_median_24h: float
+    robust_z: dict[str, float]  # "0h"/"24h"/"96h" keys only - never "168h"
+    lot_size: int
+    used_pooled_fallback: bool
+    elapsed_hours: dict[str, float]  # "0h"/"24h"/"96h" keys only - never "168h"
+
+
+def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
+    """The one sanctioned FeatureFrame -> ModuleBInput conversion. Drops value_168h/delta_168h and also
+    strips the "168h" key from robust_z and elapsed_hours, which are open-ended dicts that would
+    otherwise carry the target through on a Complete lot."""
+    data = frame.model_dump(exclude={"value_168h", "delta_168h"})
+    data["robust_z"] = {k: v for k, v in frame.robust_z.items() if k != "168h"}
+    data["elapsed_hours"] = {k: v for k, v in frame.elapsed_hours.items() if k != "168h"}
+    return ModuleBInput(**data)
+
+
+
 class ModuleAResult(BaseModel):
     component_id: str
     parameter: str

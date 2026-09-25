@@ -126,3 +126,11 @@ Entry format:
 - Status: RESOLVED (merge and fixes); the `save_analysis_run` mismatch remains OPEN.
 
 ---
+
+## 2026-09-26 Lead - ModuleBInput and to_module_b_input are now real on develop; P4 replace TEMP_ModuleBInput
+- `contracts.py` now defines `ModuleBInput` (a `FeatureFrame` minus `value_168h`/`delta_168h`, with the same pooled-fallback comment on `lot_median_0h/24h`) and `to_module_b_input(frame: FeatureFrame) -> ModuleBInput`, per Part 5.3. This was the Lead's gap - the type existed only as P4's own `TEMP_ModuleBInput` placeholder, never as the canonical contract.
+- Design note: `to_module_b_input` also strips the `"168h"` key from `robust_z` and `elapsed_hours`. Those are open-ended dicts, so dropping the two scalar fields alone would still have leaked the prediction target on a Complete lot (AGENTS.md rule 6).
+- **P4:** replace `TEMP_ModuleBInput` with `from contracts import ModuleBInput, to_module_b_input` - do not keep both. `module_b.predict` should take a `ModuleBInput`; callers (P5's `run_full_pipeline`) convert each `FeatureFrame` with `to_module_b_input` before calling it. Rebase `p4-module-b` onto `develop` first (it is still at the L1 commit).
+- Status: RESOLVED by Lead on `develop`.
+
+---

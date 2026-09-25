@@ -200,6 +200,24 @@ class FeatureFrame(BaseModel):
 ## 5.3 Features → Module A / Module B (P2 → P3, P4)
 
 ```python
+class ModuleBInput(BaseModel):
+    # FeatureFrame minus value_168h / delta_168h — 168h is Module B's prediction target, so it is absent by
+    # construction (AGENTS.md rule 6), not filtered by convention. Built only via to_module_b_input(frame).
+    component_id: str; lot_id: str
+    part_number: str; parameter: str    # part_number selects the per-part-number model
+    value_0h: float; value_24h: float; value_96h: float | None
+    delta_24h: float; delta_96h: float | None
+    # Pooled-fallback semantics: when used_pooled_fallback=True (< 30 parts) these are the pooled cross-lot
+    # reference median for this part number if one was supplied, else this lot's own median (still flagged).
+    lot_median_0h: float; lot_median_24h: float
+    robust_z: dict[str, float]          # "0h"/"24h"/"96h" keys only — never "168h"
+    lot_size: int; used_pooled_fallback: bool
+    elapsed_hours: dict[str, float]     # "0h"/"24h"/"96h" keys only — never "168h"
+
+def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
+    """Drops value_168h/delta_168h and strips the "168h" key from robust_z and elapsed_hours (the two
+    open-ended dicts that would otherwise carry the target through on a Complete lot)."""
+
 class ModuleAResult(BaseModel):
     component_id: str; parameter: str
     robust_z: float; mcd_distance: float | None   # None if lot < 30 (5-feature MCD ceiling — context.md 4.2)

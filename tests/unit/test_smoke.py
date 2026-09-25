@@ -72,3 +72,21 @@ def test_feature_frame_carries_168h_on_a_complete_lot():
     )
     assert (frame.value_168h, frame.delta_168h) == (1.3, 0.3)
     assert frame.robust_z["168h"] == 0.6 and frame.elapsed_hours["168h"] == 168.0
+
+
+def test_module_b_input_never_carries_168h():
+    # AGENTS.md rule 6: 168h is Module B's target, so it must not survive the conversion anywhere.
+    frame = contracts.FeatureFrame(
+        component_id="c1", lot_id="L1", part_number="P", parameter="iddq",
+        value_0h=1.0, value_24h=1.1, value_96h=1.2, value_168h=1.3,
+        delta_24h=0.1, delta_96h=0.2, delta_168h=0.3,
+        lot_median_0h=1.0, lot_median_24h=1.05,
+        robust_z={"0h": 0.0, "24h": 0.4, "96h": 0.5, "168h": 0.6}, lot_size=77, used_pooled_fallback=False,
+        elapsed_hours={"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0},
+    )
+    b = contracts.to_module_b_input(frame)
+    assert not hasattr(b, "value_168h") and not hasattr(b, "delta_168h")
+    assert set(b.robust_z) == {"0h", "24h", "96h"} and set(b.elapsed_hours) == {"0h", "24h", "96h"}
+    assert (b.value_0h, b.value_24h, b.value_96h, b.part_number, b.parameter) == (1.0, 1.1, 1.2, "P", "iddq")
+    assert frame.robust_z["168h"] == 0.6  # the source frame is untouched
+
