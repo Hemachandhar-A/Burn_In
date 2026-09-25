@@ -63,6 +63,8 @@ def _pick(select, results, stub_hint: str):
 
 
 _MODULE_A_STUB = "Expected while module_a is the P3.0 stub (until P3.3); otherwise a real regression."
+_FEATURES_STUB = ("Expected while features is the P2.1 stub (until P2.4) or module_a the P3.0 stub (until P3.3); "
+                  "otherwise a real regression.")
 _FUSION_STUB = "Expected while fusion is the P5.1 stub (until P5.3); otherwise a real regression."
 
 
@@ -91,8 +93,11 @@ def test_golden_lot_parts_on_the_median_pass():
 def test_golden_part_is_flagged_through_features_compute():
     """Same example, but with P2's real feature stage producing Module A's input from the raw lot."""
     frames = _available(TEMP_features_compute, golden_lot(), stage="features: P2.1 stub / P2.4 real")
-    result = _pick(golden_result, _module_a(frames), _MODULE_A_STUB)
-    assert is_flagged(result), _golden_failure(result) + " [path: features.compute -> module_a.detect]"
+    result = _pick(golden_result, _module_a(frames), _FEATURES_STUB)
+    assert is_flagged(result), (
+        f"GOLDEN TEST FAILED - {_EXAMPLE} must be flagged, got severity_tier={result.severity_tier!r} "
+        f"(robust_z={result.robust_z}) on the path features.compute -> module_a.detect. {_FEATURES_STUB} "
+        f"(AGENTS.md rule 5)")
 
 
 def test_golden_part_is_flagged_by_the_full_pipeline():

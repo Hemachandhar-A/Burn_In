@@ -11,7 +11,8 @@ The lot is hand-built, not generated: every number in it is chosen so a reviewer
       pooled-fallback minimum, so the lot's own robust statistics hold and MCD fits
     - leakage in uA, the problem statement's unit (the generator's own leakage is in nA - deliberately not
       reused here); lot median exactly 10 uA at every checkpoint, the golden part exactly 45 uA at every
-      checkpoint, every part below the 50 uA limit at every checkpoint
+      checkpoint, every part below the 50 uA limit at every checkpoint. The lot enters after ingestion's unit
+      normalization (E7 step 6), and Module A's statistics are lot-relative, so the unit cannot move a z-score
     - healthy parts spread symmetrically around the median and drift slightly apart over burn-in, so no
       delta is degenerate (a flat lot would turn this into the zero-MAD edge case instead)
     - the golden part is exactly at the lot median on Iddq and delay, so leakage alone can explain a flag

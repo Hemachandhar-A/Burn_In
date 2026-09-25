@@ -506,3 +506,28 @@ def test_pipeline_signature_mismatch_names_part_5_7(monkeypatch):
     _fake(monkeypatch, "fusion.pipeline", run_full_pipeline=lambda lot: None)
     with pytest.raises(TypeError, match="5.7"):
         run_golden_pipeline()
+
+
+def test_a_stage_with_no_introspectable_signature_is_still_called(monkeypatch):
+    """inspect.signature raises for some callables (a bad __signature__, some C builtins): the adapter must
+    fall back to just calling, not crash or skip."""
+    class Opaque:
+        __signature__ = "not a Signature"
+
+        def __call__(self, frames):
+            return _all_pass(frames)
+
+    with pytest.raises(TypeError):
+        import inspect
+        inspect.signature(Opaque())
+    _fake(monkeypatch, "module_a", detect=Opaque())
+    assert len(TEMP_detect_module_a(golden_feature_frames())) == len(golden_feature_frames())
+
+
+def test_the_golden_lot_is_post_ingestion_and_its_units_are_stable():
+    """The fixture enters after ingestion's unit normalization (E7 step 6), so its units are fixed here: one
+    unit per parameter across the whole lot, and the worked example's leakage in uA."""
+    units = {}
+    for r in golden_lot().readings:
+        units.setdefault(r.parameter, set()).add(r.unit)
+    assert units == {"iddq": {"uA"}, "leakage": {"uA"}, "prop_delay": {"ns"}}
