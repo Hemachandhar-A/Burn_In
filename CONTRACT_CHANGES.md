@@ -30,3 +30,11 @@ Entry format:
 - Status: OPEN (awaiting P2 / P3 acknowledgement)
 
 ---
+
+## 2026-09-25 P1 - No defined wide-format CSV layout between the generator and P2's ingestion
+- Missing/wrong: E1's "What it is" says the generator outputs wide-format CSV lots, and P2's 7.3 row requires "wide vs. long format equivalence" - but no numbered E1 step, no `contracts.py` type, and nothing in IMPLEMENTATION_PLAN.md defines the wide CSV's columns (one row per component? how checkpoint columns are named when `checkpoint_hour` is an explicit, possibly irregular number rather than a fixed 0/24/96/168 identity - context.md 7.2 / E1 step 8; where units go; whether the long format is `Reading`'s fields verbatim).
+- Why it matters: P1 and P2 would each have to guess the layout, and an ingestion test written against one guess and a generator file written against another is exactly the drift the contract freeze exists to prevent. The irregular-checkpoint requirement (E1 step 8) makes a naive `iddq_0h, iddq_24h, ...` column scheme lossy - a jittered 23.6h read has no column.
+- Proposed fix: the Lead pins one layout in contracts.py (or a documented schema the ingestion parser owns), e.g. long format = one row per `Reading` using its field names verbatim; wide format = one row per (component_id, checkpoint_hour) with lot_id, part_number, manufacturer, date_code, checkpoint_hour, then one `<parameter>_<unit>` value column per parameter - keeping elapsed time as a numeric column, not a column-name suffix. Until pinned, the generator hands P2 `LotDataset` objects only (no CSV writer), which is what G2 requires; a CSV writer is a small follow-up once the layout exists.
+- Status: OPEN
+
+---
