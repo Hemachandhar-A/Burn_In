@@ -8,7 +8,15 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from contracts import Account, Base, Project
+from contracts import (
+    Account,
+    Base,
+    ConfirmedOutcome,
+    DispositionSignoff,
+    Event,
+    Project,
+    ProjectData,
+)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./burnin.db")
 
@@ -19,11 +27,16 @@ _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite"
 engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
+_ALL_TABLES = [
+    Account.__table__,
+    Project.__table__,
+    ProjectData.__table__,
+    Event.__table__,
+    DispositionSignoff.__table__,
+    ConfirmedOutcome.__table__,
+]
+
 
 def init_db() -> None:
-    """Creates the tables session P2.1 owns: accounts + projects.
-
-    Session P2.6 extends this to the remaining four (project_data, events,
-    disposition_signoffs, confirmed_outcomes), once their repository functions land.
-    """
-    Base.metadata.create_all(bind=engine, tables=[Account.__table__, Project.__table__])
+    """Creates all six tables in contracts.py Part 5.5."""
+    Base.metadata.create_all(bind=engine, tables=_ALL_TABLES)
