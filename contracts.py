@@ -86,6 +86,9 @@ class FeatureFrame(BaseModel):
     delta_24h: float
     delta_96h: float | None
     delta_168h: float | None
+    # Pooled-fallback semantics: on a lot with < 30 parts (used_pooled_fallback=True) these hold the
+    # median of the pooled cross-lot reference for this part number when one was supplied, otherwise the
+    # lot's own median (still flagged) - not always this lot's own median.
     lot_median_0h: float
     lot_median_24h: float
     robust_z: dict[str, float]  # keyed per checkpoint label ("0h", "24h", "96h", "168h"); parameter is the frame's own field
@@ -258,6 +261,10 @@ class LotUploadResponse(BaseModel):
     part_number: str
     status: Literal["IN_PROGRESS", "COMPLETE"]
     reading_count: int
+    # component_ids with no 0h or 24h reading for some parameter (INSUFFICIENT_DATA, E7 step 7): they get no
+    # FeatureFrame, so the uploader must see them here, never as a silent drop (rule 7). Default [] so
+    # existing constructors keep working; ingestion populates it.
+    insufficient_data_components: list[str] = []
 
 
 class LotSummaryResponse(AnalysisResults):

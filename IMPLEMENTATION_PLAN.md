@@ -184,6 +184,9 @@ class FeatureFrame(BaseModel):
     value_168h: float | None            # populated only on a Complete lot — Module A screens the full series post-hoc (context.md 7.1); Module B never reads it
     delta_24h: float; delta_96h: float | None
     delta_168h: float | None
+    # Pooled-fallback semantics: when used_pooled_fallback=True (< 30 parts) these are the pooled cross-lot
+    # reference median for this part number if one was supplied, else this lot's own median (still flagged) —
+    # not always the lot's own median. Module B's input vector carries the same two values with the same meaning.
     lot_median_0h: float; lot_median_24h: float
     robust_z: dict[str, float]          # keyed per checkpoint label ("0h", "24h", "96h", "168h") — parameter is the frame's own field
     lot_size: int; used_pooled_fallback: bool   # < 30 parts — context.md 5.16
@@ -342,6 +345,7 @@ class TokenResponse(BaseModel):
 class LotUploadResponse(BaseModel):
     lot_id: str; part_number: str
     status: Literal["IN_PROGRESS", "COMPLETE"]; reading_count: int
+    insufficient_data_components: list[str] = []   # component_ids with no 0h or 24h reading for some parameter (INSUFFICIENT_DATA, E7 step 7) — they get no FeatureFrame, so they must be visible here, never a silent drop (R7)
 
 class LotSummaryResponse(AnalysisResults):
     pass
