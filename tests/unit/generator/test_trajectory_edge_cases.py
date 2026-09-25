@@ -593,3 +593,101 @@ def test_defect_archetypes_registry_is_read_only():
         DEFECT_ARCHETYPES["new_type"] = DEFECT_ARCHETYPES["progressive"]
     with pytest.raises(TypeError):
         del DEFECT_ARCHETYPES["progressive"]
+
+
+# =============================================================================================
+# Final-review round 2: integer overflow, silently-invisible defects, lot labels, pickling
+# =============================================================================================
+
+def test_integer_too_large_for_float_checkpoint_raises_value_error():
+    with pytest.raises(ValueError):
+        generate_lot_trajectories(_baselines(3, 50), seed=50, checkpoint_hours=(0, 10**400))
+
+
+def test_integer_too_large_for_float_param_raises_value_error():
+    with pytest.raises(ValueError):
+        TrajectoryParams(severity_median=10**400)
+
+
+def test_integer_too_large_for_float_activation_energy_raises_value_error():
+    with pytest.raises(ValueError):
+        arrhenius_acceleration_factor(10**400, junction_temp_c=130.0, reference_temp_c=125.0)
+
+
+def test_integer_too_large_for_float_baseline_raises_value_error():
+    baseline = {"iddq": 10**400, "leakage": 5.0, "prop_delay": 5.0}
+    with pytest.raises(ValueError):
+        generate_lot_trajectories(_hand_built_lot([_part(baseline=baseline)]), seed=1)
+
+
+def test_severity_underflowing_to_zero_raises_instead_of_mislabeling_parts():
+    # A part labeled defective must actually carry a defect term; a severity that underflows to 0
+    # would silently produce "defective" ground truth with a perfectly healthy trajectory.
+    with pytest.raises(ValueError):
+        generate_lot_trajectories(_baselines(20, 51, ALL_DEFECTIVE), seed=51, config=ALL_DEFECTIVE,
+                                  params=TrajectoryParams(severity_median=1e-320))
+
+
+@pytest.mark.parametrize("seed", [3, 5, 9, 10, 13, 15])  # seeds whose chamber runs below the reference
+def test_acceleration_factor_underflowing_to_zero_raises_instead_of_mislabeling_parts(seed):
+    # Ea of 1000 eV in a slightly cold chamber underflows AF to exactly 0: the defect never activates,
+    # so the part would be labeled defective with a perfectly healthy trajectory. Must be a ValueError.
+    params = TrajectoryParams(self_heating_range_c=(0.0, 0.0))
+    precondition = generate_lot_trajectories(_baselines(1, seed), seed=seed, params=params)
+    assert precondition.chamber_temp_c < params.reference_temp_c  # chamber depends on the seed only
+    config = ScreeningConfig(defect_prevalence_range=(1.0, 1.0), activation_energy_range_eV=(1000.0, 1000.0))
+    with pytest.raises(ValueError):
+        generate_lot_trajectories(_baselines(5, seed, config), seed=seed, config=config,
+                                  params=TrajectoryParams(self_heating_range_c=(0.0, 0.0)))
+
+
+@pytest.mark.parametrize("severity_median", [1e-320, 1e-15])
+def test_numerically_invisible_defect_raises_even_when_not_exactly_zero(severity_median):
+    # 1e-320 is subnormal-but-nonzero, 1e-15 a normal float - both are lost when added to a baseline of
+    # ~10, so the "defective" part would be indistinguishable from healthy.
+    with pytest.raises(ValueError):
+        generate_lot_trajectories(_baselines(20, 55, ALL_DEFECTIVE), seed=55, config=ALL_DEFECTIVE,
+                                  params=TrajectoryParams(severity_median=severity_median))
+
+
+def test_small_but_real_defect_is_still_allowed():
+    lot = generate_lot_trajectories(_baselines(50, 56, ALL_DEFECTIVE), seed=56, config=ALL_DEFECTIVE,
+                                    params=TrajectoryParams(severity_median=1e-3, severity_log_sigma=0.0))
+    for p in lot.parts:
+        healthy = p.baseline["iddq"] + p.drift_amplitude["iddq"] * 168.0 ** p.drift_exponent["iddq"]
+        if p.defect_onset_hours < 168.0:
+            assert p.values["iddq"][-1] > healthy
+
+
+def test_healthy_parts_are_unaffected_by_the_defect_underflow_guard():
+    # The guard is about defective parts only - an all-healthy lot with the same extreme params is fine.
+    params = TrajectoryParams(severity_median=1e-320)
+    lot = generate_lot_trajectories(_baselines(20, 52, ALL_HEALTHY), seed=52, config=ALL_HEALTHY, params=params)
+    assert not any(p.is_defective for p in lot.parts)
+
+
+def test_every_default_defective_part_has_positive_severity_and_acceleration():
+    lot = generate_lot_trajectories(_baselines(2000, 53, ALL_DEFECTIVE), seed=53, config=ALL_DEFECTIVE)
+    assert all(p.acceleration_factor > 0 for p in lot.parts)
+    assert all(v > 0 for p in lot.parts for v in p.defect_severity.values())
+
+
+@pytest.mark.parametrize("field,bad", [("lot_id", 123), ("lot_id", ""), ("lot_id", "  "), ("lot_id", None),
+                                       ("part_number", None), ("part_number", ""), ("part_number", 7)])
+def test_invalid_lot_labels_are_rejected_even_for_an_empty_lot(field, bad):
+    lot = dataclasses.replace(_hand_built_lot([]), **{field: bad})
+    with pytest.raises((TypeError, ValueError)):
+        generate_lot_trajectories(lot, seed=1)
+
+
+def test_trajectories_and_params_survive_pickle_and_deepcopy():
+    # The P1.5 harness may fan lots out across processes - these must round-trip exactly.
+    import copy
+    import pickle
+
+    lot = generate_lot_trajectories(_baselines(20, 54, ALL_DEFECTIVE), seed=54, config=ALL_DEFECTIVE)
+    assert pickle.loads(pickle.dumps(lot)) == lot
+    assert copy.deepcopy(lot) == lot
+    params = TrajectoryParams(severity_correlation=0.3, self_heating_range_c=[1.0, 2.0])
+    assert pickle.loads(pickle.dumps(params)) == params
+    assert hash(pickle.loads(pickle.dumps(params))) == hash(params)

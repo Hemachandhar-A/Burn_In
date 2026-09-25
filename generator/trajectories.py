@@ -44,6 +44,10 @@ BOLTZMANN_EV_PER_K = 8.617333262e-5
 KELVIN_OFFSET = 273.15
 DEFAULT_CHECKPOINT_HOURS: tuple[float, ...] = (0.0, 24.0, 96.0, 168.0)
 _REFERENCE_DURATION_HOURS = 168.0  # full campaign length that drift/defect magnitudes are expressed at
+# Smallest defect (relative to baseline, one full campaign after onset) that still counts as a defect.
+# A numerical-detectability floor, not a physical claim: below it the defect is lost in float noise
+# and a "defective" label would sit on a trajectory indistinguishable from healthy.
+_MIN_DEFECT_RELATIVE_MAGNITUDE = 1e-9
 
 # SeedSequence spawn-key namespaces. Baselines use default_rng(seed) directly, so these are
 # distinct streams from it and from each other.
@@ -79,9 +83,13 @@ def _check_finite(name: str, value: float) -> float:
     Returns the value as a plain float."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise TypeError(f"{name} must be a real number, got {value!r}")
-    if not math.isfinite(value):
+    try:
+        as_float = float(value)
+    except OverflowError:  # an int too large for a float (e.g. 10**400)
+        raise ValueError(f"{name} is too large to represent as a float") from None
+    if not math.isfinite(as_float):
         raise ValueError(f"{name} must be finite, got {value!r}")
-    return float(value)
+    return as_float
 
 
 def _check_pair(name: str, value) -> tuple[float, float]:
@@ -162,12 +170,9 @@ def _validate_checkpoints(checkpoint_hours) -> tuple[float, ...]:
     hours = tuple(checkpoint_hours)
     if not hours:
         raise ValueError("checkpoint_hours must be non-empty")
-    for h in hours:
-        if isinstance(h, bool) or not isinstance(h, numbers.Real):
-            raise TypeError(f"checkpoint_hours entries must be numbers, got {h!r}")
-        if not math.isfinite(h) or h < 0:
-            raise ValueError(f"checkpoint_hours entries must be finite and >= 0, got {h!r}")
-    hours = tuple(float(h) + 0.0 for h in hours)  # + 0.0 turns -0.0 into 0.0
+    hours = tuple(_check_finite("checkpoint_hours entry", h) + 0.0 for h in hours)  # + 0.0: -0.0 -> 0.0
+    if any(h < 0 for h in hours):
+        raise ValueError(f"checkpoint_hours entries must be >= 0, got {hours}")
     if any(b <= a for a, b in pairwise(hours)):
         raise ValueError(f"checkpoint_hours must be strictly increasing, got {hours}")
     return hours
@@ -192,6 +197,10 @@ def _validate_inputs(lot, seed, config, params) -> None:
 
 def _validate_lot(lot: LotBaseline) -> None:
     # generate_lot_baselines always produces a valid lot; this guards hand-built or edited ones.
+    for label in ("lot_id", "part_number"):
+        value = getattr(lot, label)
+        if not isinstance(value, str) or not value.strip():
+            raise TypeError(f"lot.{label} must be a non-empty str, got {value!r}")
     # A one-shot iterable would be consumed here and then silently produce an empty lot.
     if not isinstance(lot.parts, (list, tuple)):
         raise TypeError(f"lot.parts must be a list or tuple, got {type(lot.parts).__name__}")
@@ -288,6 +297,18 @@ def _generate_part(part, index, seed, chamber_temp_c, hours, config, params) -> 
             f"trajectory for {part.component_id!r} is not finite - checkpoint_hours up to {hours[-1]} "
             "or the severity/temperature params are outside a physically meaningful range"
         )
+    # A part labeled defective must actually carry a visible defect. If AF or a severity underflows
+    # (to 0 or to a value lost when added to the baseline), the trajectory is healthy while the ground
+    # truth says defective - a silent mislabel. Judged one full campaign after onset, so it does not
+    # depend on which checkpoints were requested.
+    if part.is_defective:
+        growth_at_reference = _growth(archetype, shape_param, af * _REFERENCE_DURATION_HOURS)
+        weakest = min(severity[name] * spec.defect_scale for name, spec in PARAMETERS.items()) * growth_at_reference
+        if not weakest > _MIN_DEFECT_RELATIVE_MAGNITUDE:
+            raise ValueError(
+                f"defect term for {part.component_id!r} is numerically invisible (AF={af}, severity={severity}) - "
+                "the severity/temperature/activation-energy params are outside a physically meaningful range"
+            )
 
     defective = bool(part.is_defective)
     return PartTrajectory(
