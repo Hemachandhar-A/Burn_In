@@ -7,8 +7,13 @@ elapsed_hours]`, context.md 5.9) needs no separate assembly here - `FeatureFrame
 every one of those fields directly, so E8 step 5's Module B half is satisfied by the contract
 shape alone.
 
-168h is intentionally excluded (CONTRACT_CHANGES.md, resolved): `FeatureFrame`/Module A never
-score the 168h reading, so `compute()` never looks past 96h.
+168h IS scored by Module A, but only for Complete lots (CONTRACT_CHANGES.md 2026-09-25 Lead
+"SUPERSEDES ... its RESOLVED status was wrong" - this reverses the P2.4-era resolution that
+excluded it). `value_168h`/`delta_168h`/`robust_z["168h"]`/`elapsed_hours["168h"]` are populated
+only when `lot.status == "COMPLETE"`; an In-Progress lot never gets a 168h entry, even if a
+168h `Reading` happens to already be present, since 168h is also Module B's prediction target
+and the Complete-lot trigger, not a value to expose mid-run (AGENTS.md rule 6 - Module B itself
+never reads `value_168h`/`delta_168h`, only Module A does).
 
 Pooled cross-lot fallback (E8 step 3): no storage query function exists yet to fetch another
 lot's readings for the same part_number (that's P2.6/P2.8's repository surface) - see
@@ -22,8 +27,8 @@ import numpy as np
 from contracts import FeatureFrame, LotDataset, Reading
 from ingestion.checkpoints import label_for_hour
 
-_ALL_LABELS = ("0h", "24h", "96h")
-_NOMINAL_HOURS = {"0h": 0.0, "24h": 24.0, "96h": 96.0}
+_CORE_LABELS = ("0h", "24h", "96h")
+_NOMINAL_HOURS = {"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0}
 _SMALL_LOT_THRESHOLD = 30  # AEC-Q001's own "at least 30 parts" - context.md 1.6, 5.16
 
 
@@ -70,13 +75,15 @@ def compute(
     the lot is small, it replaces the lot-relative median/sigma used for `lot_median_*` and
     `robust_z`.
     """
+    labels = _CORE_LABELS + ("168h",) if lot.status == "COMPLETE" else _CORE_LABELS
+
     by_pair: dict[tuple[str, str], list[Reading]] = {}
     for r in lot.readings:
         by_pair.setdefault((r.component_id, r.parameter), []).append(r)
 
     picked: dict[tuple[str, str], dict[str, Reading]] = {}
     for (component_id, parameter), readings in by_pair.items():
-        by_label = {label: _reading_for_label(readings, label) for label in _ALL_LABELS}
+        by_label = {label: _reading_for_label(readings, label) for label in labels}
         if by_label["0h"] is None or by_label["24h"] is None:
             continue
         picked[(component_id, parameter)] = {k: v for k, v in by_label.items() if v is not None}
@@ -87,7 +94,7 @@ def compute(
     for parameter in parameters:
         component_ids = [cid for (cid, p) in picked if p == parameter]
         lot_size_by_parameter[parameter] = len(component_ids)
-        for label in _ALL_LABELS:
+        for label in labels:
             values = [
                 picked[(cid, parameter)][label].value
                 for cid in component_ids
@@ -116,6 +123,7 @@ def compute(
         value_0h = by_label["0h"].value
         value_24h = by_label["24h"].value
         value_96h = by_label["96h"].value if "96h" in by_label else None
+        value_168h = by_label["168h"].value if "168h" in by_label else None
 
         frames.append(FeatureFrame(
             component_id=component_id,
@@ -125,8 +133,10 @@ def compute(
             value_0h=value_0h,
             value_24h=value_24h,
             value_96h=value_96h,
+            value_168h=value_168h,
             delta_24h=value_24h - value_0h,
             delta_96h=(value_96h - value_0h) if value_96h is not None else None,
+            delta_168h=(value_168h - value_0h) if value_168h is not None else None,
             lot_median_0h=median_by_label["0h"],
             lot_median_24h=median_by_label["24h"],
             robust_z=robust_z,

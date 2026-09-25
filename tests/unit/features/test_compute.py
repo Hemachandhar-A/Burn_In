@@ -22,21 +22,24 @@ def _reading(component_id: str, parameter: str, checkpoint_hour: float, value: f
     )
 
 
-def _lot(readings: list[Reading], lot_id: str = "L1", part_number: str = "PN-1") -> LotDataset:
+def _lot(readings: list[Reading], lot_id: str = "L1", part_number: str = "PN-1",
+         status: str = "IN_PROGRESS") -> LotDataset:
     return LotDataset(
-        lot_id=lot_id, part_number=part_number, status="IN_PROGRESS", readings=readings,
+        lot_id=lot_id, part_number=part_number, status=status, readings=readings,
         account_id="a.sharma",
     )
 
 
 def _component_with_0h_24h(component_id: str, parameter: str, v0: float, v24: float,
-                            v96: float | None = None) -> list[Reading]:
+                            v96: float | None = None, v168: float | None = None) -> list[Reading]:
     readings = [
         _reading(component_id, parameter, 0.0, v0),
         _reading(component_id, parameter, 24.0, v24),
     ]
     if v96 is not None:
         readings.append(_reading(component_id, parameter, 96.0, v96))
+    if v168 is not None:
+        readings.append(_reading(component_id, parameter, 168.0, v168))
     return readings
 
 
@@ -196,12 +199,62 @@ def test_duplicate_readings_mapping_to_same_label_pick_the_closest_to_nominal():
     assert frame.elapsed_hours["24h"] == 24.3
 
 
-def test_168h_reading_never_produces_a_frame_field():
-    """CONTRACT_CHANGES.md: 168h is intentionally excluded from FeatureFrame/Module A scoring."""
+def test_168h_absent_for_in_progress_lot_even_if_reading_present():
+    """CONTRACT_CHANGES.md SUPERSEDES entry: 168h is Module A's post-hoc scoring on Complete
+    lots only - an In-Progress lot never gets a 168h frame entry, even if a 168h Reading is
+    already present in the data (168h is also the Complete-lot trigger and Module B's target,
+    not a value to expose mid-run)."""
     readings = _component_with_0h_24h("c1", "iddq", 10.0, 11.0) + [_reading("c1", "iddq", 168.0, 50.0)]
-    frame = compute(_lot(readings))[0]
+    frame = compute(_lot(readings, status="IN_PROGRESS"))[0]
+    assert frame.value_168h is None
+    assert frame.delta_168h is None
     assert "168h" not in frame.elapsed_hours
     assert "168h" not in frame.robust_z
+
+
+def test_168h_populated_for_complete_lot():
+    """CONTRACT_CHANGES.md SUPERSEDES entry: on a Complete lot, Module A scores the 168h
+    reading too - value_168h/delta_168h/robust_z["168h"]/elapsed_hours["168h"] are populated,
+    the same pattern as the existing 96h fields."""
+    readings = (
+        _component_with_0h_24h("c1", "iddq", 10.0, 13.0, v96=18.0, v168=25.0)
+        + _component_with_0h_24h("c2", "iddq", 8.0, 9.0, v96=12.0, v168=15.0)
+        + _component_with_0h_24h("c3", "iddq", 12.0, 15.0, v96=20.0, v168=35.0)
+    )
+    frames = {f.component_id: f for f in compute(_lot(readings, status="COMPLETE"))}
+    frame = frames["c1"]
+    assert frame.value_168h == 25.0
+    assert frame.delta_168h == 15.0
+    assert frame.elapsed_hours["168h"] == 168.0
+    assert "168h" in frame.robust_z
+    # lot-relative median at 168h: 15, 25, 35 -> median 25
+    assert frame.robust_z["168h"] == 0.0
+    assert frames["c2"].robust_z["168h"] == (15.0 - 25.0) / ((30.0 - 20.0) / 1.35)
+
+
+def test_168h_absent_when_reading_missing_even_on_complete_lot():
+    """A Complete lot with no 168h Reading for a pair still gets None, not a guessed value
+    (AGENTS.md rule 7)."""
+    readings = _component_with_0h_24h("c1", "iddq", 10.0, 13.0, v96=18.0)  # no 168h reading
+    frame = compute(_lot(readings, status="COMPLETE"))[0]
+    assert frame.value_168h is None
+    assert frame.delta_168h is None
+    assert "168h" not in frame.elapsed_hours
+    assert "168h" not in frame.robust_z
+
+
+def test_168h_mcd_matrix_buildable_for_complete_lot():
+    readings = (
+        _component_with_0h_24h("c1", "iddq", 10.0, 10.0, v168=20.0)
+        + _component_with_0h_24h("c1", "leakage", 4.0, 4.0, v168=8.0)
+        + _component_with_0h_24h("c2", "iddq", 20.0, 20.0, v168=30.0)
+        + _component_with_0h_24h("c2", "leakage", 8.0, 8.0, v168=16.0)
+    )
+    frames = compute(_lot(readings, status="COMPLETE"))
+    component_ids, parameters, matrix = build_mcd_matrix(frames, "168h")
+    assert component_ids == ["c1", "c2"]
+    assert parameters == ["iddq", "leakage"]
+    assert len(matrix) == 2
 
 
 def test_build_mcd_matrix_joint_across_parameters_for_same_component():
