@@ -475,3 +475,44 @@ def test_report_accepts_any_iterable_of_results_and_sweeps():
     results = run_realism_comparisons(n_lots=1)
     sweep = sweep_seeds(n_lots=1, seeds=(0,))
     assert format_report(iter(results), iter(sweep)) == format_report(results, sweep)
+
+
+# --- final review pass -----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_value", [math.nan, math.inf])
+def test_one_corrupt_reading_does_not_discard_the_whole_lot_statistic(bad_value):
+    # The corrupt part leaves the lot median; the lot's exponent fit and knee must survive on the rest.
+    lot = _lot()
+    clean = extract_generator_statistics([lot])
+    part = _first_healthy(lot)
+    readings = [r.model_copy(update={"value": bad_value})
+                if (r.component_id == part.component_id and r.parameter == "iddq" and r.checkpoint_hour == 96.0) else r
+                for r in lot.dataset.readings]
+    stats = extract_generator_statistics([_replace_readings(lot, readings)])
+    assert len(stats.drift_exponent_lot_fit) == len(clean.drift_exponent_lot_fit)
+    assert len(stats.time_to_knee_lot) == len(clean.time_to_knee_lot)
+    assert stats.lot_fits_excluded == clean.lot_fits_excluded
+
+
+def test_lot_whose_every_healthy_series_is_corrupt_is_excluded_not_crashed():
+    lot = _lot()
+    healthy = {p.component_id for p in lot.ground_truth.trajectories.parts if not p.is_defective}
+    readings = [r.model_copy(update={"value": math.nan})
+                if (r.component_id in healthy and r.parameter == "iddq" and r.checkpoint_hour == 96.0) else r
+                for r in lot.dataset.readings]
+    stats = extract_generator_statistics([_replace_readings(lot, readings)])
+    assert stats.lot_fits_excluded >= 1
+    assert np.all(np.isfinite(stats.drift_exponent_lot_fit))
+
+
+def test_relative_reference_path_is_not_served_stale_after_a_directory_change(tmp_path, monkeypatch):
+    rows = realism._INSET_POINTS_CSV.read_text(encoding="utf-8").splitlines()
+    first, second = tmp_path / "a", tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    (first / "inset.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (second / "inset.csv").write_text("\n".join(rows[:-1]) + "\n", encoding="utf-8")  # one point fewer
+    monkeypatch.chdir(first)
+    assert ljmu_inset_power_law_fit(Path("inset.csv")).n_points == 484
+    monkeypatch.chdir(second)
+    assert ljmu_inset_power_law_fit(Path("inset.csv")).n_points == 483

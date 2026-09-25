@@ -174,7 +174,8 @@ def _log_axis_fit(ticks: dict[float, float]) -> tuple[float, float]:
 def ljmu_inset_power_law_fit(path: Path = _INSET_POINTS_CSV) -> PowerLawFit:
     """Refit the LJMU inset's measured degradation points with a power law, as the paper does, and return
     each point's relative residual around that fit - the reference's noise-to-signal sample."""
-    px = _load_inset_points(Path(path))
+    # Resolved before the cache lookup: a relative path means a different file after a working-directory change.
+    px = _load_inset_points(Path(path).resolve())
     (xs, xi), (ys, yi) = _log_axis_fit(_INSET_X_TICKS_PT), _log_axis_fit(_INSET_Y_TICKS_PT)
     log_t, log_gd = xs * px[:, 0] + xi, ys * px[:, 1] + yi
     exponent, log_a = np.polyfit(log_t, log_gd, 1)
@@ -201,7 +202,8 @@ class GeneratorStatistics:
     drift_exponent_per_part_fit: np.ndarray  # n fitted to one part's own measured drift
     relative_drift_excluded: int  # 0h reading non-positive or non-finite - a relative change is meaningless
     noise_to_signal_excluded: int  # true drift not positive - there is no signal to scale the noise by
-    lot_fits_excluded: int  # lot series with a non-positive median drift (can't be log-fitted); drops the knee too
+    lot_fits_excluded: int  # lot series whose median drift over finite part series is non-positive or absent
+    # (can't be log-fitted); drops the knee too
     part_fits_excluded: int  # part series with any non-positive measured drift
     lots_without_healthy_parts: int  # contribute nothing; counted so an empty lot is visible, not silent
 
@@ -326,9 +328,11 @@ def extract_generator_statistics(lots: Iterable[GeneratedLot]) -> GeneratorStati
                     part_excluded += 1
                 else:
                     n_part.append(fitted)
-                lot_drifts.append(drift)
-            median_drift = np.median(np.array(lot_drifts), axis=0)
-            fitted = _fit_exponent(post, median_drift)
+                if np.all(np.isfinite(drift)):
+                    # A corrupt (non-finite) reading drops its own part from the lot median, not the whole lot.
+                    lot_drifts.append(drift)
+            median_drift = np.median(np.array(lot_drifts), axis=0) if lot_drifts else None
+            fitted = None if median_drift is None else _fit_exponent(post, median_drift)
             if fitted is None:
                 lot_excluded += 1
             else:
