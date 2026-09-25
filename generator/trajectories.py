@@ -32,6 +32,7 @@ from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from itertools import pairwise
+from types import MappingProxyType
 
 import numpy as np
 
@@ -60,7 +61,8 @@ class DefectArchetype:
 
 # All archetypes share one per-parameter fingerprint (defect_scale) and differ in timing/shape only -
 # the "one generic defect severity mechanism" simplification disclosed in context.md 8.1.
-DEFECT_ARCHETYPES: dict[str, DefectArchetype] = {
+# Read-only: a caller mutating this registry would silently change every later lot's output.
+DEFECT_ARCHETYPES: Mapping[str, DefectArchetype] = MappingProxyType({
     # Steadily worsening defect, faster-than-healthy (super-linear) growth, visible by 24h.
     "progressive": DefectArchetype("progressive", (0.0, 0.0), "power", (1.0, 1.5)),
     # Infant-mortality-like: fast early rise that plateaus - strongest signal at 24h.
@@ -68,7 +70,7 @@ DEFECT_ARCHETYPES: dict[str, DefectArchetype] = {
     # Latent defect that activates only after the 24h checkpoint (E1 step 5) - invisible to a
     # 0h/24h-only view, onset before the 96h read so it is at least measurable later in the run.
     "latent_post_24h": DefectArchetype("latent_post_24h", (24.0, 96.0), "power", (1.0, 1.5)),
-}
+})
 _ARCHETYPE_NAMES = tuple(DEFECT_ARCHETYPES)
 
 
@@ -190,10 +192,18 @@ def _validate_inputs(lot, seed, config, params) -> None:
 
 def _validate_lot(lot: LotBaseline) -> None:
     # generate_lot_baselines always produces a valid lot; this guards hand-built or edited ones.
+    # A one-shot iterable would be consumed here and then silently produce an empty lot.
+    if not isinstance(lot.parts, (list, tuple)):
+        raise TypeError(f"lot.parts must be a list or tuple, got {type(lot.parts).__name__}")
     seen = set()
     for part in lot.parts:
         if not isinstance(part, PartBaseline):
             raise TypeError(f"lot.parts entries must be PartBaseline, got {type(part).__name__}")
+        if not isinstance(part.component_id, str) or not part.component_id.strip():
+            raise TypeError(f"component_id must be a non-empty str, got {part.component_id!r}")
+        # Strictly boolean: a truthy non-bool (e.g. "no", 1.0) would otherwise flip the ground-truth label.
+        if not isinstance(part.is_defective, (bool, np.bool_)):
+            raise TypeError(f"part {part.component_id!r} is_defective must be a bool, got {part.is_defective!r}")
         if part.lot_id != lot.lot_id or part.part_number != lot.part_number:
             raise ValueError(
                 f"part {part.component_id!r} belongs to ({part.lot_id!r}, {part.part_number!r}), "
@@ -279,7 +289,7 @@ def _generate_part(part, index, seed, chamber_temp_c, hours, config, params) -> 
             "or the severity/temperature params are outside a physically meaningful range"
         )
 
-    defective = part.is_defective
+    defective = bool(part.is_defective)
     return PartTrajectory(
         component_id=part.component_id,
         lot_id=part.lot_id,
@@ -305,8 +315,9 @@ def generate_lot_trajectories(
     params: TrajectoryParams | None = None,
     checkpoint_hours=DEFAULT_CHECKPOINT_HOURS,
 ) -> LotTrajectories:
-    config = config or ScreeningConfig()
-    params = params or TrajectoryParams()
+    # `is None`, not `or`: a falsy wrong-type argument must fail validation, not become the defaults.
+    config = ScreeningConfig() if config is None else config
+    params = TrajectoryParams() if params is None else params
     _validate_inputs(lot, seed, config, params)
     hours = _validate_checkpoints(checkpoint_hours)
     seed = int(seed)

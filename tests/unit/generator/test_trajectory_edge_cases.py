@@ -526,3 +526,70 @@ def test_input_lot_is_not_mutated():
                                                      for p in baselines.parts])
     generate_lot_trajectories(baselines, seed=33)
     assert baselines == snapshot
+
+
+# =============================================================================================
+# Final-review findings: silent fallbacks and silently-wrong hand-built inputs
+# =============================================================================================
+
+@pytest.mark.parametrize("bad", [{}, 0, False, "", []])
+def test_falsy_non_config_is_rejected_not_silently_replaced_by_defaults(bad):
+    with pytest.raises(TypeError):
+        generate_lot_trajectories(_baselines(3, 40), seed=40, config=bad)
+
+
+@pytest.mark.parametrize("bad", [{}, 0, False, "", []])
+def test_falsy_non_params_is_rejected_not_silently_replaced_by_defaults(bad):
+    with pytest.raises(TypeError):
+        generate_lot_trajectories(_baselines(3, 41), seed=41, params=bad)
+
+
+@pytest.mark.parametrize("bad", [{}, 0, False, "", []])
+def test_baselines_falsy_non_config_is_rejected_not_silently_replaced_by_defaults(bad):
+    with pytest.raises(TypeError):
+        generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=3, seed=1, config=bad)
+
+
+def test_explicit_none_still_means_defaults():
+    baselines = _baselines(3, 42)
+    assert generate_lot_trajectories(baselines, seed=42, config=None, params=None) == \
+        generate_lot_trajectories(baselines, seed=42)
+
+
+def test_one_shot_iterable_parts_are_rejected_not_silently_emptied():
+    baselines = _baselines(5, 43)
+    lot = dataclasses.replace(baselines, parts=(p for p in baselines.parts))
+    with pytest.raises(TypeError):
+        generate_lot_trajectories(lot, seed=43)
+
+
+def test_tuple_parts_are_accepted():
+    baselines = _baselines(5, 44)
+    as_tuple = dataclasses.replace(baselines, parts=tuple(baselines.parts))
+    assert generate_lot_trajectories(as_tuple, seed=44) == generate_lot_trajectories(baselines, seed=44)
+
+
+@pytest.mark.parametrize("bad", ["no", 1, 0, None, 1.0])
+def test_non_boolean_defect_flag_is_rejected(bad):
+    with pytest.raises(TypeError):
+        generate_lot_trajectories(_hand_built_lot([_part(is_defective=bad)]), seed=1)
+
+
+def test_numpy_boolean_defect_flag_is_accepted_and_stored_as_python_bool():
+    lot = generate_lot_trajectories(_hand_built_lot([_part(is_defective=np.bool_(True))]), seed=1)
+    assert type(lot.parts[0].is_defective) is bool and lot.parts[0].is_defective is True
+
+
+@pytest.mark.parametrize("bad", ["", "   ", 7, None])
+def test_invalid_component_id_is_rejected(bad):
+    with pytest.raises((TypeError, ValueError)):
+        generate_lot_trajectories(_hand_built_lot([_part(component_id=bad)]), seed=1)
+
+
+def test_defect_archetypes_registry_is_read_only():
+    from generator.trajectories import DEFECT_ARCHETYPES
+
+    with pytest.raises(TypeError):
+        DEFECT_ARCHETYPES["new_type"] = DEFECT_ARCHETYPES["progressive"]
+    with pytest.raises(TypeError):
+        del DEFECT_ARCHETYPES["progressive"]

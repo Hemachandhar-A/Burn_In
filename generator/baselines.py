@@ -51,7 +51,9 @@ def generate_lot_baselines(
     seed: int,
     config: ScreeningConfig | None = None,
 ) -> LotBaseline:
-    config = config or ScreeningConfig()
+    # `is None`, not `or`: a falsy wrong-type config ({}, 0, "") must reach validation and fail,
+    # never be silently replaced by the defaults.
+    config = ScreeningConfig() if config is None else config
     _validate_inputs(lot_id, part_number, n_parts, seed, config)
     n_parts = int(n_parts)  # normalize numpy integer scalars to plain int for downstream use
     seed = int(seed)

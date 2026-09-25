@@ -111,14 +111,14 @@ def test_all_values_finite_and_positive():
 
 
 def test_irregular_checkpoints_are_honored():
-    baselines = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=10, seed=6)
+    baselines = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=10, seed=6, config=ALL_HEALTHY)
     hours = (0.0, 23.5, 97.25, 170.0)
-    lot = generate_lot_trajectories(baselines, seed=6, checkpoint_hours=hours)
+    lot = generate_lot_trajectories(baselines, seed=6, checkpoint_hours=hours, config=ALL_HEALTHY)
     assert lot.checkpoint_hours == hours
-    part = lot.parts[0]
-    for name in PARAMETERS:
-        expected = [part.baseline[name] + part.drift_amplitude[name] * t ** part.drift_exponent[name] for t in hours]
-        if not part.is_defective:
+    for part in lot.parts:
+        for name in PARAMETERS:
+            expected = [part.baseline[name] + part.drift_amplitude[name] * t ** part.drift_exponent[name]
+                        for t in hours]
             assert part.values[name] == pytest.approx(tuple(expected), rel=1e-12)
 
 
