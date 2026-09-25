@@ -1,21 +1,19 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useState } from 'react'
-import { BrowserRouter } from 'react-router-dom'
-import { ApiClientProvider } from './api/ApiClientProvider'
+import { HashRouter } from 'react-router-dom'
+import { AppProviders } from './AppProviders'
 import { AppRoutes } from './AppRoutes'
-import { AuthProvider } from './auth/AuthProvider'
 
+/**
+ * HashRouter, not BrowserRouter: screen paths (/lots/:id, /parts/:id, /projects, /settings)
+ * share names with API routes (IMPLEMENTATION_PLAN.md Part 5.6). In the single-process demo
+ * build FastAPI serves both from one origin, so a refresh on a real /lots/X path would hit the
+ * API and show JSON. With the hash, the server only ever serves "/" and needs no SPA fallback.
+ */
 export default function App() {
-  const [queryClient] = useState(() => new QueryClient())
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ApiClientProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </ApiClientProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <AppProviders>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
+    </AppProviders>
   )
 }

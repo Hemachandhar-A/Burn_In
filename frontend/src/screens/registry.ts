@@ -46,3 +46,19 @@ export type ScreenId = (typeof SCREENS)[number]['id']
 export function screenById(id: ScreenId) {
   return SCREENS.find((s) => s.id === id)!
 }
+
+function segment(id: string, what: string): string {
+  if (id.trim() === '') throw new Error(`Cannot link to a screen with a blank ${what}`)
+  // encodeURIComponent leaves "." alone, and "." / ".." segments would read as relative paths.
+  return /^\.+$/.test(id) ? id.replace(/\./g, '%2E') : encodeURIComponent(id)
+}
+
+/** Link to a lot's dashboard. Always build these links here, never by string concatenation. */
+export function pathToLot(lotId: string): string {
+  return `/lots/${segment(lotId, 'lot id')}`
+}
+
+/** Link to a part's detail screen. Same rule as pathToLot. */
+export function pathToPart(componentId: string): string {
+  return `/parts/${segment(componentId, 'component id')}`
+}

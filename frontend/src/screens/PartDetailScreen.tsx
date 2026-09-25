@@ -6,7 +6,7 @@ export function PartDetailScreen() {
   return (
     <ScreenPlaceholder id="partDetail">
       <p>
-        Component: <code>{componentId}</code>
+        Component: <code data-testid="route-id">{componentId}</code>
       </p>
     </ScreenPlaceholder>
   )

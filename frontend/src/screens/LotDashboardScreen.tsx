@@ -6,7 +6,7 @@ export function LotDashboardScreen() {
   return (
     <ScreenPlaceholder id="lotDashboard">
       <p>
-        Lot: <code>{lotId}</code>
+        Lot: <code data-testid="route-id">{lotId}</code>
       </p>
     </ScreenPlaceholder>
   )

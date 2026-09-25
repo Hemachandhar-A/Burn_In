@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { IngestScreen } from './screens/IngestScreen'
@@ -11,16 +11,20 @@ import { screenById } from './screens/registry'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { AppShell } from './shell/AppShell'
 import { RequireAuth } from './shell/RequireAuth'
+import { returnTarget } from './shell/returnTarget'
 
 export function AppRoutes() {
   const { session } = useAuth()
+  const location = useLocation()
   const home = screenById('ingest').path
 
   return (
     <Routes>
       <Route
         path={screenById('login').path}
-        element={session ? <Navigate to={home} replace /> : <LoginScreen />}
+        element={
+          session ? <Navigate to={returnTarget(location.state, home)} replace /> : <LoginScreen />
+        }
       />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
