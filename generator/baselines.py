@@ -44,17 +44,28 @@ def _validate_inputs(lot_id: str, part_number: str, n_parts: int, seed: int, con
         )
 
 
+def _validate_die_correlation(die_correlation) -> float:
+    if isinstance(die_correlation, bool) or not isinstance(die_correlation, numbers.Real):
+        raise TypeError(f"die_correlation must be a real number, got {die_correlation!r}")
+    value = float(die_correlation)
+    if not 0.0 <= value <= 1.0:  # also rejects NaN
+        raise ValueError(f"die_correlation must be in [0, 1], got {die_correlation!r}")
+    return value
+
+
 def generate_lot_baselines(
     lot_id: str,
     part_number: str,
     n_parts: int,
     seed: int,
     config: ScreeningConfig | None = None,
+    die_correlation: float = 0.0,
 ) -> LotBaseline:
     # `is None`, not `or`: a falsy wrong-type config ({}, 0, "") must reach validation and fail,
     # never be silently replaced by the defaults.
     config = ScreeningConfig() if config is None else config
     _validate_inputs(lot_id, part_number, n_parts, seed, config)
+    die_correlation = _validate_die_correlation(die_correlation)
     n_parts = int(n_parts)  # normalize numpy integer scalars to plain int for downstream use
     seed = int(seed)
     rng = np.random.default_rng(seed)
@@ -76,10 +87,23 @@ def generate_lot_baselines(
 
     parts = []
     for i in range(n_parts):
-        baseline = {
-            name: float(rng.lognormal(mean=np.log(lot_center[name]), sigma=lot_die_sigma[name]))
-            for name in PARAMETERS
-        }
+        if die_correlation == 0.0:
+            # Kept as its own branch so the locked default reproduces P1.1's exact draw sequence.
+            baseline = {
+                name: float(rng.lognormal(mean=np.log(lot_center[name]), sigma=lot_die_sigma[name]))
+                for name in PARAMETERS
+            }
+        else:
+            # One shared die factor loaded on every parameter (the altered-correlation held-out family,
+            # E1 step 9) - deliberately contradicting the baseline's near-independence assumption.
+            z_shared = float(rng.standard_normal())
+            z_own = rng.standard_normal(len(PARAMETERS))
+            baseline = {
+                name: float(lot_center[name] * np.exp(lot_die_sigma[name] * (
+                    np.sqrt(die_correlation) * z_shared + np.sqrt(1.0 - die_correlation) * float(z_own[k])
+                )))
+                for k, name in enumerate(PARAMETERS)
+            }
         parts.append(
             PartBaseline(
                 component_id=f"{lot_id}-{i:04d}",

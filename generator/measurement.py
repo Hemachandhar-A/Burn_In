@@ -107,7 +107,7 @@ def _quantize(value: float, step: float) -> float:
     # Rounded twice: once onto the grid, then to 12 significant figures relative to the step, so the
     # reported float is the clean grid value (0.1 * 3 -> 0.3, not 0.30000000000000004).
     q = max(1, round(value / step)) * step
-    return float(round(q, max(0, 12 - int(math.floor(math.log10(step))) - 1)))
+    return float(round(q, max(0, 11 - math.floor(math.log10(step)))))
 
 
 def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementParams | None = None) -> MeasuredLot:

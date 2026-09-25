@@ -179,7 +179,7 @@ def test_noise_is_proportional_with_configured_sigma():
 
 
 def test_student_t_tail_option_is_heavier_tailed_than_gaussian():
-    base = dict(resolution=FINE, tester_offset_sigma=_per_param(0.0), noise_frac=_per_param(0.05))
+    base = {"resolution": FINE, "tester_offset_sigma": _per_param(0.0), "noise_frac": _per_param(0.05)}
     traj = _trajectories(n_parts=1500)
 
     def rel_residuals(params):
