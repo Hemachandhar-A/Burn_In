@@ -3,6 +3,7 @@ disposition-signoffs read routes. Backs E6's Project Browser (projects list) and
 screen (events + disposition-signoffs), per essential-features.md E11 step 8.
 """
 import importlib
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import FastAPI
@@ -29,8 +30,8 @@ def client(tmp_path, monkeypatch):
 
     repository.save_account(account_id="a.sharma", display_name="A. Sharma", role="QE", pin_hash="h")
     repository.save_account(account_id="b.rao", display_name="B. Rao", role="QE", pin_hash="h2")
-    repository.save_project(project_id="proj-1", lot_id="L1", part_number="PN-100", created_by="a.sharma")
-    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", created_by="a.sharma")
+    repository.save_project(project_id="proj-1", lot_id="L1", part_number="PN-100", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
+    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
 
     return TestClient(app)
 
@@ -124,7 +125,7 @@ def test_get_project_events_404_when_project_missing(client):
 def test_get_disposition_signoffs_returns_them_in_order(client):
     from storage import repository
 
-    repository.save_project(project_id="proj-3", lot_id="L3", part_number="PN-300", created_by="a.sharma")
+    repository.save_project(project_id="proj-3", lot_id="L3", part_number="PN-300", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     repository.save_analysis_run(
         project_id="proj-3", raw_data={}, results={"per_component": {}}
     )
@@ -150,7 +151,7 @@ def test_get_disposition_signoffs_returns_them_in_order(client):
 def test_get_disposition_signoffs_filters_by_component_id(client):
     from storage import repository
 
-    repository.save_project(project_id="proj-4", lot_id="L4", part_number="PN-400", created_by="a.sharma")
+    repository.save_project(project_id="proj-4", lot_id="L4", part_number="PN-400", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     repository.save_analysis_run(project_id="proj-4", raw_data={}, results={"per_component": {}})
     run = repository.query_latest_project_data("proj-4")
     repository.save_disposition_signoff(

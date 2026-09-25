@@ -15,17 +15,38 @@ only when `lot.status == "COMPLETE"`; an In-Progress lot never gets a 168h entry
 and the Complete-lot trigger, not a value to expose mid-run (AGENTS.md rule 6 - Module B itself
 never reads `value_168h`/`delta_168h`, only Module A does).
 
-Pooled cross-lot fallback (E8 step 3): no storage query function exists yet to fetch another
-lot's readings for the same part_number (that's P2.6/P2.8's repository surface) - see
-CONTRACT_CHANGES.md 2026-09-25 P2 "Lead - FeatureFrame reshaped". Until then, `compute()` accepts
-an optional `pooled_reference` argument the caller can supply once that query exists; absent one,
-a small lot falls back to its own lot-relative stats as the best available substitute, still
-flagged via `used_pooled_fallback` - never a silent, unflagged pass-through.
+Pooled cross-lot fallback (E8 step 3): `storage.repository.query_readings_by_part_number`
+(P2.6 follow-up commit) fetches another lot's readings for the same part_number;
+`build_pooled_reference` below turns that into `compute()`'s `pooled_reference` shape. absent
+one, a small lot falls back to its own lot-relative stats as the best available substitute,
+still flagged via `used_pooled_fallback` - never a silent, unflagged pass-through.
 """
 import numpy as np
 
 from contracts import FeatureFrame, LotDataset, Reading
 from ingestion.checkpoints import label_for_hour
+
+
+def build_pooled_reference(
+    part_number: str, readings: list[Reading]
+) -> dict[tuple[str, str, str], tuple[float, float]]:
+    """Builds a `compute()`-ready `pooled_reference` dict (E8 step 3) from another lot's
+    `Reading`s sharing `part_number` - the caller (P2.6's `query_readings_by_part_number`,
+    CONTRACT_CHANGES.md 2026-09-25 "No storage query function... pooled cross-lot reference")
+    supplies the raw readings; this groups them by (parameter, nominal checkpoint label) and
+    reuses the same robust median/sigma `compute()` itself uses, keyed `(part_number,
+    parameter, label)` exactly as `compute()`'s `pooled_reference` argument expects."""
+    values_by_key: dict[tuple[str, str], list[float]] = {}
+    for reading in readings:
+        label = label_for_hour(reading.checkpoint_hour)
+        if label is None:
+            continue
+        values_by_key.setdefault((reading.parameter, label), []).append(reading.value)
+    return {
+        (part_number, parameter, label): _robust_stats(values)
+        for (parameter, label), values in values_by_key.items()
+        if values
+    }
 
 _CORE_LABELS = ("0h", "24h", "96h")
 _NOMINAL_HOURS = {"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0}

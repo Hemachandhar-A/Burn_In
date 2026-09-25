@@ -4,6 +4,7 @@ negotiation. No `Depends(get_current_account)` yet - `identity/` (P5.4) isn't me
 interim as `ingestion/router.py` and `storage/router.py`.
 """
 import importlib
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import FastAPI
@@ -29,7 +30,7 @@ def client(tmp_path, monkeypatch):
     app.include_router(router_module.router)
 
     repository.save_account(account_id="a.sharma", display_name="A. Sharma", role="QE", pin_hash="h")
-    repository.save_project(project_id="proj-1", lot_id="L1", part_number="PN-100", created_by="a.sharma")
+    repository.save_project(project_id="proj-1", lot_id="L1", part_number="PN-100", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
 
     from contracts import LotDataset, Reading
 
@@ -85,6 +86,6 @@ def test_404_when_lot_has_no_project(client):
 def test_404_when_project_has_no_analysis_run_yet(client):
     from storage import repository
 
-    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", created_by="a.sharma")
+    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     response = client.post("/lots/L2/report")
     assert response.status_code == 404

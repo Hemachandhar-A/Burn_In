@@ -6,6 +6,7 @@ repository.py module docstring / CONTRACT_CHANGES.md) since E9's JSON export (wh
 project_data.results_json is documented to mirror) doesn't exist yet - P2.7 builds it.
 """
 import importlib
+from datetime import UTC, datetime
 
 import pytest
 
@@ -22,7 +23,7 @@ def repository(tmp_path, monkeypatch):
     repository.init_db()
     repository.save_account(account_id="a.sharma", display_name="A. Sharma", role="QE", pin_hash="h")
     repository.save_account(account_id="b.rao", display_name="B. Rao", role="QE", pin_hash="h2")
-    repository.save_project(project_id="proj-1", lot_id="L1", part_number="PN-100", created_by="a.sharma")
+    repository.save_project(project_id="proj-1", lot_id="L1", part_number="PN-100", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     return repository
 
 
@@ -114,7 +115,7 @@ def test_diff_is_empty_dict_shape_when_nothing_changed(repository):
 
 
 def test_diff_is_scoped_per_project_not_global(repository):
-    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", created_by="a.sharma")
+    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     repository.save_analysis_run(project_id="proj-1", raw_data={}, results=_results(verdict="REJECT"))
     # proj-2's first-ever run must not diff against proj-1's run.
     run = repository.save_analysis_run(project_id="proj-2", raw_data={}, results=_results(verdict="PASS"))
@@ -226,7 +227,7 @@ def test_confirmed_outcome_rejects_bad_value(repository):
 
 
 def test_query_confirmed_outcomes_scoped_by_project_or_global(repository):
-    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", created_by="a.sharma")
+    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     run1 = repository.save_analysis_run(project_id="proj-1", raw_data={}, results=_results())
     run2 = repository.save_analysis_run(project_id="proj-2", raw_data={}, results=_results())
     repository.save_confirmed_outcome(
@@ -261,6 +262,6 @@ def test_query_project_returns_existing_project(repository):
 
 
 def test_query_projects_lists_all_projects_newest_first(repository):
-    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", created_by="a.sharma")
+    repository.save_project(project_id="proj-2", lot_id="L2", part_number="PN-200", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     projects = repository.query_projects()
     assert [p.project_id for p in projects] == ["proj-2", "proj-1"]

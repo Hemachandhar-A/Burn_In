@@ -4,12 +4,11 @@ Long format: one row per Reading (component_id, parameter, checkpoint_hour, valu
 lot-level metadata (lot_id, part_number, manufacturer, date_code) comes from the surrounding
 upload form, not repeated per row.
 
-Wide format (P2.3): no layout is pinned in `contracts.py` (CONTRACT_CHANGES.md, still OPEN as
-of this session) - `parse_wide_lot_csv` below implements the layout P1's own gap entry
-proposed as its fix (one row per (component_id, checkpoint_hour), a `<parameter>_<unit>`
-value column per parameter), as a documented `TEMP_WIDE_CSV_SCHEMA` pending the Lead pinning
-it for real. Both formats parse to the same `Reading` list for equivalent data - see
-tests/unit/ingestion/test_parsing.py's format-equivalence tests.
+Wide format (P2.3): layout pinned in IMPLEMENTATION_PLAN.md Part 5.2 and essential-features.md
+E7 step 1 - `parse_wide_lot_csv` below implements it exactly (one row per (component_id,
+checkpoint_hour), a `<parameter>_<unit>` value column per parameter). Both formats parse to
+the same `Reading` list for equivalent data - see tests/unit/ingestion/test_parsing.py's
+format-equivalence tests.
 """
 import csv
 import io
@@ -17,9 +16,9 @@ import re
 
 from contracts import Reading
 
-# TEMP_WIDE_CSV_SCHEMA (CONTRACT_CHANGES.md, P1 entry "No defined wide-format CSV layout"):
+# Wide CSV layout (pinned, IMPLEMENTATION_PLAN.md Part 5.2 / essential-features.md E7 step 1):
 # fixed columns component_id, checkpoint_hour, then one <parameter>_<unit> value column per
-# parameter present (e.g. "iddq_uA"). Not frozen - replace with whatever the Lead pins.
+# parameter present (e.g. "iddq_uA").
 _WIDE_FIXED_COLUMNS = ("component_id", "checkpoint_hour")
 _WIDE_VALUE_COLUMN = re.compile(r"^(?P<parameter>.+)_(?P<unit>[^_]+)$")
 
@@ -143,7 +142,7 @@ def parse_lot_csv(
 def parse_wide_lot_csv(
     raw_csv: bytes, *, lot_id: str, part_number: str, manufacturer: str, date_code: str
 ) -> list[Reading]:
-    """Parses a wide-format CSV (TEMP_WIDE_CSV_SCHEMA, see module docstring) into the same
+    """Parses a wide-format CSV (pinned layout, see module docstring) into the same
     `Reading` list a long-format upload of equivalent data would produce: one row per
     (component_id, checkpoint_hour), with a `<parameter>_<unit>` value column per parameter
     present (e.g. "iddq_uA"). A row's blank cell for a given parameter column means that

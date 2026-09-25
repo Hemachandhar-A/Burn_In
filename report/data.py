@@ -168,7 +168,11 @@ def build_report_data(project_id: str) -> ReportData:
         lot_status = lot.status
         quantity_screened = len({r.component_id for r in lot.readings})
 
-        frames = features_compute.compute(lot)
+        pooled_readings = repository.query_readings_by_part_number(
+            lot.part_number, exclude_lot_id=lot.lot_id
+        )
+        pooled_reference = features_compute.build_pooled_reference(lot.part_number, pooled_readings)
+        frames = features_compute.compute(lot, pooled_reference=pooled_reference or None)
         for frame in frames:
             verdict = per_component.get(frame.component_id, {}).get("verdict")
             delta_table.append(DeltaRow(

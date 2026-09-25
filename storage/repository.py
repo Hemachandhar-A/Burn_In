@@ -39,6 +39,7 @@ a forecast resolving into an actual, and a verdict moving. `lot_disposition`/
 `project_data.raw_data`'s shape is pinned here too, also new this session:
 `LotDataset.model_dump(mode="json")` - nothing had pinned it before (see CONTRACT_CHANGES.md).
 """
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -47,8 +48,10 @@ from contracts import (
     ConfirmedOutcome,
     DispositionSignoff,
     Event,
+    LotDataset,
     Project,
     ProjectData,
+    Reading,
 )
 from storage.database import SessionLocal, init_db  # noqa: F401 - re-exported for scripts/seed.py
 
@@ -70,12 +73,15 @@ def query_account(account_id: str) -> Account | None:
         return session.get(Account, account_id)
 
 
-def save_project(project_id: str, lot_id: str, part_number: str, created_by: str) -> Project:
+def save_project(
+    project_id: str, lot_id: str, part_number: str, test_date: datetime, created_by: str
+) -> Project:
     with SessionLocal() as session:
         project = Project(
             project_id=project_id,
             lot_id=lot_id,
             part_number=part_number,
+            test_date=test_date,
             created_at=datetime.now(UTC),
             created_by=created_by,
         )
@@ -92,6 +98,36 @@ def query_project(project_id: str) -> Project | None:
 def query_projects() -> list[Project]:
     with SessionLocal() as session:
         return list(session.query(Project).order_by(Project.created_at.desc()).all())
+
+
+def query_readings_by_part_number(part_number: str, *, exclude_lot_id: str | None = None) -> list[Reading]:
+    """P2.6 follow-up (CONTRACT_CHANGES.md 2026-09-25 "No storage query function exists yet
+    for the pooled cross-lot reference E8 step 3 needs"; scope confirmed P2.6 by the Lead's
+    "Resolving P2's four open entries" note, item 4). Pools every `Reading` from other lots
+    sharing `part_number` - there is no dedicated readings table (`project_data.raw_data` is
+    the pinned `LotDataset.model_dump(mode="json")` shape, P2.7), so this reads the latest
+    `ProjectData` row per matching `Project` and re-parses its `readings`. `exclude_lot_id`
+    keeps a lot from pooling against itself. `features.build_pooled_reference` turns the
+    result into `compute()`'s `pooled_reference` shape."""
+    with SessionLocal() as session:
+        projects = session.query(Project).filter(Project.part_number == part_number).all()
+        readings: list[Reading] = []
+        for project in projects:
+            if exclude_lot_id is not None and project.lot_id == exclude_lot_id:
+                continue
+            latest = (
+                session.query(ProjectData)
+                .filter(ProjectData.project_id == project.project_id)
+                .order_by(ProjectData.created_at.desc())
+                .first()
+            )
+            if latest is None:
+                continue
+            raw_data = json.loads(latest.raw_data)
+            if not raw_data.get("readings"):
+                continue
+            readings.extend(LotDataset.model_validate(raw_data).readings)
+        return readings
 
 
 def _diff_analysis_results(prior: dict, current: dict) -> dict:

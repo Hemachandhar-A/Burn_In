@@ -8,6 +8,7 @@ from raw_data for the delta table, since results_json does not carry per-checkpo
 `LotDataset.model_dump(mode="json")` - no other pinned shape exists for it yet.
 """
 import importlib
+from datetime import UTC, datetime
 
 import pytest
 
@@ -62,7 +63,10 @@ def _results(verdicts=None):
 
 
 def _seed_project(repository, project_id="proj-1", lot_id="L1", part_number="PN-100"):
-    repository.save_project(project_id=project_id, lot_id=lot_id, part_number=part_number, created_by="a.sharma")
+    repository.save_project(
+        project_id=project_id, lot_id=lot_id, part_number=part_number,
+        test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma",
+    )
 
 
 # --- build_report_data: metadata ---------------------------------------------------

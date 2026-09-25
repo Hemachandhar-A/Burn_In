@@ -3,6 +3,7 @@ Part 10, E11 steps 1-3). Each test points at its own temp SQLite file and reload
 storage.database/storage.repository so DATABASE_URL takes effect for that engine.
 """
 import importlib
+from datetime import UTC, datetime
 
 import pytest
 
@@ -34,11 +35,13 @@ def test_save_project_persists_with_generated_created_at(repository):
     repository.save_account(account_id="a.sharma", display_name="A. Sharma", role="QE", pin_hash="h")
 
     project = repository.save_project(
-        project_id="proj-1", lot_id="L1", part_number="PN-100", created_by="a.sharma"
+        project_id="proj-1", lot_id="L1", part_number="PN-100",
+        test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma",
     )
     assert project.project_id == "proj-1"
     assert project.lot_id == "L1"
     assert project.part_number == "PN-100"
+    assert project.test_date == datetime(2026, 8, 1, tzinfo=UTC)
     assert project.created_by == "a.sharma"
     assert project.created_at is not None
 
