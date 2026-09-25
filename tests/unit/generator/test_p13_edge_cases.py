@@ -460,3 +460,11 @@ def test_family_descriptions_state_their_actual_settings():
     corr = FAMILIES["altered_correlation"]
     assert f"{corr.die_correlation:g})" in corr.description
     assert f"({corr.trajectory_params.severity_correlation:g})" in corr.description
+
+
+def test_n_parts_is_an_input_not_a_prefix_knob_as_documented():
+    # Pins generate_lot's documented behavior: resizing a lot redraws it rather than appending parts.
+    small = _lot(n_parts=10).ground_truth.baselines.parts
+    large = _lot(n_parts=11).ground_truth.baselines.parts
+    assert [p.baseline for p in small] != [p.baseline for p in large[:10]]
+    assert _lot(n_parts=10) == _lot(n_parts=10)

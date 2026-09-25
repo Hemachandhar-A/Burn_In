@@ -125,8 +125,10 @@ def generate_lot(
     """`account_id` is required (no placeholder default): every ingested lot is attributed to the account
     that loaded it (context.md 7.3) - the caller knows who that is, the generator doesn't.
 
-    The data is a pure function of (lot_id, part_number, seed, family, schedule): the same inputs always give
-    the same lot, and two lots differing only in lot_id or part_number are independent draws. The family is
+    The data is a pure function of (lot_id, part_number, seed, family, n_parts, checkpoint_hours,
+    checkpoint_jitter_hours): the same inputs always give the same lot, and two lots differing only in lot_id
+    or part_number are independent draws. n_parts is not a "prefix" knob: every part's defect flag is drawn
+    before any part's baseline (generate_lot_baselines), so a 78-part lot is not the 77-part lot plus one. The family is
     deliberately *not* mixed in, so the same lot under two families shares its underlying random draws and
     differs only by the family's structural change (common random numbers for the held-out comparison)."""
     for label, value in (("lot_id", lot_id), ("part_number", part_number), ("account_id", account_id),
