@@ -7,13 +7,13 @@ Read this at the start of every coding-agent session, before touching code. This
 ## Fill in before starting (delete this line once filled)
 
 ```
-Person:         [Lead / P1 / P2 / P3 / P4 / P5]
-Track:          [e.g. "P1 / Generator", "P1 / Frontend", "P5 / Routers" — from IMPLEMENTATION_PLAN.md Part 2]
-Session:        [session number and name from IMPLEMENTATION_PLAN.md Part 10, e.g. "P3 session 2 — remaining detectors + combination"]
-Branch:         [from Part 8's branch table, e.g. "p3-module-a" — "develop directly" if this is Lead's L1/L2]
-Feature IDs:    [e.g. E2, from essential-features.md — n/a if Lead]
-Directories:    [from IMPLEMENTATION_PLAN.md Part 4 — the ONLY paths this session may edit]
-Prerequisite:   [the specific session(s) from Part 10's dependency graph this one needs closed first — "none" if this is a track's first session]
+Person:         P2
+Track:          Ingestion + Features + Report + Storage schema, plus routers for all of these
+Session:        P2.1
+Branch:         p2-ingestion (new branch — this is P2's track's first session)
+Feature IDs:    E7, E8, E9, E11
+Directories:    ingestion/, features/, report/, storage/
+Prerequisite:   none (this is P2's first session — prereq is G0, the project-wide gate, not another P2 session)
 ```
 
 **If you filled in `Lead` above:** your work packet is `IMPLEMENTATION_PLAN.md` Part 10, the Lead section — not one of P1–P5's. You're the one exception to "contracts are read-only" (rule 3 below); everything else in this file still applies to you.
