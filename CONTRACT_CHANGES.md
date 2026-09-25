@@ -92,3 +92,11 @@ Entry format:
 - Status: OPEN
 
 ---
+
+## 2026-09-25 P2.4 - No storage query function exists yet for the pooled cross-lot reference E8 step 3 needs
+- Missing/wrong: E8 step 3 (`essential-features.md`) requires the small-lot fallback (< 30 parts) to substitute "a pooled cross-lot reference for that part number" - i.e. median/robust-sigma computed across *other* lots sharing the same `part_number`. That requires a storage query (something like `query_readings_by_part_number` or a stats-returning equivalent) which doesn't exist yet: `storage/repository.py` currently only has `save_account`/`save_project` (P2.1); the remaining repository functions are scoped to P2.6/P2.8, after P2.4.
+- Why it matters: `features/compute.py` can't call a query function that doesn't exist, so the real cross-lot pooling this step describes can't be wired up in this session without going outside `features/` (P2's own directory, but the storage-query half of this belongs to a later P2 session per Part 10, not a guess made now).
+- Proposed fix: `features.compute()` takes an optional `pooled_reference: dict[(part_number, parameter, checkpoint_label), (median, sigma)] | None` parameter (`TEMP_POOLED_REFERENCE` shape, documented in `features/compute.py`'s module docstring) - the real cross-lot source once a storage query exists. Until then, absent a supplied `pooled_reference`, a small lot falls back to its own lot-relative median/sigma as the best available substitute, `used_pooled_fallback` still set `True` so the UI flag (E8 step 3's "never a silent substitution") fires regardless of whether a real pooled source was available. P2.6/P2.8 (or whichever session adds the repository query surface): wire a real `pooled_reference` builder and pass it through `ingestion/router.py` -> `features.compute()`.
+- Status: OPEN
+
+---
