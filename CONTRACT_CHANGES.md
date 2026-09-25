@@ -76,3 +76,19 @@ Entry format:
 - Status: RESOLVED - see Lead entry "Resolving P2's four open entries" above (item 1). `Project.test_date` added to `contracts.py`; `save_project` signature updated.
 
 ---
+
+## 2026-09-25 P2 - `Reading` has no way to mark a component as a reference/control part
+- Missing/wrong: E7 step 8 (tester-offset correction) needs to identify which components in an uploaded lot are reference/control parts and what each one's known expected value is per parameter, the same information `generator/measurement.py`'s `MeasurementTruth.reference_values` holds internally - but `Reading`/`LotDataset` have no `is_reference` flag or expected-value field, and a `LotDataset` doesn't expose the generator's ground truth by design.
+- Why it matters: without it, ingestion can't tell reference parts apart from ordinary parts in real uploaded data, so the correction can't run automatically - it would have to be guessed (e.g. from a naming convention), which AGENTS.md rule 3 forbids.
+- Proposed fix: P2.3 does not guess. `ingestion/offset.py`'s `apply_tester_offset_correction` instead takes `reference_expected: dict[component_id, dict[parameter, expected_value]]` as an explicit caller-supplied argument; `ingestion/router.py` accepts it as an optional `reference_expected_json` form field on `POST /lots` and `POST /lots/{lot_id}/checkpoints` (same non-frozen-form-field precedent as `test_date`, P2.2's gap above). If the Lead later adds a proper field to `Reading` (or a separate `ReferencePart` type), this becomes the real input source; until then absence of the field means the correction is simply not applied (E7 step 8's "optional... if reference/control parts are present" already treats absence as the normal case).
+- Status: OPEN
+
+---
+
+## 2026-09-25 P2 - Wide-format CSV: P1's proposed layout adopted as a documented TEMP schema, not frozen
+- Missing/wrong: continuing the P1 entry above ("No defined wide-format CSV layout") - still OPEN, no layout pinned in `contracts.py` as of this session. P2.3's Part 7.3 checklist explicitly requires a wide/long format-equivalence test, which can't wait indefinitely for the freeze.
+- Why it matters: without picking something now, P2.3 can't close its 7.3 row, and G3 (Ingestion + Features real) is blocked on that row passing.
+- Proposed fix: `ingestion/parsing.py`'s `parse_wide_lot_csv` implements exactly the layout P1's own entry proposed - one row per (component_id, checkpoint_hour), a `<parameter>_<unit>` value column per parameter (e.g. `iddq_uA`) - marked `TEMP_WIDE_CSV_SCHEMA` in the module docstring, not exposed as a new route yet (no upload path picks between wide/long - that's a follow-up once the Lead confirms or changes this layout). Verified equivalent to the long-format parser for the same data (`tests/unit/ingestion/test_parsing.py`). Lead: if this layout isn't what gets pinned, only `parse_wide_lot_csv`'s column-name parsing needs to change - the resulting `Reading`s are unaffected either way.
+- Status: OPEN
+
+---
