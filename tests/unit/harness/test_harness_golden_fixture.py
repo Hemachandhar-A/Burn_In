@@ -238,9 +238,11 @@ def test_adapter_reports_unavailable_when_module_a_does_not_exist(monkeypatch):
         TEMP_detect_module_a(golden_feature_frames())
 
 
-def test_adapter_reports_unavailable_when_detect_is_not_exposed(monkeypatch):
+def test_adapter_fails_when_module_a_exists_without_detect(monkeypatch):
+    """module_a/ exists but exposes no detect(): a contract break to report, never a skip that would hide
+    the golden test for good."""
     _fake_module(monkeypatch, None)
-    with pytest.raises(GoldenTestUnavailable, match="detect"):
+    with pytest.raises(golden.GoldenEntryPointMissing, match="detect"):
         TEMP_detect_module_a(golden_feature_frames())
 
 
@@ -288,7 +290,7 @@ def test_adapter_resolves_detect_on_a_submodule(monkeypatch):
 
 def test_resolve_treats_a_missing_parent_package_as_unavailable(monkeypatch):
     monkeypatch.setitem(sys.modules, "fusion", None)
-    with pytest.raises(GoldenTestUnavailable, match="fusion.pipeline"):
+    with pytest.raises(GoldenTestUnavailable, match="fusion/ does not exist"):
         golden.resolve("fusion.pipeline", "run_full_pipeline")
 
 
