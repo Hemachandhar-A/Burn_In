@@ -15,7 +15,10 @@ schema").
 Lot status is derived from the *nominal* schedule: COMPLETE once it includes the 168h read, else
 IN_PROGRESS - so a jittered 167.5h final read still counts as the full campaign.
 """
+import hashlib
 import math
+import numbers
+import unicodedata
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -23,7 +26,7 @@ import numpy as np
 
 from contracts import LotDataset, Reading
 from generator.baselines import generate_lot_baselines
-from generator.families import GeneratorFamily, get_family
+from generator.families import GeneratorFamily, resolve_family
 from generator.measurement import measure_lot
 from generator.parameters import PARAMETERS
 from generator.schema import LotBaseline, LotTrajectories, MeasurementTruth
@@ -43,7 +46,7 @@ class LotGroundTruth:
     """Everything the harness needs to score a model on this lot - and nothing the model may see."""
 
     family: str
-    seed: int
+    seed: int  # the caller's seed; the lot's draws come from (seed, lot_id, part_number) - see generate_lot
     nominal_checkpoint_hours: tuple[float, ...]
     baselines: LotBaseline  # lot centers/spreads, prevalence, per-part baseline and is_defective
     trajectories: LotTrajectories  # actual readout hours, noise-free values, defect type/Ea/onset/severity
@@ -61,7 +64,25 @@ def _require_text(name: str, value) -> str:
         raise TypeError(f"{name} must be a str, got {type(value).__name__}")
     if not value.strip():
         raise ValueError(f"{name} must be a non-empty string, got {value!r}")
+    # Control characters (newline, tab, NUL) break a CSV/JSON consumer downstream, and a lone surrogate
+    # can't be UTF-8 encoded at all - the dataset would fail to serialize after being generated.
+    bad = [c for c in value if unicodedata.category(c) in ("Cc", "Cs")]
+    if bad:
+        raise ValueError(f"{name} contains control or unencodable characters {bad!r}: {value!r}")
     return value
+
+
+def _text_entropy(text: str) -> int:
+    # hashlib, not hash(): Python's str hash is salted per process (PYTHONHASHSEED), which would break
+    # determinism across runs and machines (rule 9).
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest(), "big")
+
+
+def _lot_seed(seed: int, lot_id: str, part_number: str) -> int:
+    """Mix the lot's identity into its seed, so a multi-lot run that reuses one seed still gets independent
+    lots instead of silent copies of one lot under different IDs. Still a pure function of the inputs."""
+    sequence = np.random.SeedSequence([seed, _text_entropy(lot_id), _text_entropy(part_number)])
+    return int(sequence.generate_state(1, np.uint64)[0])
 
 
 def _jittered_hours(nominal: tuple[float, ...], jitter, seed: int) -> tuple[float, ...]:
@@ -98,23 +119,30 @@ def generate_lot(
     date_code: str = "2601",
 ) -> GeneratedLot:
     """`account_id` is required (no placeholder default): every ingested lot is attributed to the account
-    that loaded it (context.md 7.3) - the caller knows who that is, the generator doesn't."""
-    _require_text("account_id", account_id)
-    _require_text("manufacturer", manufacturer)
-    _require_text("date_code", date_code)
-    if isinstance(family, str):
-        family = get_family(family)
-    elif not isinstance(family, GeneratorFamily):
-        raise TypeError(f"family must be a family name or GeneratorFamily, got {type(family).__name__}")
-    n_parts = family.config.lot_size_default if n_parts is None else n_parts
+    that loaded it (context.md 7.3) - the caller knows who that is, the generator doesn't.
 
-    baselines = generate_lot_baselines(lot_id, part_number, n_parts, seed, family.config,
+    The data is a pure function of (lot_id, part_number, seed, family, schedule): the same inputs always give
+    the same lot, and two lots differing only in lot_id or part_number are independent draws. The family is
+    deliberately *not* mixed in, so the same lot under two families shares its underlying random draws and
+    differs only by the family's structural change (common random numbers for the held-out comparison)."""
+    for label, value in (("lot_id", lot_id), ("part_number", part_number), ("account_id", account_id),
+                         ("manufacturer", manufacturer), ("date_code", date_code)):
+        _require_text(label, value)
+    family = resolve_family(family)
+    n_parts = family.config.lot_size_default if n_parts is None else n_parts
+    if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
+        raise TypeError(f"seed must be an int, got {type(seed).__name__}")
+    if seed < 0:
+        raise ValueError(f"seed must be >= 0, got {seed}")
+    seed = int(seed)
+    lot_seed = _lot_seed(seed, lot_id, part_number)
+
+    baselines = generate_lot_baselines(lot_id, part_number, n_parts, lot_seed, family.config,
                                        die_correlation=family.die_correlation)
-    seed = int(seed)  # validated by generate_lot_baselines
     nominal = _validate_checkpoints(checkpoint_hours)
-    actual = _jittered_hours(nominal, checkpoint_jitter_hours, seed)
-    trajectories = generate_lot_trajectories(baselines, seed, family.config, family.trajectory_params, actual)
-    measured = measure_lot(trajectories, seed, family.measurement_params)
+    actual = _jittered_hours(nominal, checkpoint_jitter_hours, lot_seed)
+    trajectories = generate_lot_trajectories(baselines, lot_seed, family.config, family.trajectory_params, actual)
+    measured = measure_lot(trajectories, lot_seed, family.measurement_params)
 
     readings = [
         Reading(

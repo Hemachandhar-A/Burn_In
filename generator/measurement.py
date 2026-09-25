@@ -23,18 +23,23 @@ import math
 import numbers
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from types import MappingProxyType
 
 import numpy as np
 
 from generator.parameters import PARAMETERS
-from generator.schema import LotTrajectories, MeasuredLot, MeasurementTruth
-from generator.trajectories import _check_finite
+from generator.schema import LotTrajectories, MeasuredLot, MeasurementTruth, PartTrajectory
+from generator.trajectories import _check_finite, _validate_checkpoints
 
 # Spawn-key namespaces - distinct from trajectories.py's _LOT_STREAM (1) and _PART_STREAM (2).
 _MEASUREMENT_LOT_STREAM = 3
 _MEASUREMENT_PART_STREAM = 4
-_MAX_NOISE_FRAC = 0.5  # beyond this "proportional noise" can flip a reading's sign; not a tester regime
+# At 0.5, Gaussian noise already pushes ~2% of raw readings to <= 0 (z < -2), which the resolution floor
+# then absorbs; any larger and the floor would dominate the tails instead of being a rare edge.
+_MAX_NOISE_FRAC = 0.5
+# Relative float rounding error on a raw reading after the add/subtract steps (a few machine epsilons).
+_PRECISION_GUARD = 4 * np.finfo(float).eps
 
 
 def _frozen_per_parameter(name: str, value, lo: float, lo_inclusive: bool, hi: float | None = None):
@@ -96,6 +101,12 @@ class MeasurementParams:
     def __hash__(self):
         return hash(self._key())
 
+    def __reduce__(self):
+        # MappingProxyType can't be pickled; rebuild through __init__ (re-validated, re-frozen) instead, so
+        # params and the families holding them can cross process boundaries (a parallel harness) and deepcopy.
+        return (MeasurementParams, (dict(self.noise_frac), dict(self.resolution), dict(self.tester_offset_sigma),
+                                    self.n_reference_parts, self.noise_tail_df))
+
 
 def _unit_noise(rng: np.random.Generator, size, df: float | None) -> np.ndarray:
     if df is None:
@@ -103,17 +114,62 @@ def _unit_noise(rng: np.random.Generator, size, df: float | None) -> np.ndarray:
     return rng.standard_t(df, size) * math.sqrt((df - 2.0) / df)
 
 
-def _quantize(value: float, step: float) -> float:
-    # Rounded twice: once onto the grid, then to 12 significant figures relative to the step, so the
-    # reported float is the clean grid value (0.1 * 3 -> 0.3, not 0.30000000000000004).
-    q = max(1, round(value / step)) * step
-    return float(round(q, max(0, 11 - math.floor(math.log10(step)))))
+def _step_decimals(step: float) -> int:
+    # Decimal places of the step as written (0.01 -> 2, 0.003 -> 3, 1e-06 -> 6, 0.5 -> 1, 1000.0 -> 0).
+    return max(0, -Decimal(repr(step)).normalize().as_tuple().exponent)
+
+
+def _quantize(value: float, step: float, name: str) -> float:
+    n = value / step
+    if not math.isfinite(n):
+        raise ValueError(f"resolution[{name}]={step} is too fine to quantize a reading of {value}")
+    q = max(1, round(n)) * step
+    # Rounded again to the step's own decimal places, so the reported float is the clean grid value at any
+    # magnitude (123456789 * 0.01 -> 1234567.89, not 1234567.8900000001).
+    return float(round(q, _step_decimals(step)))
+
+
+def _validate_trajectories(trajectories) -> None:
+    """measure_lot also accepts hand-built trajectories (tests, the harness); generate_lot_trajectories
+    always produces valid ones. Anything malformed is rejected rather than silently truncated or dropped."""
+    if not isinstance(trajectories, LotTrajectories):
+        raise TypeError(f"trajectories must be a LotTrajectories, got {type(trajectories).__name__}")
+    hours = _validate_checkpoints(trajectories.checkpoint_hours)
+    if not isinstance(trajectories.parts, (list, tuple)):  # a one-shot iterable would be consumed silently
+        raise TypeError(f"trajectories.parts must be a list or tuple, got {type(trajectories.parts).__name__}")
+    seen = set()
+    for part in trajectories.parts:
+        if not isinstance(part, PartTrajectory):
+            raise TypeError(f"trajectories.parts entries must be PartTrajectory, got {type(part).__name__}")
+        cid = part.component_id
+        if not isinstance(cid, str) or not cid.strip():
+            raise TypeError(f"component_id must be a non-empty str, got {cid!r}")
+        if cid in seen:  # values are keyed by component_id - a duplicate would silently drop a part
+            raise ValueError(f"duplicate component_id {cid!r}")
+        seen.add(cid)
+        if not isinstance(part.values, Mapping) or set(part.values) != set(PARAMETERS):
+            raise ValueError(f"part {cid!r} values must cover exactly {sorted(PARAMETERS)}")
+        for name, series in part.values.items():
+            if not isinstance(series, (list, tuple)) or len(series) != len(hours):
+                raise ValueError(
+                    f"part {cid!r} {name} series must have one value per checkpoint ({len(hours)})"
+                )
+            for v in series:
+                if _check_finite(f"{cid} {name} value", v) <= 0:
+                    raise ValueError(f"part {cid!r} {name} true value must be > 0, got {v}")
+
+
+def _require_finite(what: str, value: float) -> float:
+    if not math.isfinite(value):
+        raise ValueError(
+            f"{what} is not finite ({value}) - the measurement params are outside a physically meaningful range"
+        )
+    return value
 
 
 def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementParams | None = None) -> MeasuredLot:
     params = MeasurementParams() if params is None else params
-    if not isinstance(trajectories, LotTrajectories):
-        raise TypeError(f"trajectories must be a LotTrajectories, got {type(trajectories).__name__}")
+    _validate_trajectories(trajectories)
     if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
         raise TypeError(f"seed must be an int, got {type(seed).__name__}")
     if seed < 0:
@@ -136,13 +192,20 @@ def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementPar
     }
     tester_offset, offset_estimate = [], []
     for _ in range(n_ckpt):
-        offset = {name: float(lot_rng.normal(0.0, 1.0)) * params.tester_offset_sigma[name] for name in names}
+        offset = {
+            name: _require_finite(f"tester offset for {name}",
+                                  float(lot_rng.normal(0.0, 1.0)) * params.tester_offset_sigma[name])
+            for name in names
+        }
         estimate = {}
         for name in names:
             refs = np.asarray(reference_values[name])
             z = _unit_noise(lot_rng, len(refs), df)
-            raw_refs = refs * (1.0 + params.noise_frac[name] * z) + offset[name]
-            estimate[name] = float(np.mean(raw_refs - refs))
+            # Overflow is detected explicitly below and raised as one clean ValueError, not a numpy warning.
+            with np.errstate(over="ignore", invalid="ignore"):
+                raw_refs = refs * (1.0 + params.noise_frac[name] * z) + offset[name]
+                estimate[name] = _require_finite(f"tester offset estimate for {name}",
+                                                 float(np.mean(raw_refs - refs)))
         tester_offset.append(offset)
         offset_estimate.append(estimate)
 
@@ -157,7 +220,16 @@ def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementPar
             for j, name in enumerate(names):
                 true = part.values[name][k]
                 raw = true * (1.0 + params.noise_frac[name] * float(z[j])) + tester_offset[k][name]
-                series[name].append(_quantize(raw - offset_estimate[k][name], params.resolution[name]))
+                corrected = _require_finite(f"{part.component_id} {name} reading", raw - offset_estimate[k][name])
+                step = params.resolution[name]
+                # A finite but enormous offset/noise term can still swamp the true value: 12 + 1e308 - 1e308
+                # is 0 or garbage, not 12. Refuse when float rounding on the raw value exceeds half a step.
+                if abs(raw) * _PRECISION_GUARD > step / 2:
+                    raise ValueError(
+                        f"{part.component_id} {name}: raw reading {raw} can't be resolved at resolution {step} "
+                        "within finite float precision - offset/noise params are outside a physically meaningful range"
+                    )
+                series[name].append(_quantize(corrected, step, name))
         values[part.component_id] = {name: tuple(s) for name, s in series.items()}
 
     return MeasuredLot(

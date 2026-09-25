@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from contracts import ScreeningConfig
+from generator.baselines import _validate_die_correlation
 from generator.measurement import MeasurementParams
 from generator.trajectories import TrajectoryParams
 
@@ -32,6 +33,19 @@ class GeneratorFamily:
     trajectory_params: TrajectoryParams
     measurement_params: MeasurementParams
     die_correlation: float = 0.0  # shared die-to-die factor across parameters (generate_lot_baselines)
+
+    def __post_init__(self) -> None:
+        # The name is written into every lot's ground truth as its provenance, so it must be real text.
+        for label in ("name", "description"):
+            value = getattr(self, label)
+            if not isinstance(value, str) or not value.strip():
+                raise TypeError(f"GeneratorFamily.{label} must be a non-empty str, got {value!r}")
+        for label, expected in (("config", ScreeningConfig), ("trajectory_params", TrajectoryParams),
+                                ("measurement_params", MeasurementParams)):
+            value = getattr(self, label)
+            if not isinstance(value, expected):
+                raise TypeError(f"GeneratorFamily.{label} must be a {expected.__name__}, got {type(value).__name__}")
+        object.__setattr__(self, "die_correlation", _validate_die_correlation(self.die_correlation))
 
 
 _BASE_MEASUREMENT = MeasurementParams()
@@ -85,6 +99,21 @@ FAMILIES: Mapping[str, GeneratorFamily] = MappingProxyType({
     ),
 })
 HELD_OUT_FAMILY_NAMES: tuple[str, ...] = tuple(FAMILIES)
+
+
+def resolve_family(family: "str | GeneratorFamily") -> GeneratorFamily:
+    """A registered name, or a GeneratorFamily object. A custom object may not reuse a registered name with
+    different settings - the ground truth would then claim a family the lot wasn't generated from."""
+    if isinstance(family, str):
+        return get_family(family)
+    if not isinstance(family, GeneratorFamily):
+        raise TypeError(f"family must be a family name or GeneratorFamily, got {type(family).__name__}")
+    registered = FAMILIES.get(family.name)
+    if registered is not None and registered != family:
+        raise ValueError(
+            f"custom family reuses the registered name {family.name!r} with different settings - give it its own name"
+        )
+    return family
 
 
 def get_family(name: str) -> GeneratorFamily:
