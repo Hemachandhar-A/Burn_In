@@ -1,23 +1,19 @@
 """E7 steps 3-4: incremental merge-by-part-ID, and the Complete/In-Progress trigger.
 
-`_FULL_CAMPAIGN_HOURS` mirrors generator/lot.py's own constant deliberately - real burn-in
-data has no separate "nominal schedule" the way the generator does (which tolerates a
-jittered 167.5h final read as still meeting a *planned* 168h checkpoint); for ingested data,
-a reading's `checkpoint_hour` must land exactly on 168.0 to count as the 168h read. No
-tolerance window is defined for real-world timing slop yet - not needed to close out this
-session's synthetic-fixture scope, but worth the Lead's attention before P2.3 touches real
-data.
+P2.3: `compute_status` now uses `checkpoints.label_for_hour`'s tolerance window instead of an
+exact `checkpoint_hour == 168.0` match - real burn-in readouts don't land on the nominal hour
+exactly (context.md 5.9, 7.2), so a jittered 167.6h final read still counts as the 168h read,
+mirroring the tolerance the generator (E1) already applies to its own nominal schedule.
 """
 from contracts import LotDataset, Reading
-
-_FULL_CAMPAIGN_HOURS = 168.0
+from ingestion.checkpoints import label_for_hour
 
 
 def compute_status(readings: list[Reading]) -> str:
-    """A lot is Complete only once one of its readings is at the 168h checkpoint - a lot with
-    readings past 168h but no 168h read itself stays In-Progress (essential-features.md E7
-    step 4)."""
-    return "COMPLETE" if any(r.checkpoint_hour == _FULL_CAMPAIGN_HOURS for r in readings) else "IN_PROGRESS"
+    """A lot is Complete only once one of its readings falls in the 168h checkpoint's tolerance
+    window - a lot with readings past 168h but no 168h read itself stays In-Progress
+    (essential-features.md E7 step 4)."""
+    return "COMPLETE" if any(label_for_hour(r.checkpoint_hour) == "168h" for r in readings) else "IN_PROGRESS"
 
 
 def merge_checkpoint(existing: LotDataset, new_readings: list[Reading]) -> LotDataset:
