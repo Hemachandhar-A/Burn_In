@@ -247,10 +247,13 @@ def _validated_lots(lots) -> list[GeneratedLot]:
     seen = set()
     for lot in lots:
         key = (lot.dataset.lot_id, lot.dataset.part_number)
-        if key in seen:
-            # The same lot twice would be counted as two independent samples (pseudo-replication).
-            raise ValueError(f"duplicate lot {key} - each lot may be passed only once")
-        seen.add(key)
+        # Same identity + same seed = the same random draws (generate_lot is a pure function of them, and the
+        # family is deliberately not mixed in), so it would be counted as two independent samples
+        # (pseudo-replication). The same identity under a different seed is a genuinely independent draw.
+        draw = (*key, lot.ground_truth.seed)
+        if draw in seen:
+            raise ValueError(f"duplicate lot {key} with seed {lot.ground_truth.seed} - each lot may be passed only once")
+        seen.add(draw)
         truth = lot.ground_truth
         if (truth.baselines.lot_id, truth.baselines.part_number) != key or (
             {p.component_id for p in truth.trajectories.parts} != {r.component_id for r in lot.dataset.readings}
@@ -430,6 +433,7 @@ _DESCRIPTIONS = {
 }
 
 
+_KS_DECIMALS = 12
 _NAN_KEY = "nan"  # stands in for NaN in equality/hash keys: NaN != NaN, and hash(nan) is per-object
 
 
@@ -437,8 +441,23 @@ def _nan_safe(value):
     return _NAN_KEY if isinstance(value, float) and math.isnan(value) else value
 
 
+class _NanSafeEquality:
+    """Value equality and hashing that treat NaN fields as equal - results that are not computable carry NaN."""
+
+    def _key(self):
+        return (type(self), *(_nan_safe(getattr(self, f.name)) for f in fields(self)))
+
+    def __eq__(self, other):
+        if type(other) is not type(self):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
+
+
 @dataclass(frozen=True, eq=False)
-class RealismComparison:
+class RealismComparison(_NanSafeEquality):
     """One KS comparison. When the generator side has no usable values (every series excluded, or no healthy
     parts), the comparison is still reported, as not computable: generator_n = 0 and NaN statistic/p-value."""
 
@@ -460,17 +479,6 @@ class RealismComparison:
     def computable(self) -> bool:
         return self.generator_n > 0 and math.isfinite(self.p_value)
 
-    def _key(self):
-        return tuple(_nan_safe(getattr(self, f.name)) for f in fields(self))
-
-    def __eq__(self, other):
-        if not isinstance(other, RealismComparison):
-            return NotImplemented
-        return self._key() == other._key()
-
-    def __hash__(self):
-        return hash(self._key())
-
 
 def _compare(name: str, family: str, generator, reference, excluded: int = 0) -> RealismComparison:
     generator = np.asarray(generator, dtype=float)
@@ -480,6 +488,11 @@ def _compare(name: str, family: str, generator, reference, excluded: int = 0) ->
         raise ValueError(f"{name}: generator sample contains non-finite values")
     if len(reference) == 0 or not np.all(np.isfinite(reference)):
         raise ValueError(f"{name}: reference sample must be non-empty and finite")
+    # Round both samples far below any measurement resolution before comparing, so a tie is a tie: 5.10/5.00 - 1
+    # is 0.020000000000000018 in binary and would otherwise sort above Latif's 2%, and least-squares exponents
+    # can differ in the last bits between BLAS builds. Only representation noise is removed.
+    generator = np.round(generator, _KS_DECIMALS)
+    reference = np.round(reference, _KS_DECIMALS)
     statistic, source, caveat = _DESCRIPTIONS[name]
     if len(generator) == 0:
         ks, p, median = math.nan, math.nan, math.nan
@@ -504,6 +517,8 @@ def _compare(name: str, family: str, generator, reference, excluded: int = 0) ->
 
 
 def compare_to_references(stats: GeneratorStatistics) -> tuple[RealismComparison, ...]:
+    if not isinstance(stats, GeneratorStatistics):
+        raise TypeError(f"expected GeneratorStatistics (from extract_generator_statistics), got {type(stats).__name__}")
     exponents = literature_drift_exponents()
     t1, t_168 = stats.campaign_hours[1], stats.campaign_hours[-1]
     family = stats.family
@@ -549,8 +564,8 @@ def run_realism_comparisons(family: "str | GeneratorFamily" = "baseline", n_lots
 DEFAULT_SWEEP_SEEDS: tuple[int, ...] = tuple(range(20))
 
 
-@dataclass(frozen=True)
-class SeedSweep:
+@dataclass(frozen=True, eq=False)
+class SeedSweep(_NanSafeEquality):
     """One comparison's outcome over many seeds - what the gate/marginal/divergent policy is judged on.
     A seed where the comparison was not computable counts in not_computable, never as a non-rejection."""
 
@@ -602,7 +617,8 @@ def _verdict(r: RealismComparison) -> str:
     return "documented divergence" if rejected else "divergence no longer observed - reclassify"
 
 
-def format_report(results: Sequence[RealismComparison], sweep: Sequence[SeedSweep] = ()) -> str:
+def format_report(results: Iterable[RealismComparison], sweep: Iterable[SeedSweep] = ()) -> str:
+    results, sweep = tuple(results), tuple(sweep)
     lines = [f"Realism validation (E1 step 10) - two-sample KS test (scipy.stats.ks_2samp), alpha = {ALPHA}", ""]
     for r in results:
         excluded = f", {r.generator_excluded} series excluded" if r.generator_excluded else ""

@@ -420,3 +420,58 @@ def test_comparison_result_type_is_frozen_and_hashable():
     assert isinstance(r, RealismComparison)
     assert hash(r) == hash(dataclasses.replace(r))
     assert isinstance(extract_generator_statistics([_lot()]), GeneratorStatistics)
+
+
+# --- second review pass ----------------------------------------------------------------------------
+
+def test_same_lot_identity_under_different_seeds_is_two_independent_lots():
+    # Different seeds are different draws - not the pseudo-replication the duplicate check exists to catch.
+    assert extract_generator_statistics([_lot("R1", seed=1), _lot("R1", seed=2)]).n_lots == 2
+
+
+def test_identical_lot_regenerated_is_still_a_duplicate():
+    with pytest.raises(ValueError, match="duplicate"):
+        extract_generator_statistics([_lot("R1", seed=1), _lot("R1", seed=1)])
+
+
+@pytest.mark.parametrize("bad_value", [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize("hour", [0.0, 96.0, 168.0])
+def test_non_finite_reading_is_excluded_not_propagated(bad_value, hour):
+    # Reading.value accepts NaN/inf, so a hand-built or corrupted dataset can carry one.
+    lot = _lot()
+    part = _first_healthy(lot)
+    readings = [r.model_copy(update={"value": bad_value})
+                if (r.component_id == part.component_id and r.parameter == "iddq" and r.checkpoint_hour == hour) else r
+                for r in lot.dataset.readings]
+    stats = extract_generator_statistics([_replace_readings(lot, readings)])
+    for field in ("relative_drift_168h", "drift_exponent_lot_fit", "time_to_knee_lot", "noise_to_signal",
+                  "drift_exponent_per_part_fit"):
+        assert np.all(np.isfinite(getattr(stats, field))), field
+    assert stats.part_fits_excluded >= 1
+    assert all(r.computable for r in compare_to_references(stats))
+
+
+def test_exact_decimal_tie_with_the_reference_counts_as_a_tie():
+    # 5.10 / 5.00 - 1 is 0.020000000000000018 in binary floating point; it must still tie with Latif's 2%.
+    generator = np.array([5.10 / 5.00 - 1])
+    r = realism._compare("degradation_magnitude_168h", "baseline", generator, np.array([0.02]))
+    assert r.ks_statistic == 0.0
+    assert r.p_value == 1.0
+
+
+def test_compare_to_references_rejects_a_non_statistics_argument():
+    with pytest.raises(TypeError, match="GeneratorStatistics"):
+        compare_to_references([_lot()])
+
+
+def test_seed_sweeps_with_nan_p_values_compare_equal():
+    # float("nan") makes a distinct object each time, as a real sweep does - math.nan would pass by identity.
+    make = lambda: SeedSweep("x", "gate", 1, 0, 1, float("nan"), float("nan"), float("nan"))
+    assert make() == make()
+    assert hash(make()) == hash(make())
+
+
+def test_report_accepts_any_iterable_of_results_and_sweeps():
+    results = run_realism_comparisons(n_lots=1)
+    sweep = sweep_seeds(n_lots=1, seeds=(0,))
+    assert format_report(iter(results), iter(sweep)) == format_report(results, sweep)
