@@ -192,6 +192,8 @@ class FeatureFrame(BaseModel):
 
 **Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it. `FeatureFrame` is always built with real, populated values for any parameter present in the readings, recognized or not — it never goes `None` for an unrecognized parameter. "Unrecognized" is expressed on Module B's output instead: `ModuleBResult` (5.3) carries `forecast_unavailable=True` and `predicted_168h=None` (and the other forecast fields `None`), which downstream must treat as "forecast unavailable," never as zero or a silent drop.
 
+**Wide-format CSV layout (pinned — implemented by P2's `parse_wide_lot_csv`, no longer provisional).** One row per (`component_id`, `checkpoint_hour`). Two fixed columns, `component_id` and `checkpoint_hour`, where `checkpoint_hour` is a **numeric column, never a column-name suffix** — a jittered 23.6h read has no `iddq_24h` column to live in. Then one value column per parameter, named `<parameter>_<unit>` (e.g. `iddq_uA`, `leakage_nA`, `prop_delay_ns`); the unit is the text after the last underscore, so a parameter name may itself contain underscores. A blank cell means no reading for that parameter at that checkpoint — skipped, not an error. Lot-level metadata (`lot_id`, `part_number`, `manufacturer`, `date_code`, `test_date`) is **not** a column: it comes from the ingestion metadata form (E7 step 1), matching how the long format is handled. Long format is `Reading`'s fields used verbatim, one row per `Reading`. Both parse to the identical `list[Reading]` for the same data (P2's 7.3 wide/long equivalence test).
+
 ## 5.3 Features → Module A / Module B (P2 → P3, P4)
 
 ```python
@@ -238,7 +240,7 @@ class LotDisposition(BaseModel):
 
 ```python
 def save_account(account_id: str, display_name: str, role: str, pin_hash: str) -> Account: ...
-def save_project(project_id: str, lot_id: str, part_number: str, created_by: str) -> Project: ...
+def save_project(project_id: str, lot_id: str, part_number: str, test_date: datetime, created_by: str) -> Project: ...
 def save_disposition_signoff(project_id: str, component_id: str, analysis_run_id: str,
                              account_id: str, verdict: str, rationale: str) -> DispositionSignoff: ...
 def save_confirmed_outcome(project_id: str, component_id: str, analysis_run_id: str, account_id: str,
@@ -268,6 +270,7 @@ class Project(Base):
     project_id: Mapped[str] = mapped_column(primary_key=True)
     lot_id: Mapped[str] = mapped_column(index=True)
     part_number: Mapped[str]
+    test_date: Mapped[datetime]        # lot-level physical test date from the ingestion metadata form (E7 step 1); distinct from created_at
     created_at: Mapped[datetime]
     created_by: Mapped[str] = mapped_column(ForeignKey("accounts.account_id"))
 
@@ -628,7 +631,7 @@ Each section below is written to be read on its own — with `AGENTS.md` and `co
 - **Session P2.3** *(prereq: P1.4)*: E7 steps 6–11 (normalization, quality checks, offset correction, cross-lot scope enforcement, unrecognized-parameter handling, attribution) against real data. Ingestion's 7.3 row green.
 - **Session P2.4** *(prereq: P2.3 — closes G3 together with P2.6)*: E8 steps 1–5 (deltas, robust stats, <30 fallback, z-scores, joint feature vector). Features' 7.3 row green. Real `FeatureFrame` handed to P3/P4.
 - **Session P2.5** *(prereq: P2.3, P2.4, Lead L1, P5.1 for the orchestrator stub)*: `ingestion/router.py` — replaces P2.1's stub route. `POST /lots` and `POST /lots/{lot_id}/checkpoints` now call `fusion.run_full_pipeline` (5.7 — stub or real, whichever exists) after a successful save, then `storage.save_analysis_run(...)` to persist the result, then `storage.log_event("analysis_run", ...)`. This wiring is what makes G3's exit criterion ("P2's storage repository API is callable") actually mean something end-to-end, not just that the functions exist in isolation.
-- **Session P2.6** *(prereq: P2.1 — must land before P5.4 needs it)*: E11 steps 4–8 (`project_data`+diff, `events`, `disposition_signoffs`, `confirmed_outcomes`, full repository API).
+- **Session P2.6** *(prereq: P2.1 — must land before P5.4 needs it)*: E11 steps 4–8 (`project_data`+diff, `events`, `disposition_signoffs`, `confirmed_outcomes`, full repository API). **Also** `query_readings_by_part_number` (or a stats-returning equivalent: per `(part_number, parameter, checkpoint_label)` median and robust sigma across *other* lots of that part number) — the cross-lot pooled reference E8 step 3's small-lot fallback needs, and which `features.compute()`'s `pooled_reference` argument is fed from. Previously unassigned to any session, not merely undocumented; it reads across `project_data.raw_data` for other projects sharing a `part_number`, a different query shape from E11 steps 4–8's own tables.
 - **Session P2.7** *(prereq: P2.4, P2.6)*: E9 steps 1–3 (report template, Analysis History section, `fpdf2` render) → steps 4–6 + `report/router.py`.
 - **Session P2.8** *(prereq: P2.6)*: `storage/router.py` — projects, events, disposition-signoffs read routes.
 

@@ -178,6 +178,7 @@ class Project(Base):
     project_id: Mapped[str] = mapped_column(primary_key=True)
     lot_id: Mapped[str] = mapped_column(index=True)
     part_number: Mapped[str]
+    test_date: Mapped[datetime]  # lot-level physical test date from the ingestion metadata form (E7 step 1); distinct from created_at
     created_at: Mapped[datetime]
     created_by: Mapped[str] = mapped_column(ForeignKey("accounts.account_id"))
 
