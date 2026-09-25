@@ -22,5 +22,6 @@ class LotBaseline:
     lot_id: str
     part_number: str
     lot_center: dict[str, float]  # per-parameter sampled lot-level center
+    lot_die_sigma: dict[str, float]  # per-parameter sampled lot-level die-to-die spread (log-space)
     defect_prevalence: float  # this lot's randomized prevalence, drawn from config.defect_prevalence_range
     parts: list[PartBaseline]

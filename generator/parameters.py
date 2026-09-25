@@ -18,8 +18,10 @@ class ParameterSpec:
     name: str
     unit: str
     lot_center_mu: float  # log-space mean of the lot-level center distribution
-    lot_center_sigma: float  # log-space sigma - controls lot-to-lot spread
-    die_sigma: float  # log-space sigma for die-to-die spread within a lot, nested under the lot center
+    lot_center_sigma: float  # log-space sigma - controls lot-to-lot spread of the center itself
+    die_sigma_base: float  # typical log-space die-to-die spread within a lot
+    die_sigma_jitter: float  # log-space sigma of the lot-to-lot variation in that spread (E1 step 1:
+    # both center AND spread are sampled per lot, not just the center)
 
 
 PARAMETERS: dict[str, ParameterSpec] = {
@@ -27,18 +29,21 @@ PARAMETERS: dict[str, ParameterSpec] = {
         name="iddq", unit="uA",
         lot_center_mu=2.48,  # exp(2.48) ~= 12 uA
         lot_center_sigma=0.5,  # ~90% of lot centers fall in ~5-30 uA, matching the cited patent range
-        die_sigma=0.15,
+        die_sigma_base=0.15,
+        die_sigma_jitter=0.2,
     ),
     "leakage": ParameterSpec(
         name="leakage", unit="nA",
         lot_center_mu=1.61,  # exp(1.61) ~= 5 nA
         lot_center_sigma=0.5,
-        die_sigma=0.15,
+        die_sigma_base=0.15,
+        die_sigma_jitter=0.2,
     ),
     "prop_delay": ParameterSpec(
         name="prop_delay", unit="ns",
         lot_center_mu=1.61,  # exp(1.61) ~= 5 ns
         lot_center_sigma=0.3,  # timing is a tighter-controlled process parameter than leakage
-        die_sigma=0.08,
+        die_sigma_base=0.08,
+        die_sigma_jitter=0.15,
     ),
 }

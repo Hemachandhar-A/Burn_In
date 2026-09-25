@@ -16,6 +16,7 @@ def test_determinism_same_seed_identical_output():
     lot_b = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=77, seed=42)
 
     assert lot_a.lot_center == lot_b.lot_center
+    assert lot_a.lot_die_sigma == lot_b.lot_die_sigma
     assert lot_a.defect_prevalence == lot_b.defect_prevalence
     assert [p.is_defective for p in lot_a.parts] == [p.is_defective for p in lot_b.parts]
     assert [p.baseline for p in lot_a.parts] == [p.baseline for p in lot_b.parts]
@@ -55,6 +56,13 @@ def test_component_ids_are_unique_within_a_lot():
     lot = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=77, seed=9)
     component_ids = [p.component_id for p in lot.parts]
     assert len(component_ids) == len(set(component_ids))
+
+
+def test_lot_die_sigma_varies_across_lots():
+    # E1 step 1: both center AND spread are sampled per lot, not just the center.
+    lot_a = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=30, seed=1)
+    lot_b = generate_lot_baselines(lot_id="L2", part_number="PN-1", n_parts=30, seed=2)
+    assert lot_a.lot_die_sigma != lot_b.lot_die_sigma
 
 
 def test_die_baselines_are_centered_near_lot_center_not_identical():

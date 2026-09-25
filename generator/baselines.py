@@ -28,6 +28,12 @@ def generate_lot_baselines(
         name: float(rng.lognormal(mean=spec.lot_center_mu, sigma=spec.lot_center_sigma))
         for name, spec in PARAMETERS.items()
     }
+    # E1 step 1: spread is sampled per lot too, not just the center - a jittered multiplier
+    # around each parameter's typical die-to-die sigma.
+    lot_die_sigma = {
+        name: float(spec.die_sigma_base * rng.lognormal(mean=0.0, sigma=spec.die_sigma_jitter))
+        for name, spec in PARAMETERS.items()
+    }
 
     prevalence_lo, prevalence_hi = config.defect_prevalence_range
     defect_prevalence = float(rng.uniform(prevalence_lo, prevalence_hi))
@@ -36,8 +42,8 @@ def generate_lot_baselines(
     parts = []
     for i in range(n_parts):
         baseline = {
-            name: float(rng.lognormal(mean=np.log(lot_center[name]), sigma=spec.die_sigma))
-            for name, spec in PARAMETERS.items()
+            name: float(rng.lognormal(mean=np.log(lot_center[name]), sigma=lot_die_sigma[name]))
+            for name in PARAMETERS
         }
         parts.append(
             PartBaseline(
@@ -53,6 +59,7 @@ def generate_lot_baselines(
         lot_id=lot_id,
         part_number=part_number,
         lot_center=lot_center,
+        lot_die_sigma=lot_die_sigma,
         defect_prevalence=defect_prevalence,
         parts=parts,
     )
