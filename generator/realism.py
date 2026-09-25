@@ -29,14 +29,16 @@ so it is auditable and re-checkable. Two self-checks run in the test suite: the 
 labeled tick back onto its label, and refitting the digitized inset points recovers the paper's printed
 n = 0.2035.
 
-The comparison policy (gate vs. documented divergence) is fixed per comparison in COMPARISON_POLICY and every
-comparison is reported, including the ones that diverge.
+The comparison policy (gate / marginal / documented divergence) is fixed per comparison in COMPARISON_POLICY,
+judged over a seed sweep, and every comparison is reported - including ones that diverge or are not computable.
 """
 import argparse
 import csv
+import functools
+import math
 import numbers
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import numpy as np
@@ -103,11 +105,64 @@ def literature_drift_exponents() -> np.ndarray:
     return np.array([round(n, 4) for n in digitized] + [LATIF_TIME_EXPONENT])
 
 
-@dataclass(frozen=True)
+_INSET_HEADER = ["pdf_x_pt", "pdf_y_pt"]
+_INSET_FRAME_PT = (443.81, 522.82, 268.61, 313.15)  # inset plot frame: x left, x right, y top, y bottom
+_MIN_FIT_POINTS = 3
+
+
+def _read_only(values) -> np.ndarray:
+    """A float copy that can't be written through - so a frozen result object really is immutable."""
+    array = np.array(values, dtype=float)
+    array.setflags(write=False)
+    return array
+
+
+def _values_equal(a, b) -> bool:
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return isinstance(a, np.ndarray) and isinstance(b, np.ndarray) and np.array_equal(a, b)
+    return a == b
+
+
+@functools.lru_cache(maxsize=8)
+def _load_inset_points(path: Path) -> np.ndarray:
+    """Parse the digitized inset CSV strictly: a missing header, malformed or non-finite row, or a point outside
+    the inset's plot frame is refused, never skipped - a silently dropped point would change the reference."""
+    with Path(path).open(encoding="utf-8-sig", newline="") as f:  # -sig: tolerate a BOM from a spreadsheet save
+        lines = [line for line in f if line.strip() and not line.lstrip().startswith("#")]
+    rows = list(csv.reader(lines))
+    if not rows or [cell.strip() for cell in rows[0]] != _INSET_HEADER:
+        raise ValueError(f"{path}: expected the header {','.join(_INSET_HEADER)}, got {rows[0] if rows else 'no rows'}")
+    x_left, x_right, y_top, y_bottom = _INSET_FRAME_PT
+    points = []
+    for number, row in enumerate(rows[1:], start=1):
+        if len(row) != 2:
+            raise ValueError(f"{path}: data row {number} must have 2 fields, got {row}")
+        try:
+            x, y = float(row[0]), float(row[1])
+        except ValueError:
+            raise ValueError(f"{path}: data row {number} is not numeric: {row}") from None
+        if not (math.isfinite(x) and math.isfinite(y)):
+            raise ValueError(f"{path}: data row {number} is not finite: {row}")
+        if not (x_left <= x <= x_right and y_top <= y <= y_bottom):
+            raise ValueError(f"{path}: data row {number} ({x}, {y}) lies outside the inset's plot frame")
+        points.append((x, y))
+    if len(points) < _MIN_FIT_POINTS:
+        raise ValueError(f"{path}: need at least {_MIN_FIT_POINTS} points to fit a power law, got {len(points)}")
+    return _read_only(points)
+
+
+@dataclass(frozen=True, eq=False)
 class PowerLawFit:
     exponent: float
     n_points: int
-    relative_residuals: np.ndarray  # measured / fitted - 1, per point
+    relative_residuals: np.ndarray  # measured / fitted - 1, per point (read-only)
+
+    def __eq__(self, other):
+        if not isinstance(other, PowerLawFit):
+            return NotImplemented
+        return all(_values_equal(getattr(self, f.name), getattr(other, f.name)) for f in fields(self))
+
+    __hash__ = None  # holds an array: equality is by value, so it can't be hashed
 
 
 def _log_axis_fit(ticks: dict[float, float]) -> tuple[float, float]:
@@ -116,76 +171,153 @@ def _log_axis_fit(ticks: dict[float, float]) -> tuple[float, float]:
     return float(slope), float(intercept)
 
 
-def ljmu_inset_power_law_fit() -> PowerLawFit:
+def ljmu_inset_power_law_fit(path: Path = _INSET_POINTS_CSV) -> PowerLawFit:
     """Refit the LJMU inset's measured degradation points with a power law, as the paper does, and return
     each point's relative residual around that fit - the reference's noise-to-signal sample."""
-    with _INSET_POINTS_CSV.open(newline="") as f:
-        rows = [row for row in csv.reader(line for line in f if not line.startswith("#"))][1:]
-    px = np.array([[float(x), float(y)] for x, y in rows])
+    px = _load_inset_points(Path(path))
     (xs, xi), (ys, yi) = _log_axis_fit(_INSET_X_TICKS_PT), _log_axis_fit(_INSET_Y_TICKS_PT)
     log_t, log_gd = xs * px[:, 0] + xi, ys * px[:, 1] + yi
     exponent, log_a = np.polyfit(log_t, log_gd, 1)
     residuals = 10 ** (log_gd - (log_a + exponent * log_t)) - 1
-    return PowerLawFit(exponent=float(exponent), n_points=len(px), relative_residuals=residuals)
+    return PowerLawFit(exponent=float(exponent), n_points=len(px), relative_residuals=_read_only(residuals))
 
 
 # --- generator-side extraction ---------------------------------------------------------------------
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class GeneratorStatistics:
-    """Healthy-part statistics from generated lots, pooled across the three parameters."""
+    """Healthy-part statistics from generated lots, pooled across the three parameters, over the 0h-168h
+    campaign (reads after 168h, if any, are ignored). Every healthy series is either in an array or counted in
+    the matching *_excluded field - nothing is dropped silently. Arrays are read-only."""
 
+    family: str
+    n_lots: int
+    campaign_hours: tuple[float, ...]  # actual elapsed hours of the reads from 0h through the 168h read
     relative_drift_168h: np.ndarray  # measured value at 168h / measured value at 0h - 1, per part
     drift_exponent_prior: np.ndarray  # the hidden healthy power-law n actually drawn, per part
     drift_exponent_lot_fit: np.ndarray  # n fitted to the lot-median measured drift, per lot
     time_to_knee_lot: np.ndarray  # lot-median drift at the first post-0h read / at 168h, per lot
     noise_to_signal: np.ndarray  # (measured drift - true drift) / true drift, per part and post-0h read
     drift_exponent_per_part_fit: np.ndarray  # n fitted to one part's own measured drift
-    checkpoint_hours: tuple[float, ...]
-    lot_fits_excluded: int  # lot series with a non-positive median drift (can't be log-fitted)
+    relative_drift_excluded: int  # 0h reading non-positive or non-finite - a relative change is meaningless
+    noise_to_signal_excluded: int  # true drift not positive - there is no signal to scale the noise by
+    lot_fits_excluded: int  # lot series with a non-positive median drift (can't be log-fitted); drops the knee too
     part_fits_excluded: int  # part series with any non-positive measured drift
+    lots_without_healthy_parts: int  # contribute nothing; counted so an empty lot is visible, not silent
+
+    def __eq__(self, other):
+        if not isinstance(other, GeneratorStatistics):
+            return NotImplemented
+        return all(_values_equal(getattr(self, f.name), getattr(other, f.name)) for f in fields(self))
+
+    __hash__ = None  # holds arrays: equality is by value, so it can't be hashed
 
 
 def _fit_exponent(hours: np.ndarray, drift: np.ndarray) -> float | None:
-    if not np.all(drift > 0):
+    if not np.all(np.isfinite(drift)) or not np.all(drift > 0):
         return None
-    return float(np.polyfit(np.log(hours), np.log(drift), 1)[0])
+    exponent = float(np.polyfit(np.log(hours), np.log(drift), 1)[0])
+    return exponent if math.isfinite(exponent) else None
 
 
-def extract_generator_statistics(lots: Sequence[GeneratedLot]) -> GeneratorStatistics:
-    """Measured values come from each lot's production-facing dataset; the sidecar is used only to select
-    healthy parts, read the hidden drift exponent, and get the noise-free drift the noise is measured against."""
+def _campaign_index(lot: GeneratedLot) -> int:
+    """Index of the exact 168h read in the lot's schedule, after checking the schedule can support every
+    statistic: a 0h read (the drift reference), a 168h read, and at least one read strictly between them."""
+    nominal = lot.ground_truth.nominal_checkpoint_hours
+    label = f"lot {lot.dataset.lot_id!r} (nominal checkpoints {nominal})"
+    if not nominal or nominal[0] != 0.0:
+        raise ValueError(f"{label} needs a 0h (pre-burn-in) read - every drift is measured from it")
+    if _FULL_CAMPAIGN_HOURS not in nominal:
+        raise ValueError(f"{label} needs a read at exactly 168h, the full campaign the references describe")
+    index = nominal.index(_FULL_CAMPAIGN_HOURS)
+    if index < 2:
+        raise ValueError(f"{label} needs at least one read between 0h and 168h to fit a drift shape")
+    return index
+
+
+def _validated_lots(lots) -> list[GeneratedLot]:
+    if isinstance(lots, (str, bytes, GeneratedLot)) or not isinstance(lots, Iterable):
+        raise TypeError(f"lots must be a sequence of GeneratedLot, got {type(lots).__name__}")
     lots = list(lots)
     if not lots:
         raise ValueError("need at least one generated lot")
-    hours = tuple(lots[0].ground_truth.trajectories.checkpoint_hours)
     for lot in lots:
         if not isinstance(lot, GeneratedLot):
             raise TypeError(f"expected GeneratedLot, got {type(lot).__name__}")
-        nominal = lot.ground_truth.nominal_checkpoint_hours
-        if nominal[0] != 0.0 or nominal[-1] < _FULL_CAMPAIGN_HOURS or len(nominal) < 3:
-            raise ValueError(f"lot {lot.dataset.lot_id!r} needs a 0h read, a post-0h read and the full 168h campaign; "
-                             f"got nominal checkpoints {nominal}")
-        if tuple(lot.ground_truth.trajectories.checkpoint_hours) != hours:
-            raise ValueError("all lots must share one checkpoint schedule - the knee reference depends on it")
+    seen = set()
+    for lot in lots:
+        key = (lot.dataset.lot_id, lot.dataset.part_number)
+        if key in seen:
+            # The same lot twice would be counted as two independent samples (pseudo-replication).
+            raise ValueError(f"duplicate lot {key} - each lot may be passed only once")
+        seen.add(key)
+        truth = lot.ground_truth
+        if (truth.baselines.lot_id, truth.baselines.part_number) != key or (
+            {p.component_id for p in truth.trajectories.parts} != {r.component_id for r in lot.dataset.readings}
+        ):
+            raise ValueError(f"lot {key}: its dataset and ground-truth sidecar do not describe the same parts")
+    first = lots[0].ground_truth.family_spec
+    if any(lot.ground_truth.family_spec != first for lot in lots):
+        names = sorted({lot.ground_truth.family for lot in lots})
+        raise ValueError(f"all lots must come from one generator family, got families {names}")
+    return lots
+
+
+def _readings_by_key(lot: GeneratedLot) -> dict[tuple[str, str, float], float]:
+    readings = {}
+    for r in lot.dataset.readings:
+        key = (r.component_id, r.parameter, r.checkpoint_hour)
+        if key in readings:
+            raise ValueError(f"lot {lot.dataset.lot_id!r}: duplicate reading for {key}")
+        readings[key] = r.value
+    return readings
+
+
+def extract_generator_statistics(lots: Iterable[GeneratedLot]) -> GeneratorStatistics:
+    """Measured values come from each lot's production-facing dataset; the sidecar is used only to select
+    healthy parts, read the hidden drift exponent, and get the noise-free drift the noise is measured against.
+
+    All lots must come from one family and share one actual checkpoint schedule up to 168h (the knee reference
+    is built from it) - so jittered lots can only be passed one at a time."""
+    lots = _validated_lots(lots)
+    index_168 = _campaign_index(lots[0])
+    hours = tuple(lots[0].ground_truth.trajectories.checkpoint_hours[: index_168 + 1])
+    for lot in lots[1:]:
+        k = _campaign_index(lot)
+        if tuple(lot.ground_truth.trajectories.checkpoint_hours[: k + 1]) != hours:
+            raise ValueError(
+                "all lots must share one actual checkpoint schedule up to 168h - the knee reference depends on it; "
+                "generate them on one schedule with checkpoint_jitter_hours=0"
+            )
     post = np.array(hours[1:])
 
     rel_168, n_prior, n_lot, knee, nsr, n_part = [], [], [], [], [], []
-    lot_excluded = part_excluded = 0
+    rel_excluded = nsr_excluded = lot_excluded = part_excluded = empty_lots = 0
     for lot in lots:
-        measured: dict[tuple[str, str], dict[float, float]] = {}
-        for r in lot.dataset.readings:
-            measured.setdefault((r.component_id, r.parameter), {})[r.checkpoint_hour] = r.value
+        readings = _readings_by_key(lot)
         healthy = [p for p in lot.ground_truth.trajectories.parts if not p.is_defective]
+        if not healthy:
+            empty_lots += 1
+            continue
         for name in PARAMETERS:
             lot_drifts = []
             for part in healthy:
-                m = np.array([measured[(part.component_id, name)][h] for h in hours])
-                true = np.array(part.values[name])
+                try:
+                    m = np.array([readings[(part.component_id, name, h)] for h in hours])
+                except KeyError as missing:
+                    raise ValueError(f"lot {lot.dataset.lot_id!r}: missing reading {missing.args[0]}") from None
+                true = np.array(part.values[name][: len(hours)])
                 drift, true_drift = m[1:] - m[0], true[1:] - true[0]
-                rel_168.append(m[-1] / m[0] - 1)
+                if math.isfinite(m[0]) and m[0] > 0 and math.isfinite(m[-1]):
+                    rel_168.append(m[-1] / m[0] - 1)
+                else:
+                    rel_excluded += 1
                 n_prior.append(part.drift_exponent[name])
-                nsr.extend((drift - true_drift) / true_drift)
+                for d, td in zip(drift, true_drift):
+                    if math.isfinite(d) and math.isfinite(td) and td > 0:
+                        nsr.append((d - td) / td)
+                    else:
+                        nsr_excluded += 1
                 fitted = _fit_exponent(post, drift)
                 if fitted is None:
                     part_excluded += 1
@@ -200,15 +332,20 @@ def extract_generator_statistics(lots: Sequence[GeneratedLot]) -> GeneratorStati
                 n_lot.append(fitted)
                 knee.append(median_drift[0] / median_drift[-1])
     return GeneratorStatistics(
-        relative_drift_168h=np.array(rel_168),
-        drift_exponent_prior=np.array(n_prior),
-        drift_exponent_lot_fit=np.array(n_lot),
-        time_to_knee_lot=np.array(knee),
-        noise_to_signal=np.array(nsr),
-        drift_exponent_per_part_fit=np.array(n_part),
-        checkpoint_hours=hours,
+        family=lots[0].ground_truth.family,
+        n_lots=len(lots),
+        campaign_hours=hours,
+        relative_drift_168h=_read_only(rel_168),
+        drift_exponent_prior=_read_only(n_prior),
+        drift_exponent_lot_fit=_read_only(n_lot),
+        time_to_knee_lot=_read_only(knee),
+        noise_to_signal=_read_only(nsr),
+        drift_exponent_per_part_fit=_read_only(n_part),
+        relative_drift_excluded=rel_excluded,
+        noise_to_signal_excluded=nsr_excluded,
         lot_fits_excluded=lot_excluded,
         part_fits_excluded=part_excluded,
+        lots_without_healthy_parts=empty_lots,
     )
 
 
@@ -293,8 +430,18 @@ _DESCRIPTIONS = {
 }
 
 
-@dataclass(frozen=True)
+_NAN_KEY = "nan"  # stands in for NaN in equality/hash keys: NaN != NaN, and hash(nan) is per-object
+
+
+def _nan_safe(value):
+    return _NAN_KEY if isinstance(value, float) and math.isnan(value) else value
+
+
+@dataclass(frozen=True, eq=False)
 class RealismComparison:
+    """One KS comparison. When the generator side has no usable values (every series excluded, or no healthy
+    parts), the comparison is still reported, as not computable: generator_n = 0 and NaN statistic/p-value."""
+
     name: str
     family: str
     policy: str  # "gate", "marginal" or "divergent" - see COMPARISON_POLICY
@@ -307,15 +454,38 @@ class RealismComparison:
     reference_median: float
     ks_statistic: float
     p_value: float
-    generator_excluded: int = 0  # generator series that couldn't be log-fitted (non-positive drift)
+    generator_excluded: int = 0  # generator series that couldn't be used (see GeneratorStatistics' counters)
+
+    @property
+    def computable(self) -> bool:
+        return self.generator_n > 0 and math.isfinite(self.p_value)
+
+    def _key(self):
+        return tuple(_nan_safe(getattr(self, f.name)) for f in fields(self))
+
+    def __eq__(self, other):
+        if not isinstance(other, RealismComparison):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
 
 
-def _compare(name: str, family: str, generator: np.ndarray, reference: np.ndarray,
-             excluded: int = 0) -> RealismComparison:
-    if len(generator) == 0:
-        raise ValueError(f"{name}: no generator values to compare (all {excluded} series excluded)")
-    result = ks_2samp(generator, reference)
+def _compare(name: str, family: str, generator, reference, excluded: int = 0) -> RealismComparison:
+    generator = np.asarray(generator, dtype=float)
+    reference = np.asarray(reference, dtype=float)
+    # ks_2samp does not refuse NaN - it returns a meaningless result - so a non-finite value is a bug upstream.
+    if not np.all(np.isfinite(generator)):
+        raise ValueError(f"{name}: generator sample contains non-finite values")
+    if len(reference) == 0 or not np.all(np.isfinite(reference)):
+        raise ValueError(f"{name}: reference sample must be non-empty and finite")
     statistic, source, caveat = _DESCRIPTIONS[name]
+    if len(generator) == 0:
+        ks, p, median = math.nan, math.nan, math.nan
+    else:
+        result = ks_2samp(generator, reference)
+        ks, p, median = float(result.statistic), float(result.pvalue), float(np.median(generator))
     return RealismComparison(
         name=name,
         family=family,
@@ -325,29 +495,40 @@ def _compare(name: str, family: str, generator: np.ndarray, reference: np.ndarra
         caveat=caveat,
         generator_n=len(generator),
         reference_n=len(reference),
-        generator_median=float(np.median(generator)),
+        generator_median=median,
         reference_median=float(np.median(reference)),
-        ks_statistic=float(result.statistic),
-        p_value=float(result.pvalue),
-        generator_excluded=excluded,
+        ks_statistic=ks,
+        p_value=p,
+        generator_excluded=int(excluded),
     )
 
 
-def compare_to_references(stats: GeneratorStatistics, family: str) -> tuple[RealismComparison, ...]:
+def compare_to_references(stats: GeneratorStatistics) -> tuple[RealismComparison, ...]:
     exponents = literature_drift_exponents()
-    t1, t_last = stats.checkpoint_hours[1], stats.checkpoint_hours[-1]
+    t1, t_168 = stats.campaign_hours[1], stats.campaign_hours[-1]
+    family = stats.family
     return (
-        _compare("degradation_magnitude_168h", family, stats.relative_drift_168h, latif_168h_relative_changes()),
+        _compare("degradation_magnitude_168h", family, stats.relative_drift_168h, latif_168h_relative_changes(),
+                 stats.relative_drift_excluded),
         _compare("drift_exponent_prior", family, stats.drift_exponent_prior, exponents),
         _compare("drift_exponent_lot_fit", family, stats.drift_exponent_lot_fit, exponents,
                  stats.lot_fits_excluded),
-        _compare("time_to_knee_lot", family, stats.time_to_knee_lot, (t1 / t_last) ** exponents,
+        _compare("time_to_knee_lot", family, stats.time_to_knee_lot, (t1 / t_168) ** exponents,
                  stats.lot_fits_excluded),
         _compare("noise_to_signal_per_part", family, stats.noise_to_signal,
-                 ljmu_inset_power_law_fit().relative_residuals),
+                 ljmu_inset_power_law_fit().relative_residuals, stats.noise_to_signal_excluded),
         _compare("drift_exponent_per_part_fit", family, stats.drift_exponent_per_part_fit, exponents,
                  stats.part_fits_excluded),
     )
+
+
+def _validate_seed(seed) -> int:
+    # Same rule as generate_lot, checked up front so a bad seed fails before any lot is generated.
+    if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
+        raise TypeError(f"seed must be an int, got {type(seed).__name__}")
+    if seed < 0:
+        raise ValueError(f"seed must be >= 0, got {seed}")
+    return int(seed)
 
 
 def run_realism_comparisons(family: "str | GeneratorFamily" = "baseline", n_lots: int = DEFAULT_N_LOTS,
@@ -358,10 +539,11 @@ def run_realism_comparisons(family: "str | GeneratorFamily" = "baseline", n_lots
         raise TypeError(f"n_lots must be an int, got {type(n_lots).__name__}")
     if n_lots < 1:
         raise ValueError(f"n_lots must be >= 1, got {n_lots}")
+    seed = _validate_seed(seed)
     family = resolve_family(family)
     lots = [generate_lot(f"REALISM-{k:03d}", "PN-REALISM", seed, account_id="realism-validation", family=family)
             for k in range(int(n_lots))]
-    return compare_to_references(extract_generator_statistics(lots), family.name)
+    return compare_to_references(extract_generator_statistics(lots))
 
 
 DEFAULT_SWEEP_SEEDS: tuple[int, ...] = tuple(range(20))
@@ -369,36 +551,53 @@ DEFAULT_SWEEP_SEEDS: tuple[int, ...] = tuple(range(20))
 
 @dataclass(frozen=True)
 class SeedSweep:
-    """One comparison's outcome over many seeds - what the gate/marginal/divergent policy is judged on."""
+    """One comparison's outcome over many seeds - what the gate/marginal/divergent policy is judged on.
+    A seed where the comparison was not computable counts in not_computable, never as a non-rejection."""
 
     name: str
     policy: str
     n_seeds: int
-    rejections: int  # seeds on which the KS test rejected at ALPHA
-    median_p_value: float
+    rejections: int  # computable seeds on which the KS test rejected at ALPHA
+    not_computable: int
+    median_p_value: float  # over computable seeds; NaN if there were none
     min_p_value: float
     max_p_value: float
 
 
 def sweep_seeds(family: "str | GeneratorFamily" = "baseline", n_lots: int = DEFAULT_N_LOTS,
-                seeds: Sequence[int] = DEFAULT_SWEEP_SEEDS) -> tuple[SeedSweep, ...]:
-    seeds = list(seeds)
+                seeds: Iterable[int] = DEFAULT_SWEEP_SEEDS) -> tuple[SeedSweep, ...]:
+    if isinstance(seeds, (str, bytes)) or not isinstance(seeds, Iterable):
+        raise TypeError(f"seeds must be an iterable of ints, got {type(seeds).__name__}")
+    seeds = [_validate_seed(seed) for seed in seeds]
     if not seeds:
         raise ValueError("need at least one seed to sweep")
+    if len(set(seeds)) != len(seeds):
+        raise ValueError(f"duplicate seeds {seeds} - a repeated seed would be counted twice")
     runs = [run_realism_comparisons(family, n_lots, seed) for seed in seeds]
     sweeps = []
     for k, first in enumerate(runs[0]):
-        p = np.array([run[k].p_value for run in runs])
-        sweeps.append(SeedSweep(name=first.name, policy=first.policy, n_seeds=len(seeds),
-                                rejections=int(np.sum(p < ALPHA)), median_p_value=float(np.median(p)),
-                                min_p_value=float(p.min()), max_p_value=float(p.max())))
+        p = np.array([run[k].p_value if run[k].computable else math.nan for run in runs])
+        finite = p[np.isfinite(p)]
+        sweeps.append(SeedSweep(
+            name=first.name,
+            policy=first.policy,
+            n_seeds=len(seeds),
+            rejections=int(np.sum(finite < ALPHA)),
+            not_computable=int(len(p) - len(finite)),
+            median_p_value=float(np.median(finite)) if len(finite) else math.nan,
+            min_p_value=float(finite.min()) if len(finite) else math.nan,
+            max_p_value=float(finite.max()) if len(finite) else math.nan,
+        ))
     return tuple(sweeps)
 
 
-def _verdict(policy: str, rejected: bool) -> str:
-    if policy == "gate":
+def _verdict(r: RealismComparison) -> str:
+    if not r.computable:
+        return "not computable - no usable generator values"
+    rejected = r.p_value < ALPHA
+    if r.policy == "gate":
         return "rejected - generator differs from reference" if rejected else "not rejected"
-    if policy == "marginal":
+    if r.policy == "marginal":
         return "rejected on this seed (marginal)" if rejected else "not rejected on this seed (marginal)"
     return "documented divergence" if rejected else "divergence no longer observed - reclassify"
 
@@ -408,8 +607,7 @@ def format_report(results: Sequence[RealismComparison], sweep: Sequence[SeedSwee
     for r in results:
         excluded = f", {r.generator_excluded} series excluded" if r.generator_excluded else ""
         lines += [
-            (f"{r.name}  [{r.family}, {r.policy}]  D = {r.ks_statistic:.4f}, p = {r.p_value:.4g}"
-            f"  -> {_verdict(r.policy, r.p_value < ALPHA)}"),
+            f"{r.name}  [{r.family}, {r.policy}]  D = {r.ks_statistic:.4f}, p = {r.p_value:.4g}  -> {_verdict(r)}",
             f"    generator: {r.generator_statistic} (n = {r.generator_n}{excluded}, median = {r.generator_median:.4g})",
             f"    reference: {r.reference_source} (n = {r.reference_n}, median = {r.reference_median:.4g})",
             f"    caveat:    {r.caveat}",
@@ -419,9 +617,11 @@ def format_report(results: Sequence[RealismComparison], sweep: Sequence[SeedSwee
             lines.append(f"    policy:    {reason}")
     if sweep:
         lines += ["", f"Seed sweep ({sweep[0].n_seeds} seeds): rejections at alpha = {ALPHA}, and p-value range"]
-        lines += [f"    {s.name:30s} [{s.policy:9s}] rejected {s.rejections}/{s.n_seeds}, median p = "
-                  f"{s.median_p_value:.4g}, min p = {s.min_p_value:.4g}, max p = {s.max_p_value:.4g}"
-                  for s in sweep]
+        for s in sweep:
+            not_computable = f", {s.not_computable} not computable" if s.not_computable else ""
+            lines.append(f"    {s.name:30s} [{s.policy:9s}] rejected {s.rejections}/{s.n_seeds}{not_computable}, "
+                         f"median p = {s.median_p_value:.4g}, min p = {s.min_p_value:.4g}, "
+                         f"max p = {s.max_p_value:.4g}")
     return "\n".join(lines)
 
 
@@ -433,8 +633,19 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--sweep-seeds", type=int, default=len(DEFAULT_SWEEP_SEEDS),
                         help="also sweep seeds 0..N-1 and report each comparison's rejection rate (0 = skip)")
     args = parser.parse_args(argv)
-    sweep = sweep_seeds(args.family, args.n_lots, range(args.sweep_seeds)) if args.sweep_seeds > 0 else ()
-    print(format_report(run_realism_comparisons(args.family, args.n_lots, args.seed), sweep))
+    # Bad arguments are a usage error (exit 2, message on stderr), not a traceback from deep in the generator.
+    if args.n_lots < 1:
+        parser.error(f"--n-lots must be >= 1, got {args.n_lots}")
+    if args.seed < 0:
+        parser.error(f"--seed must be >= 0, got {args.seed}")
+    if args.sweep_seeds < 0:
+        parser.error(f"--sweep-seeds must be >= 0, got {args.sweep_seeds}")
+    try:
+        family = resolve_family(args.family)
+    except (TypeError, ValueError) as error:
+        parser.error(str(error))
+    sweep = sweep_seeds(family, args.n_lots, range(args.sweep_seeds)) if args.sweep_seeds > 0 else ()
+    print(format_report(run_realism_comparisons(family, args.n_lots, args.seed), sweep))
 
 
 if __name__ == "__main__":

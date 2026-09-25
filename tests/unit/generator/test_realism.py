@@ -129,6 +129,12 @@ def test_sweep_covers_every_comparison_and_seed(sweep):
     assert all(s.n_seeds == len(DEFAULT_SWEEP_SEEDS) for s in sweep.values())
 
 
+def test_every_comparison_is_computable_on_every_seed(results, sweep):
+    # Otherwise "0 rejections" could mean "nothing was compared" - a gate must never pass by being empty.
+    assert all(r.computable for r in results)
+    assert all(s.not_computable == 0 for s in sweep.values()), {n: s.not_computable for n, s in sweep.items()}
+
+
 @pytest.mark.parametrize("name", _names("gate"))
 def test_gated_comparison_is_not_rejected_on_the_default_seed(results, name):
     r = next(r for r in results if r.name == name)
