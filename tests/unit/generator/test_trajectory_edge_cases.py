@@ -3,8 +3,8 @@
 - determinism (same seed -> identical output), including a pinned golden snapshot so the output
   can't drift silently between machines or refactors (AGENTS.md rule 9);
 - ground-truth never leaking into any production-facing contract (models *and* DB columns);
-- held-out family knobs that exist at this stage, plus a strict-xfail placeholder for the full
-  five-family registry, which lands in P1.3;
+- held-out family knobs that exist at this stage, plus a five-family presence check (a P1.2
+  strict-xfail placeholder, un-xfailed in P1.3 once the registry landed);
 - numerical robustness (overflow, non-finite values), malformed hand-built inputs, and aliasing.
 """
 import dataclasses
@@ -219,12 +219,11 @@ def test_trajectory_values_carry_no_ground_truth_labels():
 # Held-out families (7.3) - the knobs this stage owns, plus the P1.3 registry placeholder
 # =============================================================================================
 
-@pytest.mark.xfail(raises=ImportError, strict=True,
-                   reason="Five-family registry is E1 step 9 - lands in P1.3. Strict: remove this marker then.")
 def test_all_five_held_out_families_present():
-    from generator.families import HELD_OUT_FAMILIES
+    # P1.2 placeholder, un-xfailed in P1.3 now that the registry exists (full coverage: test_families.py).
+    from generator.families import FAMILIES, HELD_OUT_FAMILY_NAMES
 
-    assert set(HELD_OUT_FAMILIES) == {
+    assert set(HELD_OUT_FAMILY_NAMES) == set(FAMILIES) == {
         "baseline", "wider_drift_exponent", "higher_defect_prevalence", "different_noise_regime",
         "altered_correlation",
     }

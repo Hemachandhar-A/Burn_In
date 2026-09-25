@@ -46,6 +46,7 @@ class LotGroundTruth:
     """Everything the harness needs to score a model on this lot - and nothing the model may see."""
 
     family: str
+    family_spec: GeneratorFamily  # the exact settings used - a name alone is ambiguous for custom families
     seed: int  # the caller's seed; the lot's draws come from (seed, lot_id, part_number) - see generate_lot
     nominal_checkpoint_hours: tuple[float, ...]
     baselines: LotBaseline  # lot centers/spreads, prevalence, per-part baseline and is_defective
@@ -64,6 +65,9 @@ def _require_text(name: str, value) -> str:
         raise TypeError(f"{name} must be a str, got {type(value).__name__}")
     if not value.strip():
         raise ValueError(f"{name} must be a non-empty string, got {value!r}")
+    # " L1" and "L1" would be two different lots here but one lot to any consumer that strips input.
+    if value != value.strip():
+        raise ValueError(f"{name} must not have leading or trailing whitespace, got {value!r}")
     # Control characters (newline, tab, NUL) break a CSV/JSON consumer downstream, and a lone surrogate
     # can't be UTF-8 encoded at all - the dataset would fail to serialize after being generated.
     bad = [c for c in value if unicodedata.category(c) in ("Cc", "Cs")]
@@ -171,6 +175,7 @@ def generate_lot(
         dataset=dataset,
         ground_truth=LotGroundTruth(
             family=family.name,
+            family_spec=family,
             seed=seed,
             nominal_checkpoint_hours=nominal,
             baselines=baselines,

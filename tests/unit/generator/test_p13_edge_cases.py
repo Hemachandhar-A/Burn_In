@@ -396,3 +396,67 @@ def test_very_large_seed_supported_and_deterministic():
 def test_invalid_seed_rejected_before_any_generation(bad_seed):
     with pytest.raises((TypeError, ValueError)):
         _lot(seed=bad_seed)
+
+
+# --- second review pass -------------------------------------------------------------------
+
+def test_measured_checkpoint_hours_normalized_for_hand_built_trajectories():
+    # A hand-built lot with integer/list hours must come back as the validated float tuple, not echoed raw.
+    traj = _traj()
+    measured = measure_lot(dataclasses.replace(traj, checkpoint_hours=[0, 24, 96, 168]), seed=1)
+    assert measured.checkpoint_hours == (0.0, 24.0, 96.0, 168.0)
+    assert all(type(h) is float for h in measured.checkpoint_hours)
+
+
+class _TunedParams(MeasurementParams):  # module level so pickle can find it by name
+    pass
+
+
+def test_measurement_params_subclass_survives_pickle():
+    params = _TunedParams(n_reference_parts=4)
+    for clone in (pickle.loads(pickle.dumps(params)), copy.deepcopy(params)):
+        assert type(clone) is _TunedParams and clone == params
+
+
+@pytest.mark.parametrize("field", ["lot_id", "part_number", "account_id", "manufacturer", "date_code"])
+@pytest.mark.parametrize("padded", [" L1", "L1 ", " L1"])
+def test_whitespace_padded_text_rejected(field, padded):
+    # " L1" and "L1" would be different lots here but the same lot to any consumer that strips whitespace.
+    with pytest.raises(ValueError):
+        _lot(**{field: padded})
+
+
+def test_inner_whitespace_allowed():
+    assert _lot(manufacturer="ACME Sim Labs").dataset.readings[0].manufacturer == "ACME Sim Labs"
+
+
+def test_ground_truth_records_the_full_family_spec_for_custom_families():
+    # Two different custom families can share a name across runs; the sidecar must still say exactly what
+    # generated the lot, and be enough to regenerate it.
+    custom = dataclasses.replace(FAMILIES["baseline"], name="custom", description="custom test family",
+                                 die_correlation=0.3)
+    lot = _lot(family=custom)
+    assert lot.ground_truth.family_spec == custom
+    gt = lot.ground_truth
+    again = generate_lot(gt.baselines.lot_id, gt.baselines.part_number, gt.seed, account_id="acct-test",
+                         family=gt.family_spec, checkpoint_hours=gt.nominal_checkpoint_hours)
+    assert again.dataset == lot.dataset
+
+
+def test_ground_truth_family_spec_matches_registry_for_named_families():
+    for name, family in FAMILIES.items():
+        assert _lot(family=name, n_parts=2).ground_truth.family_spec == family
+
+
+def test_family_descriptions_state_their_actual_settings():
+    wide = FAMILIES["wider_drift_exponent"]
+    lo, hi = wide.config.power_law_exponent_range
+    assert f"[{lo:.2f}, {hi:.2f}]" in wide.description
+    prev = FAMILIES["higher_defect_prevalence"]
+    assert f"{prev.config.defect_prevalence_range[0]:.0%}".rstrip("%") in prev.description
+    noise = FAMILIES["different_noise_regime"].measurement_params
+    assert f"df={noise.noise_tail_df:g}" in FAMILIES["different_noise_regime"].description
+    assert f"only {noise.n_reference_parts} reference parts" in FAMILIES["different_noise_regime"].description
+    corr = FAMILIES["altered_correlation"]
+    assert f"{corr.die_correlation:g})" in corr.description
+    assert f"({corr.trajectory_params.severity_correlation:g})" in corr.description

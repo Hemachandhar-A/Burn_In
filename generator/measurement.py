@@ -104,7 +104,7 @@ class MeasurementParams:
     def __reduce__(self):
         # MappingProxyType can't be pickled; rebuild through __init__ (re-validated, re-frozen) instead, so
         # params and the families holding them can cross process boundaries (a parallel harness) and deepcopy.
-        return (MeasurementParams, (dict(self.noise_frac), dict(self.resolution), dict(self.tester_offset_sigma),
+        return (type(self), (dict(self.noise_frac), dict(self.resolution), dict(self.tester_offset_sigma),
                                     self.n_reference_parts, self.noise_tail_df))
 
 
@@ -129,7 +129,7 @@ def _quantize(value: float, step: float, name: str) -> float:
     return float(round(q, _step_decimals(step)))
 
 
-def _validate_trajectories(trajectories) -> None:
+def _validate_trajectories(trajectories) -> tuple[float, ...]:
     """measure_lot also accepts hand-built trajectories (tests, the harness); generate_lot_trajectories
     always produces valid ones. Anything malformed is rejected rather than silently truncated or dropped."""
     if not isinstance(trajectories, LotTrajectories):
@@ -157,6 +157,7 @@ def _validate_trajectories(trajectories) -> None:
             for v in series:
                 if _check_finite(f"{cid} {name} value", v) <= 0:
                     raise ValueError(f"part {cid!r} {name} true value must be > 0, got {v}")
+    return hours
 
 
 def _require_finite(what: str, value: float) -> float:
@@ -169,7 +170,7 @@ def _require_finite(what: str, value: float) -> float:
 
 def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementParams | None = None) -> MeasuredLot:
     params = MeasurementParams() if params is None else params
-    _validate_trajectories(trajectories)
+    hours = _validate_trajectories(trajectories)  # normalized float tuple, never the raw caller input
     if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
         raise TypeError(f"seed must be an int, got {type(seed).__name__}")
     if seed < 0:
@@ -178,7 +179,7 @@ def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementPar
         raise TypeError(f"params must be a MeasurementParams, got {type(params).__name__}")
     seed = int(seed)
     names = tuple(PARAMETERS)
-    n_ckpt = len(trajectories.checkpoint_hours)
+    n_ckpt = len(hours)
     df = params.noise_tail_df
 
     lot_rng = np.random.default_rng(np.random.SeedSequence(entropy=seed, spawn_key=(_MEASUREMENT_LOT_STREAM,)))
@@ -233,7 +234,7 @@ def measure_lot(trajectories: LotTrajectories, seed: int, params: MeasurementPar
         values[part.component_id] = {name: tuple(s) for name, s in series.items()}
 
     return MeasuredLot(
-        checkpoint_hours=trajectories.checkpoint_hours,
+        checkpoint_hours=hours,
         values=values,
         truth=MeasurementTruth(
             reference_values=reference_values,
