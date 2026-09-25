@@ -11,6 +11,28 @@ from generator.parameters import PARAMETERS
 from generator.schema import LotBaseline, PartBaseline
 
 
+def _validate_inputs(lot_id: str, part_number: str, n_parts: int, seed: int, config: ScreeningConfig) -> None:
+    if not lot_id or not lot_id.strip():
+        raise ValueError(f"lot_id must be a non-empty string, got {lot_id!r}")
+    if not part_number or not part_number.strip():
+        raise ValueError(f"part_number must be a non-empty string, got {part_number!r}")
+    if isinstance(n_parts, bool) or not isinstance(n_parts, int):
+        raise TypeError(f"n_parts must be an int, got {type(n_parts).__name__}")
+    if n_parts < 1:
+        raise ValueError(f"n_parts must be >= 1, got {n_parts}")
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise TypeError(f"seed must be an int, got {type(seed).__name__}")
+    if seed < 0:
+        raise ValueError(f"seed must be >= 0, got {seed}")
+
+    prevalence_lo, prevalence_hi = config.defect_prevalence_range
+    if not (0.0 <= prevalence_lo <= prevalence_hi <= 1.0):
+        raise ValueError(
+            "config.defect_prevalence_range must satisfy 0.0 <= lo <= hi <= 1.0, "
+            f"got ({prevalence_lo}, {prevalence_hi})"
+        )
+
+
 def generate_lot_baselines(
     lot_id: str,
     part_number: str,
@@ -18,10 +40,8 @@ def generate_lot_baselines(
     seed: int,
     config: ScreeningConfig | None = None,
 ) -> LotBaseline:
-    if n_parts < 1:
-        raise ValueError(f"n_parts must be >= 1, got {n_parts}")
-
     config = config or ScreeningConfig()
+    _validate_inputs(lot_id, part_number, n_parts, seed, config)
     rng = np.random.default_rng(seed)
 
     lot_center = {
