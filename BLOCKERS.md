@@ -19,3 +19,8 @@ Entry format:
 - Status: OPEN - for now, `uv run python -m scripts.seed` is the working invocation; every developer's local setup step should use that form until this is resolved one way or the other.
 
 ---
+
+## 2026-09-25 P5 - Blocked on P3.3/P4.3 and P2.6
+- Blocked on: P3.3 and P4.3 are not merged into develop, preventing session P5.2. P2.6 is also not merged into develop, preventing fallback to session P5.4.
+- What was tried: Ran `git fetch origin` and `git log origin/develop`. Found no commits indicating P3.3, P4.3, or P2.6 have landed.
+- Status: OPEN
