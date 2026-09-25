@@ -1,0 +1,359 @@
+"""E1 steps 4-6: healthy power-law drift, Arrhenius-scaled defect trajectories, and the shared
+defect-severity correlation factor.
+
+Healthy parts (step 4, context.md 1.4 / 3.3 - NBTI power-law):
+    value_p(t) = baseline_p + A_p * t**n_p
+with n_p ~ U(config.power_law_exponent_range) and A_p set so the 168h drift is a lognormally
+randomized fraction of baseline. n and A are drawn independently per parameter, so healthy
+drift stays near-independent across parameters (step 6).
+
+Defective parts (step 5) add a defect term on top of that same healthy drift:
+    defect_p(t) = severity_p * defect_scale_p * baseline_p * g(AF * max(0, t - onset))
+where g is the archetype's growth shape and AF is the Arrhenius acceleration factor of the part's
+junction temperature relative to the nominal burn-in temperature, with Ea drawn per defect
+instance from config.activation_energy_range_eV (context.md 3.3). AF scales the defect's
+effective time: a defect with a larger Ea is more sensitive to the chamber running hot.
+
+Step 6: severity_p shares one latent "defect severity" factor across the three parameters
+(correlation TrajectoryParams.severity_correlation); healthy parts have no such shared factor.
+
+Disclosed defaults, not measured values (context.md Part 8): the 125 C nominal burn-in temperature
+(the common MIL-STD-883 TM1015 condition), the chamber tolerance, the self-heating range, the
+severity distribution and correlation, and the archetype shapes/onset windows below.
+
+Randomness is drawn from per-lot and per-part streams derived from `seed` via SeedSequence
+spawn keys, and every part draws the same sequence whether or not it is defective - so the
+output is deterministic (AGENTS.md rule 9) and a part's trajectory depends only on its own draws
+and t, never on which later checkpoints were requested.
+"""
+import math
+import numbers
+from collections.abc import Iterable, Mapping
+from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
+from itertools import pairwise
+from types import MappingProxyType
+
+import numpy as np
+
+from contracts import ScreeningConfig
+from generator.parameters import PARAMETERS
+from generator.schema import LotBaseline, LotTrajectories, PartBaseline, PartTrajectory
+
+BOLTZMANN_EV_PER_K = 8.617333262e-5
+KELVIN_OFFSET = 273.15
+DEFAULT_CHECKPOINT_HOURS: tuple[float, ...] = (0.0, 24.0, 96.0, 168.0)
+_REFERENCE_DURATION_HOURS = 168.0  # full campaign length that drift/defect magnitudes are expressed at
+# Smallest defect (relative to baseline, one full campaign after onset) that still counts as a defect.
+# A numerical-detectability floor, not a physical claim: below it the defect is lost in float noise
+# and a "defective" label would sit on a trajectory indistinguishable from healthy.
+_MIN_DEFECT_RELATIVE_MAGNITUDE = 1e-9
+
+# SeedSequence spawn-key namespaces. Baselines use default_rng(seed) directly, so these are
+# distinct streams from it and from each other.
+_LOT_STREAM = 1
+_PART_STREAM = 2
+
+
+@dataclass(frozen=True)
+class DefectArchetype:
+    name: str
+    onset_range_hours: tuple[float, float]  # (0, 0) = active from the start of burn-in
+    shape: str  # "power": g = (t_eff/168)**m ; "saturating": g = 1 - exp(-t_eff/tau)
+    shape_param_range: tuple[float, float]  # m for "power", tau (hours) for "saturating"
+
+
+# All archetypes share one per-parameter fingerprint (defect_scale) and differ in timing/shape only -
+# the "one generic defect severity mechanism" simplification disclosed in context.md 8.1.
+# Read-only: a caller mutating this registry would silently change every later lot's output.
+DEFECT_ARCHETYPES: Mapping[str, DefectArchetype] = MappingProxyType({
+    # Steadily worsening defect, faster-than-healthy (super-linear) growth, visible by 24h.
+    "progressive": DefectArchetype("progressive", (0.0, 0.0), "power", (1.0, 1.5)),
+    # Infant-mortality-like: fast early rise that plateaus - strongest signal at 24h.
+    "early_saturating": DefectArchetype("early_saturating", (0.0, 0.0), "saturating", (8.0, 48.0)),
+    # Latent defect that activates only after the 24h checkpoint (E1 step 5) - invisible to a
+    # 0h/24h-only view, onset before the 96h read so it is at least measurable later in the run.
+    "latent_post_24h": DefectArchetype("latent_post_24h", (24.0, 96.0), "power", (1.0, 1.5)),
+})
+_ARCHETYPE_NAMES = tuple(DEFECT_ARCHETYPES)
+
+
+def _check_finite(name: str, value: float) -> float:
+    """Non-numbers (incl. bool, which is an int subclass) are a TypeError; NaN/inf a ValueError.
+    Returns the value as a plain float."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise TypeError(f"{name} must be a real number, got {value!r}")
+    try:
+        as_float = float(value)
+    except OverflowError:  # an int too large for a float (e.g. 10**400)
+        raise ValueError(f"{name} is too large to represent as a float") from None
+    if not math.isfinite(as_float):
+        raise ValueError(f"{name} must be finite, got {value!r}")
+    return as_float
+
+
+def _check_pair(name: str, value) -> tuple[float, float]:
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        raise TypeError(f"{name} must be a (lo, hi) pair, got {value!r}")
+    return _check_finite(f"{name}[0]", value[0]), _check_finite(f"{name}[1]", value[1])
+
+
+@dataclass(frozen=True)
+class TrajectoryParams:
+    """Generator-internal knobs for steps 4-6 not carried by ScreeningConfig. P1.3's held-out
+    families (e.g. the altered-correlation family) vary these."""
+
+    reference_temp_c: float = 125.0  # nominal burn-in temperature the defect rates are defined at
+    lot_temp_tolerance_c: float = 3.0  # chamber temperature ~ U(ref - tol, ref + tol) per lot
+    self_heating_range_c: tuple[float, float] = (0.0, 8.0)  # per-part junction rise above chamber
+    severity_median: float = 1.0
+    severity_log_sigma: float = 0.6
+    severity_correlation: float = 0.8  # correlation of the log-severity across parameters, in [0, 1]
+
+    def __post_init__(self) -> None:
+        # Normalize to plain floats / a tuple so equal params compare and hash equal whether they were
+        # given as numpy scalars or a list (object.__setattr__ because the dataclass is frozen).
+        for name in ("reference_temp_c", "lot_temp_tolerance_c", "severity_median",
+                     "severity_log_sigma", "severity_correlation"):
+            object.__setattr__(self, name, _check_finite(name, getattr(self, name)))
+        lo, hi = _check_pair("self_heating_range_c", self.self_heating_range_c)
+        object.__setattr__(self, "self_heating_range_c", (lo, hi))
+        if self.reference_temp_c - self.lot_temp_tolerance_c + KELVIN_OFFSET <= 0:
+            raise ValueError("reference_temp_c - lot_temp_tolerance_c must be above absolute zero")
+        if self.lot_temp_tolerance_c < 0:
+            raise ValueError(f"lot_temp_tolerance_c must be >= 0, got {self.lot_temp_tolerance_c}")
+        if not 0.0 <= lo <= hi:
+            raise ValueError(f"self_heating_range_c must satisfy 0 <= lo <= hi, got ({lo}, {hi})")
+        if self.severity_median <= 0:
+            raise ValueError(f"severity_median must be > 0, got {self.severity_median}")
+        if self.severity_log_sigma < 0:
+            raise ValueError(f"severity_log_sigma must be >= 0, got {self.severity_log_sigma}")
+        if not 0.0 <= self.severity_correlation <= 1.0:
+            raise ValueError(f"severity_correlation must be in [0, 1], got {self.severity_correlation}")
+
+
+def arrhenius_acceleration_factor(activation_energy_eV: float, junction_temp_c: float, reference_temp_c: float) -> float:
+    """AF = exp(Ea/k * (1/T_ref - 1/T_j)) - JEDEC JEP122 Arrhenius acceleration (context.md 1.4)."""
+    ea = _check_finite("activation_energy_eV", activation_energy_eV)
+    t_j = _check_finite("junction_temp_c", junction_temp_c) + KELVIN_OFFSET
+    t_ref = _check_finite("reference_temp_c", reference_temp_c) + KELVIN_OFFSET
+    if ea <= 0:
+        raise ValueError(f"activation_energy_eV must be > 0, got {activation_energy_eV}")
+    if not (t_j > 0 and t_ref > 0):
+        raise ValueError("temperatures must be above absolute zero")
+    try:
+        return math.exp(ea / BOLTZMANN_EV_PER_K * (1.0 / t_ref - 1.0 / t_j))
+    except OverflowError:
+        raise ValueError(
+            f"Arrhenius factor overflows for Ea={ea} eV at {junction_temp_c} C vs {reference_temp_c} C"
+        ) from None
+
+
+def _validate_range(name: str, rng: tuple[float, float], lo_bound: float, hi_bound: float | None) -> None:
+    lo, hi = rng
+    try:
+        _check_finite(f"{name}[0]", lo)
+        _check_finite(f"{name}[1]", hi)
+    except TypeError as exc:  # ScreeningConfig coerces to float already; keep a bad range a ValueError
+        raise ValueError(str(exc)) from None
+    upper_ok = hi_bound is None or hi < hi_bound
+    if not (lo_bound < lo <= hi and upper_ok):
+        bound = f"< {hi_bound}" if hi_bound is not None else "finite"
+        raise ValueError(f"{name} must satisfy {lo_bound} < lo <= hi ({bound}), got ({lo}, {hi})")
+
+
+def _validate_checkpoints(checkpoint_hours) -> tuple[float, ...]:
+    # Order is meaningful, so unordered containers (sets, dicts) and strings are rejected outright
+    # rather than trusting whatever iteration order they happen to have.
+    if isinstance(checkpoint_hours, (str, bytes, AbstractSet, Mapping)) or not isinstance(checkpoint_hours, Iterable):
+        raise TypeError(f"checkpoint_hours must be an ordered sequence of numbers, got {checkpoint_hours!r}")
+    hours = tuple(checkpoint_hours)
+    if not hours:
+        raise ValueError("checkpoint_hours must be non-empty")
+    hours = tuple(_check_finite("checkpoint_hours entry", h) + 0.0 for h in hours)  # + 0.0: -0.0 -> 0.0
+    if any(h < 0 for h in hours):
+        raise ValueError(f"checkpoint_hours entries must be >= 0, got {hours}")
+    if any(b <= a for a, b in pairwise(hours)):
+        raise ValueError(f"checkpoint_hours must be strictly increasing, got {hours}")
+    return hours
+
+
+def _validate_inputs(lot, seed, config, params) -> None:
+    if not isinstance(lot, LotBaseline):
+        raise TypeError(f"lot must be a LotBaseline, got {type(lot).__name__}")
+    if isinstance(seed, bool) or not isinstance(seed, numbers.Integral):
+        raise TypeError(f"seed must be an int, got {type(seed).__name__}")
+    if seed < 0:
+        raise ValueError(f"seed must be >= 0, got {seed}")
+    if not isinstance(config, ScreeningConfig):
+        raise TypeError(f"config must be a ScreeningConfig, got {type(config).__name__}")
+    if not isinstance(params, TrajectoryParams):
+        raise TypeError(f"params must be a TrajectoryParams, got {type(params).__name__}")
+    # n in (0, 1): n <= 0 is no drift or decay, n >= 1 stops being sub-linear NBTI drift.
+    _validate_range("config.power_law_exponent_range", config.power_law_exponent_range, 0.0, 1.0)
+    _validate_range("config.activation_energy_range_eV", config.activation_energy_range_eV, 0.0, None)
+    _validate_lot(lot)
+
+
+def _validate_lot(lot: LotBaseline) -> None:
+    # generate_lot_baselines always produces a valid lot; this guards hand-built or edited ones.
+    for label in ("lot_id", "part_number"):
+        value = getattr(lot, label)
+        if not isinstance(value, str) or not value.strip():
+            raise TypeError(f"lot.{label} must be a non-empty str, got {value!r}")
+    # A one-shot iterable would be consumed here and then silently produce an empty lot.
+    if not isinstance(lot.parts, (list, tuple)):
+        raise TypeError(f"lot.parts must be a list or tuple, got {type(lot.parts).__name__}")
+    seen = set()
+    for part in lot.parts:
+        if not isinstance(part, PartBaseline):
+            raise TypeError(f"lot.parts entries must be PartBaseline, got {type(part).__name__}")
+        if not isinstance(part.component_id, str) or not part.component_id.strip():
+            raise TypeError(f"component_id must be a non-empty str, got {part.component_id!r}")
+        # Strictly boolean: a truthy non-bool (e.g. "no", 1.0) would otherwise flip the ground-truth label.
+        if not isinstance(part.is_defective, (bool, np.bool_)):
+            raise TypeError(f"part {part.component_id!r} is_defective must be a bool, got {part.is_defective!r}")
+        if part.lot_id != lot.lot_id or part.part_number != lot.part_number:
+            raise ValueError(
+                f"part {part.component_id!r} belongs to ({part.lot_id!r}, {part.part_number!r}), "
+                f"not this lot ({lot.lot_id!r}, {lot.part_number!r})"
+            )
+        if part.component_id in seen:
+            raise ValueError(f"duplicate component_id {part.component_id!r}")
+        seen.add(part.component_id)
+        # Exactly the three grounded parameters - an extra one is never silently dropped (context.md 4.2c).
+        if set(part.baseline) != set(PARAMETERS):
+            raise ValueError(
+                f"part {part.component_id!r} baseline must cover exactly {sorted(PARAMETERS)}, "
+                f"got {sorted(part.baseline)}"
+            )
+        for name, value in part.baseline.items():
+            if _check_finite(f"{part.component_id} baseline[{name}]", value) <= 0:
+                raise ValueError(f"part {part.component_id!r} baseline[{name}] must be > 0, got {value}")
+
+
+def _growth(archetype: DefectArchetype, shape_param: float, t_eff: float) -> float:
+    if archetype.shape == "power":
+        return (t_eff / _REFERENCE_DURATION_HOURS) ** shape_param
+    return 1.0 - math.exp(-t_eff / shape_param)
+
+
+def _generate_part(part, index, seed, chamber_temp_c, hours, config, params) -> PartTrajectory:
+    rng = np.random.default_rng(np.random.SeedSequence(entropy=seed, spawn_key=(_PART_STREAM, index)))
+    n_lo, n_hi = config.power_law_exponent_range
+    ea_lo, ea_hi = config.activation_energy_range_eV
+
+    # Fixed draw order, identical for healthy and defective parts.
+    drift_exponent, drift_amplitude = {}, {}
+    for name, spec in PARAMETERS.items():
+        n = float(rng.uniform(n_lo, n_hi))  # lo == hi returns lo exactly
+        drift_frac = float(rng.lognormal(np.log(spec.healthy_drift_frac_median), spec.healthy_drift_frac_sigma))
+        drift_exponent[name] = n
+        drift_amplitude[name] = drift_frac * part.baseline[name] / _REFERENCE_DURATION_HOURS ** n
+    heat_lo, heat_hi = params.self_heating_range_c
+    junction_temp_c = chamber_temp_c + float(rng.uniform(heat_lo, heat_hi))
+
+    archetype = DEFECT_ARCHETYPES[_ARCHETYPE_NAMES[int(rng.integers(len(_ARCHETYPE_NAMES)))]]
+    ea = float(rng.uniform(ea_lo, ea_hi))
+    onset_lo, onset_hi = archetype.onset_range_hours
+    onset_u = float(rng.random())
+    # Strictly after onset_lo when the window is non-degenerate (e.g. "only after the 24h checkpoint").
+    onset = onset_lo if onset_hi == onset_lo else onset_hi - onset_u * (onset_hi - onset_lo)
+    shape_lo, shape_hi = archetype.shape_param_range
+    shape_param = float(rng.uniform(shape_lo, shape_hi))
+    z_shared = float(rng.standard_normal())
+    z_own = rng.standard_normal(len(PARAMETERS))
+
+    rho = params.severity_correlation
+    af = arrhenius_acceleration_factor(ea, junction_temp_c, params.reference_temp_c)
+
+    # math (not numpy) so an overflow raises instead of silently producing inf; any overflow or
+    # non-finite result is surfaced as one clean ValueError rather than a corrupt trajectory.
+    try:
+        severity = {
+            name: params.severity_median * math.exp(
+                params.severity_log_sigma * (math.sqrt(rho) * z_shared + math.sqrt(1 - rho) * float(z_own[k]))
+            )
+            for k, name in enumerate(PARAMETERS)
+        }
+        values = {}
+        for name, spec in PARAMETERS.items():
+            b = float(part.baseline[name])
+            series = []
+            for t in hours:
+                v = b + drift_amplitude[name] * t ** drift_exponent[name]
+                if part.is_defective:
+                    t_eff = af * max(0.0, t - onset)
+                    v += severity[name] * spec.defect_scale * b * _growth(archetype, shape_param, t_eff)
+                series.append(float(v))
+            values[name] = tuple(series)
+        finite = all(math.isfinite(v) for v in severity.values()) and all(
+            math.isfinite(v) for series in values.values() for v in series
+        )
+    except OverflowError:
+        finite = False
+    if not finite:
+        raise ValueError(
+            f"trajectory for {part.component_id!r} is not finite - checkpoint_hours up to {hours[-1]} "
+            "or the severity/temperature params are outside a physically meaningful range"
+        )
+    # A part labeled defective must actually carry a visible defect. If AF or a severity underflows
+    # (to 0 or to a value lost when added to the baseline), the trajectory is healthy while the ground
+    # truth says defective - a silent mislabel. Judged one full campaign after onset, so it does not
+    # depend on which checkpoints were requested.
+    if part.is_defective:
+        growth_at_reference = _growth(archetype, shape_param, af * _REFERENCE_DURATION_HOURS)
+        weakest = min(severity[name] * spec.defect_scale for name, spec in PARAMETERS.items()) * growth_at_reference
+        if not weakest > _MIN_DEFECT_RELATIVE_MAGNITUDE:
+            raise ValueError(
+                f"defect term for {part.component_id!r} is numerically invisible (AF={af}, severity={severity}) - "
+                "the severity/temperature/activation-energy params are outside a physically meaningful range"
+            )
+
+    defective = bool(part.is_defective)
+    return PartTrajectory(
+        component_id=part.component_id,
+        lot_id=part.lot_id,
+        part_number=part.part_number,
+        baseline={name: float(v) for name, v in part.baseline.items()},
+        values=values,
+        is_defective=defective,
+        drift_exponent=drift_exponent,
+        drift_amplitude=drift_amplitude,
+        junction_temp_c=junction_temp_c,
+        defect_type=archetype.name if defective else None,
+        activation_energy_eV=ea if defective else None,
+        acceleration_factor=af if defective else None,
+        defect_onset_hours=onset if defective else None,
+        defect_severity=severity if defective else None,
+    )
+
+
+def generate_lot_trajectories(
+    lot: LotBaseline,
+    seed: int,
+    config: ScreeningConfig | None = None,
+    params: TrajectoryParams | None = None,
+    checkpoint_hours=DEFAULT_CHECKPOINT_HOURS,
+) -> LotTrajectories:
+    # `is None`, not `or`: a falsy wrong-type argument must fail validation, not become the defaults.
+    config = ScreeningConfig() if config is None else config
+    params = TrajectoryParams() if params is None else params
+    _validate_inputs(lot, seed, config, params)
+    hours = _validate_checkpoints(checkpoint_hours)
+    seed = int(seed)
+
+    lot_rng = np.random.default_rng(np.random.SeedSequence(entropy=seed, spawn_key=(_LOT_STREAM,)))
+    tol = params.lot_temp_tolerance_c
+    chamber_temp_c = params.reference_temp_c + float(lot_rng.uniform(-tol, tol))
+
+    parts = tuple(
+        _generate_part(part, i, seed, chamber_temp_c, hours, config, params) for i, part in enumerate(lot.parts)
+    )
+    return LotTrajectories(
+        lot_id=lot.lot_id,
+        part_number=lot.part_number,
+        checkpoint_hours=hours,
+        chamber_temp_c=chamber_temp_c,
+        parts=parts,
+    )
