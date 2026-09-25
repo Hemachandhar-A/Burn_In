@@ -54,6 +54,23 @@ describe('resolveApiBaseUrl', () => {
   })
 
   test.each([
+    ['http:///x.test:9000/', 'http://x.test:9000'],
+    ['HTTP://X.TEST', 'http://x.test'],
+    ['http://x.test:80/api//', 'http://x.test/api'],
+  ])('normalizes %j to %j', (value, expected) => {
+    expect(resolveApiBaseUrl({ VITE_API_BASE_URL: value, DEV: true })).toBe(expected)
+  })
+
+  test.each([
+    'http://user:pw@x.test', // fetch() refuses to build a Request from a URL with credentials
+    'http://user@x.test',
+  ])('rejects %j, which would make every request throw', (value) => {
+    expect(() => resolveApiBaseUrl({ VITE_API_BASE_URL: value, DEV: true })).toThrow(
+      /VITE_API_BASE_URL/,
+    )
+  })
+
+  test.each([
     'localhost:8000', // no scheme: would silently become a relative path
     'api.example.com',
     'ftp://files.test',

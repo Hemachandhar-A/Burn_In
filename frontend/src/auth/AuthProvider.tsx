@@ -29,9 +29,9 @@ function toSession(response: TEMP_TokenResponse): Session {
  * cookie, so a hard refresh drops it and the app returns to Login. A disclosed trade-off
  * (context.md Part 8.1), not a bug to "fix" by persisting it.
  *
- * The token is mirrored in a ref, written only from signIn/signOut, so the API client can read
- * the current one per request without being rebuilt (and without in-flight requests holding a
- * stale token).
+ * The token is mirrored in a ref, written only when a session starts or ends, so the API client
+ * can read the current one per request without being rebuilt (and without in-flight requests
+ * holding a stale token).
  */
 export function AuthProvider({ children, initialSession = null, onSessionEnd }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(initialSession)

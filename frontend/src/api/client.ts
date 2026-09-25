@@ -48,7 +48,11 @@ export function resolveApiBaseUrl(
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw invalid(raw, 'is not an http(s) URL (a missing "http://" looks like this too)')
   }
-  return value.replace(/\/+$/, '')
+  if (url.username || url.password) {
+    throw invalid(raw, 'contains credentials, which the browser refuses to send in a request URL')
+  }
+  // Rebuilt from the parsed URL, so the client gets its normalized form, not the raw spelling.
+  return url.origin + url.pathname.replace(/\/+$/, '')
 }
 
 interface ApiClientOptions {

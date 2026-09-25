@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Backend origin. Unset -> http://localhost:8000; empty string -> same-origin (demo build). */
+  /** Backend location; rules in resolveApiBaseUrl (src/api/client.ts) and .env.example. */
   readonly VITE_API_BASE_URL?: string
 }
 
