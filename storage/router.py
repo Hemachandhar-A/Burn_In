@@ -4,9 +4,9 @@ read routes - backs E6's Project Browser (list of `projects`) and History screen
 
 Scoped to exactly these three read paths for this session; `project_data`/`confirmed_outcomes`
 read routes (screens 3-4 reload, Part Detail's confirmed-outcome history) are a later session -
-`project_data.results_json` is still a TEMP_ANALYSIS_RESULTS_DICT shape (see
-storage/repository.py's module docstring) until E9/P2.7 pins the real one, so a route
-returning it as `ProjectDataResponse.results: AnalysisResults` would fail validation right now.
+`project_data.results_json` is a pinned (P2.7, see storage/repository.py's module docstring)
+but still plain-dict shape, not `contracts.AnalysisResults`, so a route returning it as
+`ProjectDataResponse.results: AnalysisResults` would still fail validation right now.
 
 No `Depends(get_current_account)` yet - `identity/` (P5.4) isn't merged, same interim as
 ingestion/router.py. Responses are built field-by-field from the ORM rows `storage.repository`

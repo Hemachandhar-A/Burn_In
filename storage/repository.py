@@ -4,19 +4,40 @@ these tables; every other stage calls these functions instead (AGENTS.md rule 2)
 Session P2.1: `save_account` and `save_project`.
 Session P2.6: `save_analysis_run`, `log_event`, `save_disposition_signoff`,
 `save_confirmed_outcome`, and every function's `query_*` counterpart.
+Session P2.7 (E9): pins the real `results_json` shape below, additively over P2.6's
+TEMP_ANALYSIS_RESULTS_DICT - no caller depended on a shape this doesn't still satisfy.
 
-TEMP_ANALYSIS_RESULTS_DICT: `save_analysis_run`'s `results` argument is a plain dict,
-not `contracts.AnalysisResults`, because `project_data.results_json` is documented
-(essential-features.md E11 step 4, context.md 5.15) to mirror E9's report JSON export,
-which doesn't exist yet (P2.7, this session's prerequisite for closing G3, hasn't run).
-Until E9 pins a real shape, this module expects:
-    {"per_component": {component_id: {
-        "verdict": "PASS" | "WATCH" | "REJECT",
-        "module_a_ran": bool, "module_b_ran": bool,
-        "predicted_168h": float | None, "actual_168h": float | None,
-    }}}
-and diffs three things per context.md 5.15: a module activating for the first time,
-a forecast resolving into an actual, and a verdict moving. Logged to CONTRACT_CHANGES.md.
+`save_analysis_run`'s `results` argument is a plain dict, not `contracts.AnalysisResults`
+- `RiskAssessment`/`LotDisposition` don't carry the per-component module-activation/
+forecast-resolution fields the diff needs, a gap already logged
+(CONTRACT_CHANGES.md 2026-09-25 P2.6). `project_data.results_json` is documented
+(essential-features.md E11 step 4, context.md 5.15) to mirror E9's report JSON export -
+`report/data.py` (P2.7) reads this same shape verbatim, so this IS that pinned shape now,
+not a placeholder waiting on a later session:
+    {
+      "per_component": {component_id: {
+          "verdict": "PASS" | "WATCH" | "REJECT",
+          "module_a_ran": bool, "module_b_ran": bool,
+          "predicted_168h": float | None, "actual_168h": float | None,
+          "explanation_sentence": str | None,  # NEW in P2.7 - optional, None until P5's
+                                                # explainability engine populates it
+      }},
+      "lot_disposition": {                     # NEW in P2.7 - optional; absent/None until
+          "pda_result": float,                 # fusion (P5) is wired (P2.5, currently
+          "verdict": str,                      # blocked - see BLOCKERS.md), mirrors
+          "is_forecast": bool,                 # contracts.LotDisposition's fields
+          "status": "IN_PROGRESS" | "COMPLETE",
+      } | None,
+    }
+The diff (`_diff_analysis_results`) only ever reads `per_component`'s five original keys,
+so this extension is backward-compatible with every existing caller/fixture; it still
+diffs the same three things per context.md 5.15: a module activating for the first time,
+a forecast resolving into an actual, and a verdict moving. `lot_disposition`/
+`explanation_sentence` are not diffed (no named case in context.md 5.15 covers them) -
+`report/data.py` reads them directly off the latest run instead.
+
+`project_data.raw_data`'s shape is pinned here too, also new this session:
+`LotDataset.model_dump(mode="json")` - nothing had pinned it before (see CONTRACT_CHANGES.md).
 """
 import uuid
 from datetime import UTC, datetime
