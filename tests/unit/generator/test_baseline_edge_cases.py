@@ -77,6 +77,23 @@ def test_accepts_very_large_seed():
     assert len(lot.parts) == 10
 
 
+def test_accepts_numpy_integer_n_parts_and_seed():
+    # A plausible real caller shape: n_parts/seed derived from a numpy array's .size or an
+    # np.random.SeedSequence spawn - neither is a Python `int` subclass, so a strict
+    # `isinstance(x, int)` check would wrongly reject legitimate numpy integer scalars.
+    lot = generate_lot_baselines(
+        lot_id="L1", part_number="PN-1", n_parts=np.int64(10), seed=np.int64(42)
+    )
+    assert len(lot.parts) == 10
+    assert isinstance(lot.parts[0].baseline["iddq"], float)
+
+
+def test_numpy_integer_seed_is_still_deterministic_and_matches_python_int_seed():
+    lot_a = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=10, seed=42)
+    lot_b = generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=10, seed=np.int64(42))
+    assert lot_a.lot_center == lot_b.lot_center
+
+
 # --- lot_id / part_number validation -----------------------------------------
 
 def test_rejects_empty_lot_id():
@@ -97,6 +114,50 @@ def test_rejects_empty_part_number():
 def test_rejects_whitespace_only_part_number():
     with pytest.raises(ValueError):
         generate_lot_baselines(lot_id="L1", part_number="  ", n_parts=10, seed=1)
+
+
+def test_rejects_non_string_lot_id():
+    # A plausible real bug: an int lot_id (e.g. a numeric lot number passed without str()).
+    # Must fail with a clear TypeError, not an uncontrolled AttributeError from .strip().
+    with pytest.raises(TypeError):
+        generate_lot_baselines(lot_id=123, part_number="PN-1", n_parts=10, seed=1)
+
+
+def test_rejects_non_string_part_number():
+    with pytest.raises(TypeError):
+        generate_lot_baselines(lot_id="L1", part_number=456, n_parts=10, seed=1)
+
+
+def test_rejects_none_lot_id():
+    with pytest.raises(TypeError):
+        generate_lot_baselines(lot_id=None, part_number="PN-1", n_parts=10, seed=1)
+
+
+def test_rejects_none_part_number():
+    with pytest.raises(TypeError):
+        generate_lot_baselines(lot_id="L1", part_number=None, n_parts=10, seed=1)
+
+
+# --- config type/value validation --------------------------------------------
+
+def test_rejects_wrong_type_config():
+    with pytest.raises(TypeError):
+        generate_lot_baselines(
+            lot_id="L1", part_number="PN-1", n_parts=10, seed=1,
+            config={"defect_prevalence_range": (0.01, 0.08)},
+        )
+
+
+def test_rejects_nan_in_prevalence_range():
+    config = ScreeningConfig(defect_prevalence_range=(float("nan"), 0.5))
+    with pytest.raises(ValueError):
+        generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=10, seed=1, config=config)
+
+
+def test_rejects_infinite_prevalence_range():
+    config = ScreeningConfig(defect_prevalence_range=(0.01, float("inf")))
+    with pytest.raises(ValueError):
+        generate_lot_baselines(lot_id="L1", part_number="PN-1", n_parts=10, seed=1, config=config)
 
 
 # --- config.defect_prevalence_range validation -------------------------------
