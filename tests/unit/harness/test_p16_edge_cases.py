@@ -114,9 +114,11 @@ def test_frames_report_lot_relative_statistics_whatever_the_fallback_threshold(m
 
 def test_the_feature_horizon_is_read_only():
     with pytest.raises(TypeError):
-        FEATURE_CHECKPOINTS["168h"] = 168.0  # type: ignore[index]
-    assert "168h" not in FEATURE_CHECKPOINTS
-    assert all("168h" not in f.elapsed_hours for f in golden_feature_frames())
+        FEATURE_CHECKPOINTS["336h"] = 336.0  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del FEATURE_CHECKPOINTS["168h"]  # type: ignore[attr-defined]
+    assert tuple(FEATURE_CHECKPOINTS) == ("0h", "24h", "96h", "168h")
+    assert all(set(f.elapsed_hours) == set(FEATURE_CHECKPOINTS) for f in golden_feature_frames())
 
 
 def test_the_parameter_table_is_read_only():

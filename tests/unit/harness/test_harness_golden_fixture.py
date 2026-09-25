@@ -152,26 +152,44 @@ def test_one_frame_per_component_parameter_pair():
     assert {(f.lot_id, f.part_number) for f in frames} == {(lot.lot_id, lot.part_number)}
 
 
-def test_frames_never_see_the_168h_read():
-    """AGENTS.md rule 6: a FeatureFrame is bounded by the 0h/24h/96h information horizon."""
+def test_frames_carry_the_complete_lots_168h_read():
+    """context.md 7.1 / CONTRACT_CHANGES.md 2026-09-25 Lead SUPERSEDES: Module A screens the full series of a
+    COMPLETE lot, so every frame carries the real 168h read - never None, never a placeholder."""
     for f in golden_feature_frames():
-        assert set(f.elapsed_hours) == set(FEATURE_CHECKPOINTS) == {"0h", "24h", "96h"}
-        assert set(f.robust_z) == {"0h", "24h", "96h"}
-    lot = golden_lot()
-    v168 = _values(lot, GOLDEN_PARAMETER, 168.0)
-    healthy = next(c for c in golden.component_ids() if c != GOLDEN_COMPONENT_ID and v168[c] != 10.0)
-    frame = next(f for f in golden_feature_frames() if (f.component_id, f.parameter) == (healthy, GOLDEN_PARAMETER))
-    assert v168[healthy] not in {frame.value_0h, frame.value_24h, frame.value_96h}
+        assert set(f.elapsed_hours) == set(FEATURE_CHECKPOINTS) == {"0h", "24h", "96h", "168h"}
+        assert set(f.robust_z) == {"0h", "24h", "96h", "168h"}
+        assert f.value_168h is not None and f.delta_168h is not None
+    golden_frame = next(f for f in golden_feature_frames()
+                        if (f.component_id, f.parameter) == (GOLDEN_COMPONENT_ID, GOLDEN_PARAMETER))
+    assert (golden_frame.value_168h, golden_frame.delta_168h) == (GOLDEN_PART_VALUE_UA, 0.0)
+
+
+def test_a_168h_read_never_leaks_into_earlier_checkpoint_fields(monkeypatch):
+    """AGENTS.md rule 6's spirit on this frame: each checkpoint's statistics use only that checkpoint's reads.
+    Scrambling every 168h read must move only the 168h fields."""
+    real_lot = golden_lot()
+    scrambled = real_lot.model_copy(update={"readings": [
+        r.model_copy(update={"value": r.value * 7.0 + 3.0}) if r.checkpoint_hour == 168.0 else r
+        for r in real_lot.readings]})
+    before = golden_feature_frames()
+    monkeypatch.setattr(golden, "golden_lot", lambda: scrambled)
+    after = golden_feature_frames()
+    early = ("value_0h", "value_24h", "value_96h", "delta_24h", "delta_96h", "lot_median_0h", "lot_median_24h")
+    for b, a in zip(before, after, strict=True):
+        assert [getattr(b, k) for k in early] == [getattr(a, k) for k in early]
+        assert {k: v for k, v in b.robust_z.items() if k != "168h"} ==                {k: v for k, v in a.robust_z.items() if k != "168h"}
+    assert any(b.value_168h != a.value_168h for b, a in zip(before, after))
 
 
 def test_frames_carry_the_lot_readings_verbatim():
     lot = golden_lot()
     for f in golden_feature_frames():
-        v = {h: _values(lot, f.parameter, h)[f.component_id] for h in (0.0, 24.0, 96.0)}
-        assert (f.value_0h, f.value_24h, f.value_96h) == (v[0.0], v[24.0], v[96.0])
+        v = {h: _values(lot, f.parameter, h)[f.component_id] for h in (0.0, 24.0, 96.0, 168.0)}
+        assert (f.value_0h, f.value_24h, f.value_96h, f.value_168h) == (v[0.0], v[24.0], v[96.0], v[168.0])
         assert f.delta_24h == v[24.0] - v[0.0]
         assert f.delta_96h == v[96.0] - v[0.0]
-        assert f.elapsed_hours == {"0h": 0.0, "24h": 24.0, "96h": 96.0}
+        assert f.delta_168h == v[168.0] - v[0.0]
+        assert f.elapsed_hours == {"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0}
 
 
 def test_golden_frame_robust_z_is_the_e2_step1_formula_by_hand():
@@ -180,7 +198,7 @@ def test_golden_frame_robust_z_is_the_e2_step1_formula_by_hand():
     frame = next(f for f in golden_feature_frames()
                  if (f.component_id, f.parameter) == (GOLDEN_COMPONENT_ID, GOLDEN_PARAMETER))
     assert frame.lot_median_0h == frame.lot_median_24h == GOLDEN_LOT_MEDIAN_UA
-    for label, hour in (("0h", 0.0), ("24h", 24.0), ("96h", 96.0)):
+    for label, hour in (("0h", 0.0), ("24h", 24.0), ("96h", 96.0), ("168h", 168.0)):
         values = np.array(list(_values(lot, GOLDEN_PARAMETER, hour).values()))
         q75, q25 = np.percentile(values, [75, 25])
         expected = (GOLDEN_PART_VALUE_UA - np.median(values)) / ((q75 - q25) / 1.35)
@@ -195,7 +213,17 @@ def test_median_parts_have_zero_z_everywhere():
     assert ids and GOLDEN_COMPONENT_ID not in ids
     for f in golden_feature_frames():
         if f.component_id in ids:
-            assert f.robust_z == {"0h": 0.0, "24h": 0.0, "96h": 0.0}
+            assert f.robust_z == {"0h": 0.0, "24h": 0.0, "96h": 0.0, "168h": 0.0}
+
+
+def test_the_golden_part_stays_flag_worthy_as_the_lot_widens_by_168h():
+    """The healthy spread is 10% wider at 168h while the part holds at 45 uA: its 168h z is the lowest of its
+    four, and still far beyond any plausible REVIEW threshold - the flag cannot depend on the tight 0h spread."""
+    frame = next(f for f in golden_feature_frames()
+                 if (f.component_id, f.parameter) == (GOLDEN_COMPONENT_ID, GOLDEN_PARAMETER))
+    z = frame.robust_z
+    assert z["168h"] < z["0h"] and z["168h"] == min(z.values())
+    assert z["168h"] > 6.0
 
 
 # --- flag definition and the TEMP_ Module A adapter -----------------------------------------------

@@ -24,7 +24,14 @@ depends on harness-tuned thresholds (P1.7) that do not exist yet. Anything outsi
 (AGENTS.md rule 10) is an error, never counted either way.
 
 `golden_feature_frames()` builds Module A's contracted input by hand (E2 step 1's robust z, lot-relative, per
-checkpoint), so the Module A golden test does not depend on P2's features stage being real. The integration
+checkpoint), so the Module A golden test does not depend on P2's features stage being real. The lot is COMPLETE,
+so the frames carry its real 168h reads too - value_168h, delta_168h, robust_z["168h"], elapsed_hours["168h"] -
+because Module A is the post-hoc full-series screen (context.md 7.1; CONTRACT_CHANGES.md, 2026-09-25 Lead
+SUPERSEDES entry). At 168h the golden part still reads 45 uA while the healthy spread has widened 10%, so its
+168h robust z is the lowest of its four - the flag must survive the lot's own burn-in drift, not just the
+tight 0h spread. Its delta_168h is 0 against a healthy delta median of 0: it is a static level outlier, not a
+drifter, which is exactly the worked example. AGENTS.md rule 6 bounds Module B's inputs (0h/24h), not this
+frame: each checkpoint's statistics use only that checkpoint's reads, and no 168h value feeds a 0h/24h field. The integration
 suite separately runs the same lot through features.compute() and fusion.run_full_pipeline() once those exist.
 
 Every stage is reached through `resolve()`: a stage whose top-level package is absent from the repo raises
@@ -75,8 +82,8 @@ GOLDEN_ACCOUNT_ID = "harness"
 GOLDEN_LOT_SIZE = 77  # context.md 3.3's typical lot; pinned, not ScreeningConfig.lot_size_default (see above)
 
 CHECKPOINT_HOURS = (0.0, 24.0, 96.0, 168.0)
-# the 0h/24h/96h horizon - never 168h (AGENTS.md rule 6). Read-only: a caller must not be able to widen it.
-FEATURE_CHECKPOINTS = MappingProxyType({"0h": 0.0, "24h": 24.0, "96h": 96.0})
+# Module A's checkpoints on a COMPLETE lot: the full recorded series, 168h included (context.md 7.1). Read-only.
+FEATURE_CHECKPOINTS = MappingProxyType({"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0})
 
 # (center, half-width of the healthy spread at 0h, unit). Iddq and delay centers are the generator's own
 # lot centers (generator/parameters.py); leakage is the worked example's 10 uA. Read-only, like PARAMETERS.
@@ -154,7 +161,7 @@ def golden_datasheet_limits() -> dict[str, Limit]:
 
 
 def golden_feature_frames() -> list[FeatureFrame]:
-    """Module A's contracted input for the golden lot, built by hand from the 0h/24h/96h reads only.
+    """Module A's contracted input for the golden lot, built by hand from every checkpoint of the COMPLETE lot.
     robust_z = (value - lot median) / (lot IQR / 1.35), per checkpoint (E2 step 1). The statistics are always
     this lot's own, so used_pooled_fallback is False by construction - it describes what was computed, not
     what ScreeningConfig's threshold would have chosen. Every frame gets its own dicts."""
@@ -178,8 +185,8 @@ def golden_feature_frames() -> list[FeatureFrame]:
                 z[label] = float((v[hour] - center) / sigma)
             frames.append(FeatureFrame(
                 component_id=component_id, lot_id=lot.lot_id, part_number=lot.part_number,
-                parameter=parameter, value_0h=v[0.0], value_24h=v[24.0], value_96h=v[96.0],
-                delta_24h=v[24.0] - v[0.0], delta_96h=v[96.0] - v[0.0],
+                parameter=parameter, value_0h=v[0.0], value_24h=v[24.0], value_96h=v[96.0], value_168h=v[168.0],
+                delta_24h=v[24.0] - v[0.0], delta_96h=v[96.0] - v[0.0], delta_168h=v[168.0] - v[0.0],
                 lot_median_0h=float(stats[parameter, 0.0][0]), lot_median_24h=float(stats[parameter, 24.0][0]),
                 robust_z=z, lot_size=GOLDEN_LOT_SIZE, used_pooled_fallback=False,
                 elapsed_hours=dict(FEATURE_CHECKPOINTS),
