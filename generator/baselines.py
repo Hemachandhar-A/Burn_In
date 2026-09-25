@@ -1,0 +1,58 @@
+"""E1 steps 1-3: lot/die baseline sampling and defect status assignment.
+
+Sampling order is fixed (lot centers for every parameter, then defect prevalence, then
+each part's defect status and per-parameter baseline) so that a fixed seed reproduces
+an identical LotBaseline every time (AGENTS.md rule 9, 7.3's determinism check).
+"""
+import numpy as np
+
+from contracts import ScreeningConfig
+from generator.parameters import PARAMETERS
+from generator.schema import LotBaseline, PartBaseline
+
+
+def generate_lot_baselines(
+    lot_id: str,
+    part_number: str,
+    n_parts: int,
+    seed: int,
+    config: ScreeningConfig | None = None,
+) -> LotBaseline:
+    if n_parts < 1:
+        raise ValueError(f"n_parts must be >= 1, got {n_parts}")
+
+    config = config or ScreeningConfig()
+    rng = np.random.default_rng(seed)
+
+    lot_center = {
+        name: float(rng.lognormal(mean=spec.lot_center_mu, sigma=spec.lot_center_sigma))
+        for name, spec in PARAMETERS.items()
+    }
+
+    prevalence_lo, prevalence_hi = config.defect_prevalence_range
+    defect_prevalence = float(rng.uniform(prevalence_lo, prevalence_hi))
+    defect_flags = rng.random(n_parts) < defect_prevalence
+
+    parts = []
+    for i in range(n_parts):
+        baseline = {
+            name: float(rng.lognormal(mean=np.log(lot_center[name]), sigma=spec.die_sigma))
+            for name, spec in PARAMETERS.items()
+        }
+        parts.append(
+            PartBaseline(
+                component_id=f"{lot_id}-{i:04d}",
+                lot_id=lot_id,
+                part_number=part_number,
+                baseline=baseline,
+                is_defective=bool(defect_flags[i]),
+            )
+        )
+
+    return LotBaseline(
+        lot_id=lot_id,
+        part_number=part_number,
+        lot_center=lot_center,
+        defect_prevalence=defect_prevalence,
+        parts=parts,
+    )
