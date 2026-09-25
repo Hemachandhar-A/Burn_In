@@ -14,12 +14,15 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         worst_parameter="iddq"
     )
     
+    is_forecast = lot.status == "IN_PROGRESS"
+    verdict = "LOT_ON_TRACK" if is_forecast else "ACCEPT"
+    
     disposition = LotDisposition(
         lot_id=lot.lot_id,
-        status="COMPLETE",
+        status=lot.status,
         pda_result=0.01,
-        verdict="ACCEPT",
-        is_forecast=False
+        verdict=verdict,
+        is_forecast=is_forecast
     )
     
     return AnalysisResults(
