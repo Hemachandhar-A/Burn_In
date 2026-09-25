@@ -68,3 +68,11 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-25 P2 - No field anywhere stores a lot's "test date"
+- Missing/wrong: `essential-features.md` E7 step 1 names "test date" as one of the metadata-form fields captured at ingestion (alongside part number, lot ID, manufacturer, date code), and E9 step 1 lists it as a field the generated report must print - but no `test_date` slot exists anywhere in `contracts.py`: not on `Reading`, not on `LotDataset`, not on `Project`. `Project.created_at` is a distinct concept (when the row was inserted/ingested), not the physical test date being recorded.
+- Why it matters: P2.2 (ingestion form) has nowhere contractual to put a value the uploader enters, and P2.7 (report) has nowhere to read it from - both would have to invent a location independently, which is exactly the drift the contract freeze exists to prevent.
+- Proposed fix: add `test_date: datetime` to `Project` (5.5) - it's a lot-level fact set once at ingestion, the same cardinality as `created_at`, `part_number`, `created_by` already on that table. Until resolved, P2.2 accepts `test_date` on `POST /lots` and stashes it in `ingestion/store.py`'s own interim per-lot record (not in any frozen contract type) so E9/P2.7 isn't blocked later; this is process-lifetime only and gets replaced once `Project.test_date` (or wherever the Lead decides) exists.
+- Status: RESOLVED - see Lead entry "Resolving P2's four open entries" above (item 1). `Project.test_date` added to `contracts.py`; `save_project` signature updated.
+
+---
