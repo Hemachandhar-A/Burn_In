@@ -33,7 +33,8 @@ METADATA = {"lot_id": "L1", "part_number": "PN-1", "manufacturer": "ACME", "date
 def test_post_lots_parses_and_stores_a_real_upload():
     response = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
     assert response.status_code == 200
-    assert response.json() == {"lot_id": "L1", "part_number": "PN-1", "status": "IN_PROGRESS", "reading_count": 2}
+    assert response.json() == {"lot_id": "L1", "part_number": "PN-1", "status": "IN_PROGRESS", "reading_count": 2,
+        "insufficient_data_components": []}
 
 
 def test_post_lots_requires_metadata_fields():
@@ -59,7 +60,8 @@ def test_post_lots_checkpoints_merges_into_the_existing_lot():
     checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
     response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
     assert response.status_code == 200
-    assert response.json() == {"lot_id": "L1", "part_number": "PN-1", "status": "IN_PROGRESS", "reading_count": 4}
+    assert response.json() == {"lot_id": "L1", "part_number": "PN-1", "status": "IN_PROGRESS", "reading_count": 4,
+        "insufficient_data_components": []}
 
 
 def test_post_lots_checkpoints_flips_status_to_complete_at_168h():

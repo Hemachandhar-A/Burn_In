@@ -117,3 +117,12 @@ Entry format:
 - Status: RESOLVED by P2.7 (both shapes pinned, documented, and consumed by `report/data.py`). **Follow-up for whoever lands P2.5/P5's fusion wiring**: populate `lot_disposition` and `per_component[*].explanation_sentence` when calling `save_analysis_run` - until then, every generated report honestly shows "not yet available" for PDA/disposition/explanation, which is correct, not a bug.
 
 ---
+
+## 2026-09-26 Lead - p2-ingestion merged; contract fixes applied; two follow-ups for P2 and P5/P2
+- Merged `p2-ingestion` into `develop` (AGENTS.md kept at `develop`'s version). Two contract fixes landed just before: `LotUploadResponse.insufficient_data_components: list[str] = []` (default `[]` so existing constructors and P5/P1 code keep working) and a pooled-fallback comment on `FeatureFrame.lot_median_0h/24h` (mirrored in Part 5.2 and Part 5.6). No `ModuleBInput` type exists in `contracts.py` (it is P4's `TEMP_ModuleBInput` inside `module_b/`), so P4 should carry the same comment on it.
+- **P2:** `insufficient_data_components` must now be populated from `ingestion.quality.check_missing_checkpoints` in `ingestion/router.py`, and `GET /lots/{lot_id}/quality` can stay as the detailed view. I updated the two assertions in `tests/unit/ingestion/test_router.py` that pinned the old exact response body (Lead edit in a P2 directory, limited to those two lines, because leaving `develop` red was worse). Also: the stale "no frozen field yet" `test_date` comment in the router can go now that `Project.test_date` exists.
+- **P2 is unblocked on P2.5** (`fusion.run_full_pipeline` and `storage.save_analysis_run` are both on `develop`).
+- **Still open, not resolved here:** `save_analysis_run` takes `results: dict`, not `contracts.AnalysisResults` as Part 5.5 specifies. It needs a dedicated look (the diff needs per-component module-activation/forecast-resolution fields that `RiskAssessment`/`LotDisposition` do not carry).
+- Status: RESOLVED (merge and fixes); the `save_analysis_run` mismatch remains OPEN.
+
+---
