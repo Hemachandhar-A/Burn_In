@@ -2,8 +2,8 @@
 
 Deliberately separate from contracts.py's Reading/LotDataset: `is_defective` is ground
 truth that must never leak into the production-facing schema (E1's "What it is";
-7.3 checklist). Trajectories (P1.2) are still noise-free internal objects; P1.3 turns them
-into real Reading objects, at which point all ground truth moves to a hidden sidecar file.
+7.3 checklist). Trajectories (P1.2) are noise-free internal objects; generator.lot turns them
+into real Reading objects, and everything in this module travels only in the ground-truth sidecar.
 """
 from dataclasses import dataclass
 
@@ -55,3 +55,20 @@ class LotTrajectories:
     checkpoint_hours: tuple[float, ...]  # elapsed burn-in hours each value was evaluated at
     chamber_temp_c: float  # this lot's actual chamber temperature (nominal +/- tolerance)
     parts: tuple[PartTrajectory, ...]
+
+
+@dataclass(frozen=True)
+class MeasurementTruth:
+    """Hidden tester-side ground truth for one lot (E1 step 7) - sidecar only. Per-checkpoint entries
+    are aligned 1:1 with MeasuredLot.checkpoint_hours: each checkpoint is its own tester session."""
+
+    reference_values: dict[str, tuple[float, ...]]  # per parameter -> known true value of each reference part
+    tester_offset: tuple[dict[str, float], ...]  # actual additive offset per checkpoint, per parameter
+    offset_estimate: tuple[dict[str, float], ...]  # offset inferred from the reference parts, then subtracted
+
+
+@dataclass(frozen=True)
+class MeasuredLot:
+    checkpoint_hours: tuple[float, ...]
+    values: dict[str, dict[str, tuple[float, ...]]]  # component_id -> parameter -> reading per checkpoint
+    truth: MeasurementTruth
