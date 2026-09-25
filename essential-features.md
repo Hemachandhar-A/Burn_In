@@ -137,7 +137,7 @@ Each feature below follows the same shape: what it is, how to build it, how prac
 1. Primary path: CSV lot-file upload plus a metadata form (part number, lot ID, manufacturer, date code, test date, per-parameter units).
 2. Secondary path: a "load synthetic demo lot" button, so the system is demonstrable without a file on hand.
 3. **Incremental ingestion**: uploading a new checkpoint file for a lot already on record merges it into that lot's history, matched by part ID, rather than requiring one pre-assembled file — this mirrors how real burn-in data actually arrives, in separate readout events over the campaign (see [`context.md` Part 5.4](./context.md#54-a-procedural-gap-found-by-re-checking-the-standard-data-arrives-per-checkpoint-not-per-lot)).
-4. Lot status field (In-Progress vs. Complete) — auto-updates as checkpoints accumulate, or user-set.
+4. Lot status field (In-Progress vs. Complete) — auto-updates as checkpoints accumulate, or user-set. **The trigger is explicit: a lot is Complete only once its schedule includes a 168h reading** (the measured value Full Disposition needs); a lot with readings past 168h but no 168h read, or any lot short of it, stays In-Progress. The generator (E1) follows the same rule, judged on the nominal schedule so a jittered 167.5h final read still counts.
 5. Schema validation with visible, specific error messages (not silent failure); fuzzy column-name matching with a confirmation step for ambiguous matches.
 6. Unit normalization to a canonical unit per parameter before any downstream processing.
 7. Data-quality checks: missing values, out-of-datasheet-range flags, duplicate part IDs.
