@@ -173,3 +173,12 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-27 Lead - RESOLVES P4's "Where do Module B's trained models come from when fusion calls module_b.predict()?"
+- **Decision: the synthetic prior is the permanent runtime behavior.** `module_b.predict(frames, ..., models=None)` training a per-part-number synthetic prior via P1's generator (14 fixed-seed Complete lots -> `features.compute` -> `calibrate_drift_models`, cached per part number) is how Module B works at runtime, not a placeholder pending real history. This project has never had a real Complete-lot dataset, so "wait for real history" was never going to happen; candidate (b) in P4's entry (use the part number's own history once >= 2 Complete lots exist) is not adopted. Callers may still pass `models=` explicitly.
+- Disclosed in `context.md` Part 8.1 (new Module B row): runtime predictions are calibrated on synthetic data, not the uploading organization's own history; a production system would recalibrate per part number once sufficient real history exists.
+- **P4:** set your copy of the entry (on `p4-module-b`) to RESOLVED, pointing here, on your next rebase - same pattern as the wide-CSV/test_date resolutions. Since this is now permanent, drop the `TEMP_` prefixes (`TEMP_synthetic_models`, `TEMP_SYNTHETIC_LOTS`) and the "TEMP model source" wording in `module_b/predictor.py`'s docstring.
+- **Demo-day risk, named requirement for L3:** the first `predict` call per part number generates and calibrates 14 synthetic lots, which is slow, and a cold first call during a live demo would stall. `scripts/build_demo.sh` and `scripts/demo.py` do not exist yet (`scripts/` holds only `seed.py`; L3 has not run), so nothing was added to `scripts/` here. **Requirement for session L3:** both `build_demo.sh` (before the server starts serving) and `demo.py` must pre-warm `module_b.predictor` for every part number the demo will use, at minimum the demo lot's (`DEMO-PN`, per `ingestion/router.py`'s `POST /lots/demo`) plus any part number a rehearsal upload uses, by calling the cached model builder once, and check the warm-up finishes before the first request is accepted.
+- Status: RESOLVED by Lead on `develop`; L3 pre-warm requirement OPEN until that session.
+
+---
