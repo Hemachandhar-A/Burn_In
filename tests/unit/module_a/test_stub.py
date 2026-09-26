@@ -195,3 +195,31 @@ class TestStubOutputShape:
         assert len(results) == 3
         params = {r.parameter for r in results}
         assert params == {"iddq", "leakage", "prop_delay"}
+
+    def test_lot_id_populated_from_frame(self):
+        """ModuleAResult.lot_id must match the FeatureFrame.lot_id it was built from.
+
+        Added after lot_id was added to ModuleAResult in the develop merge
+        (component IDs are only unique within a lot — a batch spanning lots must not collide).
+        """
+        from module_a.detect import detect
+
+        frame = _make_feature_frame(component_id="C001", lot_id="LOT999")
+        results = detect([frame])
+        assert results[0].lot_id == "LOT999", (
+            "lot_id must round-trip from FeatureFrame to ModuleAResult"
+        )
+
+    def test_lot_id_distinct_across_frames(self):
+        """When frames carry different lot_ids, each result carries its own lot_id."""
+        from module_a.detect import detect
+
+        frames = [
+            _make_feature_frame(component_id="C001", lot_id="LOT_A"),
+            _make_feature_frame(component_id="C002", lot_id="LOT_B"),
+        ]
+        results = detect(frames)
+        result_a = next(r for r in results if r.component_id == "C001")
+        result_b = next(r for r in results if r.component_id == "C002")
+        assert result_a.lot_id == "LOT_A"
+        assert result_b.lot_id == "LOT_B"
