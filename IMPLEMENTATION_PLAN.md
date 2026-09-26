@@ -459,6 +459,8 @@ class DPAWorkOrderResponse(BaseModel):
 | `GET /projects/{project_id}` | — | `ProjectDataResponse` | required | `storage/router.py` (P2) |
 | `GET /events` | — | `list[EventResponse]` | required | `storage/router.py` (P2) |
 | `GET /disposition-signoffs` | — | `list[DispositionRecord]` | required | `storage/router.py` (P2) |
+| `GET /projects/{project_id}/events` | — | `list[EventResponse]` | required | `storage/router.py` (P2) — per-project variant, additional to the global `GET /events` above, not a replacement |
+| `GET /projects/{project_id}/disposition-signoffs` | — | `list[DispositionRecord]` | required | `storage/router.py` (P2) — per-project variant, additional to the global `GET /disposition-signoffs` above, optional `component_id` filter |
 | `GET /settings` | — | `SettingsResponse` | required | `identity/router.py` (P5) |
 | `POST /settings/propose` | `SettingsProposalRequest` | `PendingSettingChange` | required | `identity/router.py` (P5) |
 | `POST /settings/signoff` | `SettingsSignoffRequest` | `SettingsResponse` | required | `identity/router.py` (P5) |
