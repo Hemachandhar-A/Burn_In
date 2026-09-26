@@ -327,3 +327,15 @@ def test_valid_iso_test_date_and_absent_test_date_still_work():
     assert client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26T14:30:00"}).status_code == 200
     other = {**METADATA, "lot_id": "L2"}
     assert client.post("/lots", files=_csv_file(VALID_CSV), data=other).status_code == 200
+
+
+def test_demo_route_attributes_its_events_and_project_to_the_acting_account():
+    """E7 step 11: every ingestion event carries the account that did it. Two different accounts, so a
+    hardcoded identity in load_demo_lot can match at most one of them."""
+    from storage import repository
+
+    for account in ("a.sharma", "r.mehta"):
+        lot_id = client.post("/lots/demo", data={"account_id": account}).json()["lot_id"]
+        events = {e.event_type: e.account_id for e in repository.query_events(lot_id)}
+        assert events == {"ingest": account, "analysis_run": account}
+        assert repository.query_project(lot_id).created_by == account
