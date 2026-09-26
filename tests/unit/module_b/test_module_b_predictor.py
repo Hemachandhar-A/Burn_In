@@ -132,3 +132,33 @@ def test_synthetic_models_are_cached_deterministic_and_keyed_to_the_part_number(
 
 def test_predict_without_models_uses_the_synthetic_prior_for_that_part_number(models, lot):
     assert predict(lot[:10]) == predict(lot[:10], models=models)
+
+
+# --- lot_id population (contract 2bc522c) ---------------------------------------------------------
+
+
+def test_result_lot_id_matches_its_input_on_both_construction_paths(models):
+    """predict() builds ModuleBResult in two places - the real forecast and _unavailable - and both must
+    carry the input's lot_id, including when lots are batched together and reuse component IDs."""
+    lot_a, lot_b = _lot_inputs(320), _lot_inputs(321)
+    # Real component IDs are only unique within a lot: strip the lot prefix so both lots share every ID.
+    reused = lambda lot: [i.model_copy(update={"component_id": f"U{i.component_id[-4:]}"}) for i in lot]  # noqa: E731
+    batch = reused(lot_a) + reused(lot_b)
+    assert {i.lot_id for i in batch} == {"PN-1-T320", "PN-1-T321"}
+
+    # Path 1: real forecast.
+    results = predict(batch, models=models)
+    assert any(not r.forecast_unavailable for r in results)
+    assert [r.lot_id for r in results] == [i.lot_id for i in batch]
+
+    # Path 2a: unavailable because the parameter is outside the trained three.
+    odd = [i.model_copy(update={"parameter": "vdd_ripple"}) for i in batch[:3] + batch[-3:]]
+    unavailable = predict(odd, models=models)
+    assert all(r.forecast_unavailable for r in unavailable)
+    assert [r.lot_id for r in unavailable] == [i.lot_id for i in odd]
+
+    # Path 2b: unavailable because a required input is non-finite (a different trigger, same builder).
+    bad = [i.model_copy(update={"value_24h": float("nan")}) for i in batch[:2] + batch[-2:]]
+    unusable = predict(bad, models=models)
+    assert all(r.forecast_unavailable for r in unusable)
+    assert [r.lot_id for r in unusable] == [i.lot_id for i in bad]
