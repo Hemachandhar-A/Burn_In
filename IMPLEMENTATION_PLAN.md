@@ -246,6 +246,11 @@ class RiskAssessment(BaseModel):
     verdict: Literal["PASS", "WATCH", "REJECT"]
     module_a_rank: float; module_b_rank: float   # two separate rankings, never fused — context.md 6.3
     worst_parameter: str
+    # Per-component detail the stored run diff (context.md 5.15) and the report need; required-but-nullable
+    module_a_ran: bool; module_b_ran: bool       # whether each module scored this component in this run
+    predicted_168h: float | None                 # Module B's forecast; None when unavailable
+    actual_168h: float | None                    # measured 168h once it exists (forecast resolved into an actual); else None
+    explanation_sentence: str | None             # E4 step 5's sentence; None until the explainability engine produces it
 
 class LotDisposition(BaseModel):
     lot_id: str; status: Literal["IN_PROGRESS", "COMPLETE"]

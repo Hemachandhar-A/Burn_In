@@ -11,7 +11,12 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         verdict="PASS",
         module_a_rank=1.0,
         module_b_rank=1.0,
-        worst_parameter="iddq"
+        worst_parameter="iddq",
+        module_a_ran=True,  # the stub stands in for both modules running
+        module_b_ran=True,
+        predicted_168h=None,
+        actual_168h=None,
+        explanation_sentence=None,
     )
     
     is_forecast = lot.status == "IN_PROGRESS"

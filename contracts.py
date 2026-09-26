@@ -182,6 +182,13 @@ class RiskAssessment(BaseModel):
     module_a_rank: float
     module_b_rank: float  # two separate rankings, never fused - context.md 6.3
     worst_parameter: str
+    # Per-component detail the stored run diff (context.md 5.15) and the report need. Required-but-nullable
+    # like FeatureFrame's optional fields: a producer must state them, never leave them implicit.
+    module_a_ran: bool  # Module A scored this component in this run
+    module_b_ran: bool  # Module B forecast this component in this run
+    predicted_168h: float | None  # Module B's forecast; None when unavailable
+    actual_168h: float | None  # the measured 168h once it exists (forecast resolved into an actual); else None
+    explanation_sentence: str | None  # E4 step 5's sentence; None until the explainability engine produces it
 
 
 class LotDisposition(BaseModel):
