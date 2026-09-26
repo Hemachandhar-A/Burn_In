@@ -64,6 +64,15 @@ Entry format:
 
 ---
 
+## 2026-09-26 P1 - MOCK_/TEMP_ stand in for the five routes Lot Dashboard + Part Detail need (P1.11)
+- Blocked on: `GET /lots/{lot_id}` (P5.3), `GET /parts/{component_id}` (P5.7), `POST /parts/{component_id}/disposition` (P5.5), `POST /parts/{component_id}/confirmed-outcome` (P5.8), `POST /lots/{lot_id}/dpa-work-order` (P5.8). None are in the live OpenAPI schema - `fusion/router.py`, `identity/`, `capa/` don't exist on any pushed branch as of this session (checked `git log origin/develop`: only P5.1's stub, `698d064`, has landed). `POST /lots/{lot_id}/report` (P2, report/router.py) is real and wired through the generated client as usual.
+- What was tried: `frontend/src/api/mocks.ts` adds seeded, deterministic (rule 9) generator functions - `MOCK_getLotSummary`, `MOCK_generateDpaWorkOrder`, `MOCK_getPartDetail`, `MOCK_submitDisposition`, `MOCK_submitConfirmedOutcome` - and the response types they return (`TEMP_LotSummaryResponse`, `TEMP_PartDetailResponse`, plus several `MOCK_*`/`TEMP_*` supporting types). Called from `frontend/src/api/lotDetail.ts` and `frontend/src/api/parts.ts`, the same one-function-per-route pattern as `api/auth.ts`. The response shapes also carry fields `contracts.py` doesn't have yet - logged separately in `CONTRACT_CHANGES.md` ("Lot Dashboard and Part Detail need fields `LotSummaryResponse`/`PartDetailResponse` don't carry").
+- Consequence: Part 7.3's Frontend row can't fully close for these two screens until real data replaces the synthetic generator - severities, PDA, verdicts, and explanations shown are plausible-looking, not computed by Module A/B.
+- When the real routes land: for each, the one function that calls its `MOCK_`/`TEMP_` version (`getLotSummary`, `generateDpaWorkOrder`, `getPartDetail`, `submitDisposition`, `submitConfirmedOutcome`) is edited to call the regenerated client instead - `downloadReport` in `lotDetail.ts` is the template for what that looks like (real route, already wired). Delete the corresponding mock function/types from `mocks.ts` once nothing else calls them, and mark this entry resolved.
+- Status: OPEN
+
+---
+
 ## 2026-09-26 P1 - POST /lots accepts lot ids that no later route can address
 - Blocked on: `ingestion/router.py` (P2). `POST /lots` takes `lot_id` as a form field and accepts any string, but every later call addresses the lot by URL path. Checked against the running app with TestClient: `lot_id` values `A/B`, `.` and `..` all create (200), then `POST /lots/{lot_id}/checkpoints` 404s for each, even with the id percent-encoded. Starlette decodes `%2F` before routing, and dot segments collapse in URLs. The same will hold for `GET /lots/{lot_id}` (P5.3) and the report route.
 - What was tried: the Ingest screen now refuses these ids before sending (`lotIdProblem` in `frontend/src/api/lots.ts`), so they can't be created from the UI. Any other client, or a CSV-driven script, still can.

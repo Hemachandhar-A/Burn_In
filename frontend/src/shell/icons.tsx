@@ -110,3 +110,31 @@ export const HourglassIcon = () => (
     <path d="M6.5 3.5h11M6.5 20.5h11M8 3.5v3.5l4 5-4 5v3.5M16 3.5v3.5l-4 5 4 5v3.5" />
   </Icon>
 )
+
+export const BarChartIcon = () => (
+  <Icon size={16}>
+    <path d="M5 20V10M12 20V4M19 20v-7" />
+  </Icon>
+)
+
+export const TrendUpIcon = () => (
+  <Icon size={16}>
+    <path d="M4 17 10 11l4 4 6.5-7.5" />
+    <path d="M15.5 6.5H21V12" />
+  </Icon>
+)
+
+export const DownloadIcon = () => (
+  <Icon>
+    <path d="M12 3v12M7 10.5 12 15l5-4.5" />
+    <path d="M4.5 18.5v1a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-1" />
+  </Icon>
+)
+
+export const ClipboardIcon = () => (
+  <Icon>
+    <rect x="5.5" y="4.5" width="13" height="16" rx="1.5" />
+    <path d="M9 4.5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+    <path d="M8.5 10.5h7M8.5 14h7M8.5 17.5h4.5" />
+  </Icon>
+)

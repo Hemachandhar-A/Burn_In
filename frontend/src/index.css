@@ -1030,3 +1030,368 @@ a.nav-item.active {
 .login-pin[readonly] {
   background: var(--sunken);
 }
+
+/* ---------------------------------------------------------------- verdict badges (shared) */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge-pass {
+  background: #e6f6ef;
+  color: var(--severity-pass);
+}
+
+.badge-watch {
+  background: #fdf1e2;
+  color: var(--severity-watch);
+}
+
+.badge-reject {
+  background: #fbe9e7;
+  color: var(--severity-reject);
+}
+
+/* ---------------------------------------------------------------- Lot Dashboard (E6 screen 3) */
+
+.lot-dashboard > * + * {
+  margin-top: 16px;
+}
+
+.lot-summary {
+  padding: 16px;
+}
+
+.lot-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.summary-label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.summary-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.forecast-chip {
+  color: var(--muted);
+}
+
+.lot-summary-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: var(--tint);
+  color: #334155;
+  font-size: 13px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.ranked-list .table th,
+.ranked-list .table td {
+  white-space: nowrap;
+}
+
+.dpa-result {
+  padding: 16px;
+}
+
+.dpa-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0 16px 16px;
+  list-style: none;
+}
+
+.dpa-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.dpa-component {
+  flex: none;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dpa-component:hover {
+  text-decoration: underline;
+}
+
+.dpa-reason {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- Part Detail (E6 screen 4) */
+
+.part-detail > * + * {
+  margin-top: 16px;
+}
+
+.part-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.part-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.part-detail-heading .chip {
+  gap: 6px;
+  font-size: 12px;
+}
+
+.part-detail-lot {
+  margin-top: -8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.part-detail-lot a {
+  text-decoration: none;
+  color: var(--text);
+}
+
+.part-detail-lot a:hover {
+  text-decoration: underline;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--border-strong);
+}
+
+.note-card-stale {
+  border-left-color: var(--severity-watch);
+}
+
+.note-card-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.note-card-text {
+  color: #334155;
+  font-size: 13px;
+}
+
+.part-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.trajectory-card {
+  padding: 16px;
+}
+
+.part-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diagnostic-card,
+.disagreement-card {
+  padding: 16px;
+}
+
+.confidence-chip {
+  background: var(--tint);
+  color: #334155;
+  text-transform: uppercase;
+}
+
+.diagnostic-text {
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.disagreement-pct {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--severity-watch);
+}
+
+.disagreement-pct.is-reject {
+  color: var(--severity-reject);
+}
+
+.disagreement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.disagreement-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.disagreement-net {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.drift-matrix .table th,
+.drift-matrix .table td {
+  white-space: nowrap;
+}
+
+.row-elevated td {
+  color: var(--severity-reject);
+}
+
+.contribution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.contribution-card {
+  padding: 16px;
+}
+
+.contribution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.contribution-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.contribution-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.contribution-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ink);
+}
+
+.disposition-card {
+  padding: 16px;
+}
+
+.disposition-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.past-signoff {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.disposition-textarea {
+  height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.disposition-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.record-outcome-toggle {
+  margin-left: auto;
+}
+
+.button-reject {
+  background: var(--severity-reject);
+}
+
+.button-reject:not(:disabled):hover {
+  background: #a31f14;
+}
+
+.confirmed-outcome-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--sunken);
+}
+
+.confirmed-outcome-row {
+  min-width: 200px;
+}
+
+.confirmed-outcome-list {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #334155;
+}
