@@ -196,7 +196,8 @@ def test_is_flagged_rejects_an_off_contract_tier(tier):
 @pytest.mark.parametrize("verdict,flagged", [("PASS", False), ("WATCH", True), ("REJECT", True)])
 def test_assessment_flagged_uses_the_part_verdict_vocabulary(verdict, flagged):
     a = RiskAssessment(component_id=GOLDEN_COMPONENT_ID, lot_id=GOLDEN_LOT_ID, verdict=verdict,
-                       module_a_rank=1.0, module_b_rank=1.0, worst_parameter=GOLDEN_PARAMETER)
+                       module_a_rank=1.0, module_b_rank=1.0, worst_parameter=GOLDEN_PARAMETER,
+                       module_a_ran=True, module_b_ran=True, predicted_168h=None, actual_168h=None, explanation_sentence=None)
     assert assessment_flagged(a) is flagged
 
 
@@ -449,7 +450,8 @@ def _analysis(*assessments, lot_id=GOLDEN_LOT_ID):
 
 def _assessment(component_id=GOLDEN_COMPONENT_ID, verdict="REJECT", lot_id=GOLDEN_LOT_ID):
     return RiskAssessment(component_id=component_id, lot_id=lot_id, verdict=verdict, module_a_rank=1.0,
-                          module_b_rank=1.0, worst_parameter=GOLDEN_PARAMETER)
+                          module_b_rank=1.0, worst_parameter=GOLDEN_PARAMETER,
+                          module_a_ran=True, module_b_ran=True, predicted_168h=None, actual_168h=None, explanation_sentence=None)
 
 
 def test_golden_assessment_picks_the_golden_component():
