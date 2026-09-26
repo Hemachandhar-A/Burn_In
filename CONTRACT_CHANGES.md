@@ -153,3 +153,14 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-26 Lead - ModuleBResult gains safety_slope; resolves P4's "no field for the safety slope" entry
+- Fix: `contracts.py` `ModuleBResult` gains `safety_slope: float | None` - the calibrated threshold `drift_rate` was compared against (E3 step 7's "threshold used"), same units as `drift_rate`. Same required-but-nullable pattern as `drift_rate`/`exceeds_safety_slope`: `None` whenever those are (forecast unavailable, or a parameter outside the trained three). IMPLEMENTATION_PLAN.md Part 5.3 mirrors it.
+- No separate field for E4's "38%" figure: that is `(drift_rate - safety_slope) / safety_slope`, computed where the explanation sentence is built (P5's explainability code), not stored.
+- Resolves P4's entry "2026-09-26 P4 - ModuleBResult has no field for the safety slope" (on the unmerged `p4-module-b` branch, so its Status line cannot be edited from here - **P4: set it to RESOLVED, pointing at this entry, on your next rebase**).
+- **P4:** drop `TEMP_ModuleBResult` and build `ModuleBResult` directly with `safety_slope=`. The field is required, so every `ModuleBResult(...)` construction needs it - the three in `module_b/stub.py` on your branch at minimum. Rebase onto `develop` first.
+- **P5:** the explanation sentence's percentage comes from `drift_rate` and `safety_slope` on `ModuleBResult`; guard `safety_slope` being `None` or zero before dividing.
+- Status: RESOLVED by Lead on `develop`.
+
+---
+

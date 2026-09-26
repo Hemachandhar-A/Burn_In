@@ -167,6 +167,7 @@ class ModuleBResult(BaseModel):
     physics_disagreement_gap: float | None
     drift_rate: float | None
     exceeds_safety_slope: bool | None
+    safety_slope: float | None  # the calibrated threshold drift_rate was compared against (E3 step 7's "threshold used"); same units as drift_rate; None whenever drift_rate/exceeds_safety_slope are
     forecast_unavailable: bool  # explicit flag - context.md 5.9
 
 
