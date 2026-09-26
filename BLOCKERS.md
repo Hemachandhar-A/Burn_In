@@ -61,3 +61,11 @@ Entry format:
 - What was tried: the Ingest screen shows those messages correctly (E7 step 5) and needs no change either way, since it sends the file as-is. Verified the screen's happy path with the long format, which the route accepts: POST /lots -> IN_PROGRESS, 24 readings; then POST /lots/{id}/checkpoints with a 168h file -> COMPLETE, 36 readings. Not fixing it here: `ingestion/` is P2's directory (rule 2).
 - Proposed fix (P2's call): detect the layout from the header row (`checkpoint_hour` present and no `parameter`/`value` column -> wide) and dispatch to `parse_wide_lot_csv`, in both upload routes.
 - Status: OPEN
+
+---
+
+## 2026-09-26 P1 - POST /lots accepts lot ids that no later route can address
+- Blocked on: `ingestion/router.py` (P2). `POST /lots` takes `lot_id` as a form field and accepts any string, but every later call addresses the lot by URL path. Checked against the running app with TestClient: `lot_id` values `A/B`, `.` and `..` all create (200), then `POST /lots/{lot_id}/checkpoints` 404s for each, even with the id percent-encoded. Starlette decodes `%2F` before routing, and dot segments collapse in URLs. The same will hold for `GET /lots/{lot_id}` (P5.3) and the report route.
+- What was tried: the Ingest screen now refuses these ids before sending (`lotIdProblem` in `frontend/src/api/lots.ts`), so they can't be created from the UI. Any other client, or a CSV-driven script, still can.
+- Proposed fix (P2's call): return 422 from `POST /lots` for a `lot_id` containing `/` or made only of dots, with the same wording, so the rule lives on the server too.
+- Status: OPEN

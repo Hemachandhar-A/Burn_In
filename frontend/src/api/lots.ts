@@ -91,8 +91,39 @@ export async function loadDemoLot(
 /** react-query cache key for `GET /projects`; invalidate it after anything that creates a lot. */
 export const PROJECTS_QUERY_KEY = ['projects'] as const
 
-/** `GET /projects`: every project on record (E11), newest first. */
+/** `GET /projects`: every project on record (E11), newest first. Ties keep server order. */
 export async function listProjects(client: ApiClient): Promise<ProjectSummary[]> {
   const projects = unwrap(await client.GET('/projects'))
-  return [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  // Plain string order, not localeCompare: ISO timestamps sort correctly as code points, and
+  // this can't vary with the browser's locale.
+  return [...projects].sort((a, b) =>
+    a.created_at === b.created_at ? 0 : a.created_at < b.created_at ? 1 : -1,
+  )
+}
+
+/**
+ * Why a lot id can't be used, or null. Every later call addresses a lot by URL path
+ * (`/lots/{lot_id}/...`). Starlette decodes `%2F` back to `/` before routing, and browsers
+ * collapse `.`/`..` path segments, so such a lot could be created and then never reached again
+ * (checked against the running backend: create 200, checkpoint 404).
+ */
+export function lotIdProblem(lotId: string): string | null {
+  if (lotId.includes('/')) return "Lot ID can't contain “/”: lots are addressed by URL path."
+  if (/^\.+$/.test(lotId)) return "Lot ID can't be only dots: lots are addressed by URL path."
+  return null
+}
+
+/**
+ * Throws a readable ApiError if a staged file can no longer be read. Browsers snapshot a chosen
+ * file, and one edited or deleted on disk since then fails to upload with a generic network
+ * error. Reading one byte first names the actual cause.
+ */
+export async function ensureReadable(file: File): Promise<void> {
+  try {
+    await file.slice(0, 1).arrayBuffer()
+  } catch {
+    throw new ApiError(0, [
+      `${file.name} changed or was removed after you chose it. Choose it again.`,
+    ])
+  }
 }

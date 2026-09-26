@@ -46,7 +46,9 @@ export async function MOCK_login(
   latencyMs = MOCK_LATENCY_MS,
 ): Promise<MOCK_TokenResponse> {
   await new Promise((resolve) => setTimeout(resolve, latencyMs))
-  const account = MOCK_SEEDED_PINS[request.account_id]
+  const account = Object.hasOwn(MOCK_SEEDED_PINS, request.account_id)
+    ? MOCK_SEEDED_PINS[request.account_id]
+    : undefined
   if (!account || account.pin !== request.pin) {
     throw new ApiError(401, ['Incorrect PIN for this account.'])
   }

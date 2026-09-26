@@ -104,6 +104,38 @@ describe('Login screen (E6 screen 1)', () => {
     expect(pin()).toHaveAttribute('aria-invalid', 'true')
     expect(signInButton()).toBeEnabled()
     expect(session()).toBe('none')
+    // Focus goes back to the PIN, so a keyboard user can retype straight away. (A disabled
+    // field can't take focus, so this only works if the PIN isn't disabled while pending.)
+    expect(pin()).toHaveFocus()
+  })
+
+  test('a whitespace-only PIN counts as empty and is never sent', () => {
+    const login = vi.spyOn(authApi, 'login')
+    renderLogin()
+    fireEvent.change(pin(), { target: { value: '   ' } })
+    fireEvent.click(signInButton())
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter your PIN.')
+    expect(login).not.toHaveBeenCalled()
+  })
+
+  test('while signing in the PIN cannot be edited, but stays focusable', () => {
+    vi.spyOn(authApi, 'login').mockReturnValue(new Promise(() => {}))
+    renderLogin()
+    fireEvent.change(pin(), { target: { value: '1234' } })
+    fireEvent.click(signInButton())
+    expect(pin()).toHaveAttribute('readonly')
+    expect(pin()).toBeEnabled()
+  })
+
+  test('identical server messages are all shown, without key collisions', async () => {
+    const errorSpy = vi.spyOn(console, 'error')
+    vi.spyOn(authApi, 'login').mockRejectedValue(new ApiError(401, ['Nope.', 'Nope.']))
+    renderLogin()
+    fireEvent.change(pin(), { target: { value: '0000' } })
+    fireEvent.click(signInButton())
+    const alert = await screen.findByRole('alert')
+    expect(alert.querySelectorAll('p')).toHaveLength(2)
+    expect(errorSpy).not.toHaveBeenCalled()
   })
 
   test('no readable response says so, rather than "Failed to fetch"', async () => {

@@ -263,6 +263,52 @@ describe('navigation shell', () => {
     expect(within(mainNav()).queryByRole('link', { name: 'Part Detail' })).toBeNull()
   })
 
+  test('the account menu closes when keyboard focus leaves it, but not when moving inside it', () => {
+    renderAt('/ingest')
+    const toggle = screen.getByRole('button', { name: 'Account menu' })
+    fireEvent.click(toggle)
+    const signOutButton = screen.getByRole('button', { name: 'Sign out' })
+
+    fireEvent.blur(toggle, { relatedTarget: signOutButton })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.blur(signOutButton, {
+      relatedTarget: within(mainNav()).getByRole('link', { name: 'History' }),
+    })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull()
+  })
+
+  test('a blur to nowhere (Safari clicking an unfocusable button) keeps the menu open', () => {
+    renderAt('/ingest')
+    const toggle = screen.getByRole('button', { name: 'Account menu' })
+    fireEvent.click(toggle)
+    fireEvent.blur(toggle, { relatedTarget: null })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(h1('Login')).toBeInTheDocument()
+  })
+
+  test.each(['/history', '/settings', '/lots/LOT-1'])(
+    'on %s, a file dropped on the page is not opened by the browser (which would end the session)',
+    (path) => {
+      renderAt(path)
+      for (const type of ['dragover', 'drop']) {
+        const event = new Event(type, { bubbles: true, cancelable: true })
+        document.body.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+    },
+  )
+
+  test('Escape closes the account menu and returns focus to its button', () => {
+    renderAt('/ingest')
+    const toggle = screen.getByRole('button', { name: 'Account menu' })
+    fireEvent.click(toggle)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
+  })
+
   test('the breadcrumb names the current screen', () => {
     renderAt('/history')
     const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' })

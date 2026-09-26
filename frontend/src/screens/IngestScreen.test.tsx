@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { fakeServer, renderWithApi, type Routes } from '../test-utils'
 import { IngestScreen } from './IngestScreen'
 
@@ -297,5 +297,161 @@ describe('Ingest screen (E6 screen 2, E7)', () => {
     await screen.findByText('LOT-2024-7712')
     fireEvent.click(demo())
     expect(await screen.findByText('LOT-2024-8841')).toBeInTheDocument()
+  })
+})
+
+describe('Ingest edge cases', () => {
+  test.each([
+    ['A/B', 'Lot ID can’t contain “/”'],
+    ['..', 'Lot ID can’t be only dots'],
+  ])('a new lot with Lot ID %j is refused before sending', (lotId, message) => {
+    const { requests } = setup()
+    choose(lotInput(), csv())
+    fillMetadata({ 'Lot ID': lotId })
+    fireEvent.click(commit())
+    expect(screen.getByLabelText('Lot ID')).toHaveAccessibleDescription(
+      expect.stringContaining(message.replace('’', "'")),
+    )
+    expect(posts(requests)).toHaveLength(0)
+  })
+
+  test('a checkpoint aimed at an unaddressable Lot ID is refused too', () => {
+    const { requests } = setup()
+    choose(checkpointInput(), csv())
+    fireEvent.change(screen.getByLabelText('Lot ID'), { target: { value: 'LOT/7' } })
+    fireEvent.click(commit())
+    expect(screen.getByLabelText('Lot ID')).toHaveAttribute('aria-invalid', 'true')
+    expect(posts(requests)).toHaveLength(0)
+  })
+
+  test('a date the date input allows but no lot has (5-digit year) is refused', () => {
+    const { requests } = setup()
+    choose(lotInput(), csv())
+    fillMetadata({ 'Test Date': '20245-05-12' })
+    expect(screen.getByLabelText('Test Date')).toHaveValue('20245-05-12')
+    fireEvent.click(commit())
+    expect(screen.getByLabelText('Test Date')).toHaveAccessibleDescription(
+      'Enter a real date (yyyy-mm-dd).',
+    )
+    expect(posts(requests)).toHaveLength(0)
+  })
+
+  test('changing the staged files clears field errors that no longer apply', () => {
+    setup()
+    choose(lotInput(), csv())
+    fireEvent.click(commit())
+    expect(screen.getByLabelText('Manufacturer')).toHaveAttribute('aria-invalid', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove lot.csv' }))
+
+    expect(screen.getByLabelText('Manufacturer')).toHaveAttribute('aria-invalid', 'false')
+  })
+
+  test('dropping several files at once is refused, not silently cut to one', () => {
+    setup()
+    const zone = screen.getByText('Drag and drop CSV lot file or browse').closest('label')!
+    fireEvent.drop(zone, { dataTransfer: { files: [csv('a.csv'), csv('b.csv')] } })
+    expect(screen.getByText('Drop one CSV file at a time.')).toBeInTheDocument()
+    expect(screen.queryByText('a.csv')).toBeNull()
+  })
+
+  test('a file dropped outside the drop zone does not make the browser open it', () => {
+    setup()
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      document.body.dispatchEvent(event)
+      // Not prevented, the browser would navigate to the file, dropping the in-memory session.
+      expect(event.defaultPrevented).toBe(true)
+    }
+  })
+
+  test('the drop highlight survives moving over the zone’s own children', () => {
+    setup()
+    const zone = screen.getByText('Drag and drop CSV lot file or browse').closest('label')!
+    const child = screen.getByText('Drag and drop CSV lot file or browse')
+    fireEvent.dragOver(zone)
+    expect(zone).toHaveClass('is-dragging')
+    // jsdom has no DragEvent, and fireEvent.dragLeave drops relatedTarget; a MouseEvent (which
+    // DragEvent extends in browsers) carries it.
+    const leave = (to: Element) =>
+      fireEvent(zone, new MouseEvent('dragleave', { bubbles: true, relatedTarget: to }))
+    leave(child)
+    expect(zone).toHaveClass('is-dragging')
+    leave(document.body)
+    expect(zone).not.toHaveClass('is-dragging')
+  })
+
+  test('a staged file that became unreadable is named, and nothing is sent', async () => {
+    const { requests } = setup()
+    const file = csv('stale.csv')
+    choose(lotInput(), file)
+    file.slice = () => {
+      throw new DOMException('changed', 'NotReadableError')
+    }
+    fillMetadata()
+    fireEvent.click(commit())
+    expect(await screen.findByText(/stale\.csv changed or was removed/)).toBeInTheDocument()
+    expect(posts(requests)).toHaveLength(0)
+  })
+
+  test('repeated server messages all show, without React key warnings', async () => {
+    const errorSpy = vi.spyOn(console, 'error')
+    setup({ 'POST /lots': { status: 422, body: { detail: ['same', 'same', 'same'] } } })
+    choose(lotInput(), csv())
+    fillMetadata()
+    fireEvent.click(commit())
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getAllByText('same')).toHaveLength(3)
+    expect(errorSpy).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  test('the outcome is announced through a status region that is always present', async () => {
+    setup({ 'POST /lots/demo': { body: uploaded({ lot_id: 'demo-1' }) } })
+    const status = screen.getByTestId('ingest-status')
+    expect(status).toHaveAttribute('role', 'status')
+    expect(status).toBeEmptyDOMElement()
+    fireEvent.click(demo())
+    await waitFor(() =>
+      expect(status).toHaveTextContent('Synthetic demo lot loaded: demo-1, status IN_PROGRESS.'),
+    )
+  })
+})
+
+describe('Recent Ingestions edge cases', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({
+    project_id: `p-${i}`,
+    lot_id: `LOT-${String(i).padStart(2, '0')}`,
+    part_number: 'PN',
+    created_at: `2026-09-${String(10 + i).padStart(2, '0')}T08:00:00`,
+    created_by: 'a.sharma',
+  }))
+
+  test('shows only the 10 newest, says so, and points at the Project Browser', async () => {
+    setup({ 'GET /projects': { body: many } })
+    const table = await screen.findByRole('table', { name: 'Recent Ingestions' })
+    expect(within(table).getAllByRole('row')).toHaveLength(11)
+    expect(within(table).getAllByRole('row')[1]).toHaveTextContent('LOT-11')
+    expect(screen.getByText('12 lots on record')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /all 12 in project browser/i })).toHaveAttribute(
+      'href',
+      '/projects',
+    )
+  })
+
+  test('timestamps are labelled UTC, which is how storage records them', async () => {
+    setup()
+    expect(await screen.findByRole('columnheader', { name: 'Uploaded (UTC)' })).toBeInTheDocument()
+  })
+
+  test('a failed refresh keeps the rows already shown, with the error beside them', async () => {
+    let calls = 0
+    const { queryClient } = setup({
+      'GET /projects': () => (++calls === 1 ? { body: PROJECTS } : { status: 500, body: {} }),
+    })
+    await screen.findByText('LOT-2024-8841')
+    await act(() => queryClient.refetchQueries({ queryKey: ['projects'] }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load recent ingestions')
+    expect(screen.getByText('LOT-2024-8841')).toBeInTheDocument()
   })
 })

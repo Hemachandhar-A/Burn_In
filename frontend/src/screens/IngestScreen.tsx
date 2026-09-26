@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
 import {
+  ensureReadable,
   listProjects,
   loadDemoLot,
+  lotIdProblem,
   PROJECTS_QUERY_KEY,
   uploadCheckpoint,
   uploadLot,
@@ -21,7 +23,7 @@ import {
   TerminalIcon,
 } from '../shell/icons'
 import { useWorkingLot } from '../shell/WorkingLotContext'
-import { pathToLot } from './registry'
+import { pathToLot, screenById } from './registry'
 
 type Field = keyof LotMetadata
 
@@ -66,7 +68,30 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** `2026-09-26T14:32:10.123` -> `2026-09-26 14:32`, as stored, with no timezone conversion. */
+/** How many projects Recent Ingestions lists; the Project Browser has them all. */
+const RECENT_LIMIT = 10
+
+/** A real calendar date in yyyy-mm-dd. <input type="date"> also accepts 5+ digit years. */
+function isValidDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const [y, m, d] = match.slice(1).map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+}
+
+/** Error or info lines, index-keyed (a server can repeat a message) and scrollable when long. */
+function MessageList({ lines }: { lines: string[] }) {
+  return (
+    <ul className="message-list">
+      {lines.map((line, i) => (
+        <li key={i}>{line}</li>
+      ))}
+    </ul>
+  )
+}
+
+/** `2026-09-26T14:32:10.123` -> `2026-09-26 14:32`. Storage records UTC (datetime.now(UTC)). */
 function formatTimestamp(iso: string): string {
   return iso.slice(0, 16).replace('T', ' ')
 }
@@ -162,7 +187,9 @@ function RecentIngestions() {
     queryFn: () => listProjects(client),
   })
   const headingId = useId()
-  const count = projects.data?.length
+  const data = projects.data
+  const count = data?.length
+  const shown = data?.slice(0, RECENT_LIMIT) ?? []
 
   return (
     <section className="card recent" aria-labelledby={headingId}>
@@ -185,36 +212,34 @@ function RecentIngestions() {
       {projects.isError && (
         <div className="card-note form-error" role="alert">
           <p>Could not load recent ingestions.</p>
-          {describeFailure(projects.error).map((line) => (
-            <p key={line}>{line}</p>
-          ))}
+          <MessageList lines={describeFailure(projects.error)} />
           <button
             type="button"
             className="button button-secondary"
             onClick={() => projects.refetch()}
+            disabled={projects.isFetching}
           >
-            Retry
+            {projects.isFetching ? 'Retrying…' : 'Retry'}
           </button>
         </div>
       )}
 
-      {projects.isSuccess && projects.data.length === 0 && (
-        <p className="card-note">No lots on record yet.</p>
-      )}
+      {data && data.length === 0 && <p className="card-note">No lots on record yet.</p>}
 
-      {projects.isSuccess && projects.data.length > 0 && (
+      {/* Rows already loaded stay visible if a later refresh fails; the alert above says so. */}
+      {shown.length > 0 && (
         <table className="table" aria-labelledby={headingId}>
           <thead>
             <tr>
               <th scope="col">Lot ID</th>
               <th scope="col">Part Number</th>
               <th scope="col" className="numeric">
-                Uploaded
+                Uploaded (UTC)
               </th>
             </tr>
           </thead>
           <tbody>
-            {projects.data.map((p) => (
+            {shown.map((p) => (
               <tr key={p.project_id}>
                 <td className="mono">
                   <Link to={pathToLot(p.lot_id)}>{p.lot_id}</Link>
@@ -226,6 +251,12 @@ function RecentIngestions() {
           </tbody>
         </table>
       )}
+      {count !== undefined && count > RECENT_LIMIT && (
+        <p className="card-note">
+          Showing the {RECENT_LIMIT} newest.{' '}
+          <Link to={screenById('projects').path}>See all {count} in Project Browser</Link>
+        </p>
+      )}
     </section>
   )
 }
@@ -233,7 +264,7 @@ function RecentIngestions() {
 function ResultPanel({ outcomes }: { outcomes: Outcome[] }) {
   const last = outcomes[outcomes.length - 1].response
   return (
-    <section className="card result" aria-label="Ingestion result" aria-live="polite">
+    <section className="card result" aria-label="Ingestion result">
       {outcomes.map(({ kind, response }, i) => {
         const missing = response.insufficient_data_components ?? []
         return (
@@ -264,7 +295,7 @@ function ResultPanel({ outcomes }: { outcomes: Outcome[] }) {
               <p className="result-note">
                 {missing.length} {missing.length === 1 ? 'component has' : 'components have'} no 0h
                 or 24h reading for some parameter, so no forecast can be made for them:{' '}
-                <span className="mono">{missing.join(', ')}</span>
+                <span className="mono scroll-list">{missing.join(', ')}</span>
               </p>
             )}
           </div>
@@ -298,7 +329,24 @@ export function IngestScreen() {
   const [outcomes, setOutcomes] = useState<Outcome[]>([])
   const [busy, setBusy] = useState<'commit' | 'demo' | null>(null)
   const [dragging, setDragging] = useState(false)
+  /** Text for the always-mounted status region, so screen readers hear each outcome. */
+  const [announcement, setAnnouncement] = useState('')
   const inFlight = useRef(false)
+
+  // A file dropped anywhere but the drop zone would make the browser open it, navigating away
+  // and taking the in-memory session (rule 13) and everything staged with it.
+  useEffect(() => {
+    function block(event: Event) {
+      event.preventDefault()
+      if (event.type === 'drop') setDragging(false)
+    }
+    window.addEventListener('dragover', block)
+    window.addEventListener('drop', block)
+    return () => {
+      window.removeEventListener('dragover', block)
+      window.removeEventListener('drop', block)
+    }
+  }, [])
 
   const uid = useId()
   const ids = {
@@ -310,20 +358,37 @@ export function IngestScreen() {
   const accountId = session?.accountId ?? ''
   const disabled = busy !== null
 
+  /** Stage or unstage a file. Field errors reflect the previous staging, so they're cleared. */
+  function stage(which: 'lot' | 'checkpoint', file: File | null) {
+    if (which === 'lot') setLotFile(file)
+    else setCheckpointFile(file)
+    setFieldErrors({})
+    setBatchError(null)
+  }
+
   function pick(which: 'lot' | 'checkpoint', file: File) {
     const refused = refuseFile(file)
     setFileErrors((e) => ({ ...e, [which]: refused ?? undefined }))
-    if (refused) return
-    if (which === 'lot') setLotFile(file)
-    else setCheckpointFile(file)
-    setBatchError(null)
+    if (!refused) stage(which, file)
   }
 
   function onDrop(event: DragEvent) {
     event.preventDefault()
+    event.stopPropagation()
     setDragging(false)
-    const file = event.dataTransfer.files?.[0]
-    if (file && !disabled) pick('lot', file)
+    if (disabled) return
+    const files = event.dataTransfer.files
+    if (!files || files.length === 0) return
+    if (files.length > 1) {
+      setFileErrors((e) => ({ ...e, lot: 'Drop one CSV file at a time.' }))
+      return
+    }
+    pick('lot', files[0])
+  }
+
+  function onDragLeave(event: DragEvent) {
+    // dragleave also fires when moving onto the zone's own children; only leaving it counts.
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
   }
 
   function setField(key: Field, value: string) {
@@ -333,12 +398,20 @@ export function IngestScreen() {
 
   function validate(): boolean {
     const errors: Partial<Record<Field, string>> = {}
+    const lotId = metadata.lot_id.trim()
     if (lotFile) {
       for (const { key } of FIELDS) {
         if (metadata[key].trim() === '') errors[key] = 'Required for a new lot.'
       }
-    } else if (checkpointFile && metadata.lot_id.trim() === '') {
+      if (!errors.test_date && !isValidDate(metadata.test_date.trim())) {
+        errors.test_date = 'Enter a real date (yyyy-mm-dd).'
+      }
+    } else if (checkpointFile && lotId === '') {
       errors.lot_id = 'Required: the checkpoint merges into this lot.'
+    }
+    if (lotId !== '' && !errors.lot_id) {
+      const problem = lotIdProblem(lotId)
+      if (problem) errors.lot_id = problem
     }
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
@@ -350,6 +423,7 @@ export function IngestScreen() {
     setBusy(kind)
     setBatchError(null)
     setOutcomes([])
+    setAnnouncement('')
     try {
       await steps()
     } finally {
@@ -362,9 +436,19 @@ export function IngestScreen() {
   function record(outcome: Outcome) {
     setOutcomes((o) => [...o, outcome])
     rememberLot(outcome.response.lot_id)
+    const { lot_id, status } = outcome.response
+    setAnnouncement((a) =>
+      `${a} ${OUTCOME_LABEL[outcome.kind]}: ${lot_id}, status ${status}.`.trim(),
+    )
+  }
+
+  function fail(title: string, error: unknown) {
+    setBatchError({ title, lines: describeFailure(error) })
+    setAnnouncement((a) => `${a} ${title}.`.trim())
   }
 
   async function commitBatch() {
+    if (!session) return
     if (!lotFile && !checkpointFile) {
       setBatchError({
         title: 'Nothing to commit',
@@ -380,31 +464,34 @@ export function IngestScreen() {
     await run('commit', async () => {
       if (lotFile) {
         try {
+          await ensureReadable(lotFile)
           record({ kind: 'lot', response: await uploadLot(client, trimmed, lotFile, accountId) })
           setLotFile(null)
         } catch (error) {
-          setBatchError({ title: 'Lot upload failed', lines: describeFailure(error) })
+          fail('Lot upload failed', error)
           return
         }
       }
       if (checkpointFile) {
         try {
+          await ensureReadable(checkpointFile)
           const response = await uploadCheckpoint(client, trimmed.lot_id, checkpointFile, accountId)
           record({ kind: 'checkpoint', response })
           setCheckpointFile(null)
         } catch (error) {
-          setBatchError({ title: 'Checkpoint upload failed', lines: describeFailure(error) })
+          fail('Checkpoint upload failed', error)
         }
       }
     })
   }
 
   async function loadDemo() {
+    if (!session) return
     await run('demo', async () => {
       try {
         record({ kind: 'demo', response: await loadDemoLot(client, accountId) })
       } catch (error) {
-        setBatchError({ title: 'Demo lot failed to load', lines: describeFailure(error) })
+        fail('Demo lot failed to load', error)
       }
     })
   }
@@ -440,14 +527,14 @@ export function IngestScreen() {
         </div>
       </header>
 
+      <p className="visually-hidden" role="status" data-testid="ingest-status">
+        {announcement}
+      </p>
+
       {batchError && (
         <div className="banner form-error" role="alert">
           <p className="banner-title">{batchError.title}</p>
-          <ul>
-            {batchError.lines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+          <MessageList lines={batchError.lines} />
         </div>
       )}
 
@@ -463,7 +550,7 @@ export function IngestScreen() {
                 e.preventDefault()
                 if (!disabled) setDragging(true)
               }}
-              onDragLeave={() => setDragging(false)}
+              onDragLeave={onDragLeave}
               onDrop={onDrop}
             >
               <span className="dropzone-icon">
@@ -481,7 +568,7 @@ export function IngestScreen() {
               onPick={(file) => pick('lot', file)}
             />
             {lotFile && (
-              <StagedFile file={lotFile} disabled={disabled} onRemove={() => setLotFile(null)} />
+              <StagedFile file={lotFile} disabled={disabled} onRemove={() => stage('lot', null)} />
             )}
             {fileErrors.lot && (
               <p className="field-error" role="alert">
@@ -520,7 +607,7 @@ export function IngestScreen() {
               <StagedFile
                 file={checkpointFile}
                 disabled={disabled}
-                onRemove={() => setCheckpointFile(null)}
+                onRemove={() => stage('checkpoint', null)}
               />
             )}
             {fileErrors.checkpoint && (

@@ -4,7 +4,15 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createApiClient } from './client'
 import { ApiError, describeFailure, errorMessages } from './errors'
-import { listProjects, loadDemoLot, uploadCheckpoint, uploadLot, type LotMetadata } from './lots'
+import {
+  ensureReadable,
+  listProjects,
+  loadDemoLot,
+  lotIdProblem,
+  uploadCheckpoint,
+  uploadLot,
+  type LotMetadata,
+} from './lots'
 import { MOCK_login } from './mocks'
 
 const BASE = 'http://api.test'
@@ -175,4 +183,75 @@ describe('MOCK_login (stands in for POST /auth/login until P5.4)', () => {
   ])('%s with PIN %j is rejected with a 401', async (account_id, pin) => {
     await expect(MOCK_login({ account_id, pin }, 0)).rejects.toMatchObject({ status: 401 })
   })
+})
+
+describe('lotIdProblem: ids the API could store but never address again', () => {
+  test.each(['LOT-2024-8841', 'lot 7', 'A.B', '..A', 'x#y', '100%', 'Ünïcødé'])(
+    '%j is fine',
+    (id) => expect(lotIdProblem(id)).toBeNull(),
+  )
+
+  test.each(['A/B', '/', 'LOT/2024/01'])('%j is refused: a slash splits the URL path', (id) => {
+    expect(lotIdProblem(id)).toMatch(/can't contain/)
+  })
+
+  test.each(['.', '..', '...'])('%j is refused: dot segments collapse in a URL', (id) => {
+    expect(lotIdProblem(id)).toMatch(/only dots/)
+  })
+})
+
+describe('ensureReadable: a staged file that changed on disk is caught before sending', () => {
+  test('a readable file passes', async () => {
+    await expect(ensureReadable(new File(['a,b'], 'ok.csv'))).resolves.toBeUndefined()
+  })
+
+  test('an unreadable file becomes a message naming it', async () => {
+    const file = new File(['a,b'], 'gone.csv')
+    file.slice = () => {
+      throw new DOMException('changed', 'NotReadableError')
+    }
+    await expect(ensureReadable(file)).rejects.toMatchObject({
+      messages: ['gone.csv changed or was removed after you chose it. Choose it again.'],
+    })
+  })
+})
+
+describe('non-JSON success bodies', () => {
+  test('an HTML page where JSON was expected is explained, not a raw SyntaxError', async () => {
+    const fetch = vi.fn(async () => new Response('<!doctype html><html></html>', { status: 200 }))
+    const client = createApiClient({ baseUrl: BASE, getToken: () => null, fetch })
+    const error = await listProjects(client).catch((e) => e)
+    expect(describeFailure(error)).toEqual([
+      "The server's response wasn't valid JSON. Check that VITE_API_BASE_URL points at the API.",
+    ])
+  })
+})
+
+describe('listProjects ordering', () => {
+  test('equal timestamps keep a stable, locale-independent order', async () => {
+    const p = (id: string, created_at: string) => ({
+      project_id: id,
+      lot_id: id,
+      part_number: 'PN',
+      created_at,
+      created_by: 'a.sharma',
+    })
+    const { client } = fakeServer(200, [
+      p('b', '2026-09-26T09:00:00'),
+      p('a', '2026-09-26T09:00:00'),
+      p('c', '2026-09-26T10:00:00'),
+    ])
+    expect((await listProjects(client)).map((x) => x.project_id)).toEqual(['c', 'b', 'a'])
+  })
+})
+
+describe('MOCK_login hygiene', () => {
+  test.each(['constructor', '__proto__', 'toString'])(
+    'an inherited property name (%s) is not an account',
+    async (account_id) => {
+      await expect(MOCK_login({ account_id, pin: 'undefined' }, 0)).rejects.toMatchObject({
+        status: 401,
+      })
+    },
+  )
 })

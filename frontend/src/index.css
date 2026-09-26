@@ -978,3 +978,55 @@ a.nav-item.active {
 .result-link {
   align-self: flex-start;
 }
+
+/* ---------------------------------------------------------------- long content (P1.10 review) */
+
+/* Server messages and component lists can run to hundreds of lines; they scroll, never
+   truncate, so nothing is silently hidden (rule 7). */
+.message-list {
+  max-height: 12em;
+  margin: 4px 0 0;
+  padding-left: 18px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.card-note .message-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.scroll-list {
+  display: block;
+  max-height: 6.5em;
+  margin-top: 4px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+/* IDs are user-supplied and can be long with no break opportunity; wrap them rather than
+   widening the table or the page past the viewport. */
+.table td,
+.result-facts dd,
+.sidebar-account-name,
+.account-popover-name {
+  overflow-wrap: anywhere;
+}
+
+.sidebar-account > div {
+  min-width: 0;
+}
+
+.staged-file .mono {
+  min-width: 0; /* lets the ellipsis engage inside the flex row */
+}
+
+.result-link {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.login-pin[readonly] {
+  background: var(--sunken);
+}

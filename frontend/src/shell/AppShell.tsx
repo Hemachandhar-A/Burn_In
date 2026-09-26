@@ -62,7 +62,17 @@ function AccountMenu({ session, onSignOut }: { session: Session; onSignOut: () =
   }, [open])
 
   return (
-    <div className="account-menu" ref={rootRef}>
+    <div
+      className="account-menu"
+      ref={rootRef}
+      // Tabbing out of the menu closes it; moving between its own controls doesn't. A null
+      // relatedTarget is ignored: Safari doesn't focus a clicked button, so clicking Sign out
+      // there blurs the toggle to nothing, and outside clicks are the pointerdown handler's job.
+      onBlur={(event) => {
+        const next = event.relatedTarget as Node | null
+        if (next && !event.currentTarget.contains(next)) setOpen(false)
+      }}
+    >
       <button
         ref={buttonRef}
         type="button"
@@ -94,6 +104,18 @@ export function AppShell() {
   const { pathname } = useLocation()
   const [lastLotId, setLastLotId] = useState<string | null>(null)
   const [lastPartId, setLastPartId] = useState<string | null>(null)
+
+  // A file dropped on any signed-in screen would otherwise be opened by the browser, navigating
+  // away and ending the in-memory session (rule 13). Drop zones handle their own drops first.
+  useEffect(() => {
+    const block = (event: Event) => event.preventDefault()
+    window.addEventListener('dragover', block)
+    window.addEventListener('drop', block)
+    return () => {
+      window.removeEventListener('dragover', block)
+      window.removeEventListener('drop', block)
+    }
+  }, [])
 
   // Opening a lot or part by URL makes it the one the nav points back to. Adjusting state while
   // rendering (not in an effect) is React's pattern for state derived from a changing input.

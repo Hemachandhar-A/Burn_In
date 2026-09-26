@@ -34,7 +34,7 @@ export function LoginScreen() {
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (inFlight.current) return
-    if (pin === '') {
+    if (pin.trim() === '') {
       setErrors(['Enter your PIN.'])
       pinRef.current?.focus()
       return
@@ -120,12 +120,15 @@ export function LoginScreen() {
             onChange={(e) => setPin(e.target.value)}
             aria-invalid={invalid}
             aria-describedby={invalid ? ids.error : undefined}
-            disabled={pending}
+            // readOnly, not disabled: a disabled field can't take focus, and a failed attempt
+            // hands focus back here before the pending state has re-rendered.
+            readOnly={pending}
           />
           {invalid && (
             <div className="form-error" id={ids.error} role="alert">
-              {errors.map((line) => (
-                <p key={line}>{line}</p>
+              {errors.map((line, i) => (
+                // Index keys: a server can repeat the same message.
+                <p key={i}>{line}</p>
               ))}
             </div>
           )}

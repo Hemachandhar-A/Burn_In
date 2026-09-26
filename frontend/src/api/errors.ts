@@ -50,6 +50,13 @@ export function describeFailure(error: unknown): string[] {
   if (error instanceof ApiError) return error.messages
   // fetch() rejects with a TypeError when there's no response the page may read: server down,
   // or a crash whose 500 carries no CORS headers, which the browser reports the same way.
+  // openapi-fetch JSON.parses every 2xx body; an HTML page there means the base URL reached
+  // something other than the API (e.g. the SPA itself).
+  if (error instanceof SyntaxError) {
+    return [
+      "The server's response wasn't valid JSON. Check that VITE_API_BASE_URL points at the API.",
+    ]
+  }
   if (error instanceof TypeError) {
     return [
       'No readable response from the API server. Check that the backend is running; if it is, its log shows the error.',
