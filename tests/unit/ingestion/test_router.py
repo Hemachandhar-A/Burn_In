@@ -1,5 +1,13 @@
 """Session P2.2: POST /lots, /lots/{lot_id}/checkpoints, /lots/demo - real parsing,
-validation, merge, and the demo-lot button, over the interim in-process store."""
+validation, merge, and the demo-lot button, over the interim in-process store.
+
+Session P2.5: every POST /lots and POST /lots/{lot_id}/checkpoints call also runs
+`fusion.run_full_pipeline` and persists via `storage.repository` now - each test gets its own
+temp SQLite file (same pattern as tests/unit/storage/test_repository.py), reloading
+storage.database/storage.repository so DATABASE_URL takes effect; ingestion/router.py holds a
+`from storage import repository` module reference, so the reload is picked up in place.
+"""
+import importlib
 import io
 import json
 
@@ -16,7 +24,15 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _reset_store():
+def _reset_store_and_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    from storage import database
+
+    importlib.reload(database)
+    from storage import repository
+
+    importlib.reload(repository)
+    repository.init_db()
     store.clear()
     yield
     store.clear()
@@ -186,3 +202,60 @@ def test_post_lots_demo_returns_a_fresh_lot_id_each_call():
     first = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()
     second = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()
     assert first["lot_id"] != second["lot_id"]
+
+
+# P2.5: fusion.run_full_pipeline + storage persistence, wired after a successful save.
+
+
+def _repository():
+    from storage import repository
+
+    return repository
+
+
+def test_post_lots_creates_a_project_row_and_persists_an_analysis_run():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    repository = _repository()
+
+    project = repository.query_project("L1")
+    assert project is not None
+    assert project.lot_id == "L1"
+    assert project.part_number == "PN-1"
+    assert project.created_by == "a.sharma"
+
+    runs = repository.query_project_data("L1")
+    assert len(runs) == 1
+    results = json.loads(runs[0].results_json)
+    # fusion.run_full_pipeline is P5's stub - fixed "COMP-001"/"PASS", not derived from
+    # this lot's actual readings; this test only pins that the stub's output round-trips.
+    assert results["per_component"]["COMP-001"]["verdict"] == "PASS"
+    assert results["lot_disposition"]["verdict"] in {"LOT_ON_TRACK", "ACCEPT"}
+
+
+def test_post_lots_logs_an_analysis_run_event():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    repository = _repository()
+
+    events = repository.query_events("L1")
+    event_types = [e.event_type for e in events]
+    assert "analysis_run" in event_types
+
+
+def test_post_lots_checkpoints_reuses_the_same_project_row_and_adds_another_run():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    repository = _repository()
+
+    assert len(repository.query_projects()) == 1
+    runs = repository.query_project_data("L1")
+    assert len(runs) == 2
+    assert runs[1].diff_vs_prior is not None
+
+
+def test_post_lots_demo_does_not_require_a_project_row():
+    # /lots/demo is unchanged by P2.5 - out of scope per Part 10's session wording.
+    response = client.post("/lots/demo", data={"account_id": "a.sharma"})
+    assert response.status_code == 200
+    lot_id = response.json()["lot_id"]
+    assert _repository().query_project(lot_id) is None

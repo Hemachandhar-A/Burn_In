@@ -180,3 +180,100 @@ def test_get_disposition_signoffs_empty_list_when_none(client):
 def test_get_disposition_signoffs_404_when_project_missing(client):
     response = client.get("/projects/does-not-exist/disposition-signoffs")
     assert response.status_code == 404
+
+
+# --- GET /events (global) -----------------------------------------------------------
+
+
+def test_get_all_events_spans_multiple_projects(client):
+    from storage import repository
+
+    repository.log_event("proj-1", "a.sharma", "ingest", {"lot_id": "L1"})
+    repository.log_event("proj-2", "b.rao", "analysis_run", {"run": 1})
+
+    response = client.get("/events")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 2
+    assert {e["project_id"] for e in body} == {"proj-1", "proj-2"}
+
+
+def test_get_all_events_empty_list_when_none_logged(client):
+    response = client.get("/events")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+# --- GET /disposition-signoffs (global) ----------------------------------------------
+
+
+def test_get_all_disposition_signoffs_spans_multiple_projects(client):
+    from storage import repository
+
+    repository.save_project(project_id="proj-5", lot_id="L5", part_number="PN-500", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
+    repository.save_project(project_id="proj-6", lot_id="L6", part_number="PN-600", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
+    repository.save_analysis_run(project_id="proj-5", raw_data={}, results={"per_component": {}})
+    repository.save_analysis_run(project_id="proj-6", raw_data={}, results={"per_component": {}})
+    run5 = repository.query_latest_project_data("proj-5")
+    run6 = repository.query_latest_project_data("proj-6")
+    repository.save_disposition_signoff(
+        project_id="proj-5", component_id="C1", analysis_run_id=run5.analysis_run_id,
+        account_id="a.sharma", verdict="ACCEPT", rationale="within limits",
+    )
+    repository.save_disposition_signoff(
+        project_id="proj-6", component_id="C1", analysis_run_id=run6.analysis_run_id,
+        account_id="b.rao", verdict="HOLD", rationale="borderline",
+    )
+
+    response = client.get("/disposition-signoffs")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 2
+    assert {s["project_id"] for s in body} == {"proj-5", "proj-6"}
+
+
+def test_get_all_disposition_signoffs_filters_by_component_id(client):
+    from storage import repository
+
+    repository.save_project(project_id="proj-7", lot_id="L7", part_number="PN-700", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
+    repository.save_analysis_run(project_id="proj-7", raw_data={}, results={"per_component": {}})
+    run7 = repository.query_latest_project_data("proj-7")
+    repository.save_disposition_signoff(
+        project_id="proj-7", component_id="C1", analysis_run_id=run7.analysis_run_id,
+        account_id="a.sharma", verdict="ACCEPT", rationale="ok",
+    )
+    repository.save_disposition_signoff(
+        project_id="proj-7", component_id="C2", analysis_run_id=run7.analysis_run_id,
+        account_id="a.sharma", verdict="REJECT", rationale="bad",
+    )
+
+    response = client.get("/disposition-signoffs", params={"component_id": "C2"})
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["component_id"] == "C2"
+    assert body[0]["verdict"] == "REJECT"
+
+
+def test_get_all_disposition_signoffs_empty_list_when_none(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'empty2.db'}")
+    from storage import database
+
+    importlib.reload(database)
+    from storage import repository
+
+    importlib.reload(repository)
+    repository.init_db()
+    from storage import router as router_module
+
+    importlib.reload(router_module)
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(router_module.router)
+    empty_client = TestClient(app)
+
+    response = empty_client.get("/disposition-signoffs")
+    assert response.status_code == 200
+    assert response.json() == []

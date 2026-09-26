@@ -97,7 +97,11 @@ def query_project(project_id: str) -> Project | None:
 
 def query_projects() -> list[Project]:
     with SessionLocal() as session:
-        return list(session.query(Project).order_by(Project.created_at.desc()).all())
+        return list(
+            session.query(Project)
+            .order_by(Project.created_at.desc(), Project.project_id.desc())
+            .all()
+        )
 
 
 def query_readings_by_part_number(part_number: str, *, exclude_lot_id: str | None = None) -> list[Reading]:
@@ -238,19 +242,17 @@ def log_event(project_id: str, account_id: str, event_type: str, payload: dict) 
         return event
 
 
-def query_events(project_id: str) -> list[Event]:
+def query_events(project_id: str | None = None) -> list[Event]:
     import json
 
     with SessionLocal() as session:
-        rows = (
-            session.query(Event)
-            .filter(Event.project_id == project_id)
-            .order_by(Event.timestamp.asc())
-            .all()
-        )
+        query = session.query(Event)
+        if project_id is not None:
+            query = query.filter(Event.project_id == project_id)
+        rows = list(query.order_by(Event.timestamp.asc()).all())
         for row in rows:
             row.payload = json.loads(row.payload)
-        return list(rows)
+        return rows
 
 
 def save_disposition_signoff(
@@ -279,9 +281,13 @@ def save_disposition_signoff(
         return signoff
 
 
-def query_disposition_signoffs(project_id: str, component_id: str | None = None) -> list[DispositionSignoff]:
+def query_disposition_signoffs(
+    project_id: str | None = None, component_id: str | None = None
+) -> list[DispositionSignoff]:
     with SessionLocal() as session:
-        query = session.query(DispositionSignoff).filter(DispositionSignoff.project_id == project_id)
+        query = session.query(DispositionSignoff)
+        if project_id is not None:
+            query = query.filter(DispositionSignoff.project_id == project_id)
         if component_id is not None:
             query = query.filter(DispositionSignoff.component_id == component_id)
         return list(query.order_by(DispositionSignoff.timestamp.asc()).all())

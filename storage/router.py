@@ -2,11 +2,16 @@
 read routes - backs E6's Project Browser (list of `projects`) and History screen
 (`events` + `disposition_signoffs`), per essential-features.md E11 step 8.
 
-Scoped to exactly these three read paths for this session; `project_data`/`confirmed_outcomes`
-read routes (screens 3-4 reload, Part Detail's confirmed-outcome history) are a later session -
-`project_data.results_json` is a pinned (P2.7, see storage/repository.py's module docstring)
-but still plain-dict shape, not `contracts.AnalysisResults`, so a route returning it as
-`ProjectDataResponse.results: AnalysisResults` would still fail validation right now.
+Global `GET /events` and `GET /disposition-signoffs` added per CONTRACT_CHANGES.md 2026-09-26
+"Routers registered; P2.8's storage routes differ from Part 5.6" (Lead resolution: keep the
+per-project routes, add the global ones alongside them - the History screen needs a single
+timeline spanning multiple lots, the per-project ones don't).
+
+`project_data`/`confirmed_outcomes` read routes (screens 3-4 reload, Part Detail's
+confirmed-outcome history) are a later session - `project_data.results_json` is a pinned
+(P2.7, see storage/repository.py's module docstring) but still plain-dict shape, not
+`contracts.AnalysisResults`, so a route returning it as `ProjectDataResponse.results:
+AnalysisResults` would still fail validation right now.
 
 No `Depends(get_current_account)` yet - `identity/` (P5.4) isn't merged, same interim as
 ingestion/router.py. Responses are built field-by-field from the ORM rows `storage.repository`
@@ -70,3 +75,18 @@ async def get_project_events(project_id: str) -> list[EventResponse]:
 async def get_disposition_signoffs(project_id: str, component_id: str | None = None) -> list[DispositionRecord]:
     _require_project(project_id)
     return [_disposition_record(s) for s in repository.query_disposition_signoffs(project_id, component_id)]
+
+
+@router.get("/events", response_model=list[EventResponse])
+async def get_all_events() -> list[EventResponse]:
+    """Global feed across every project - History screen (E6 screen 6). CONTRACT_CHANGES.md
+    2026-09-26 "Routers registered; P2.8's storage routes differ from Part 5.6" - added
+    alongside the per-project route above, not instead of it."""
+    return [_event_response(e) for e in repository.query_events()]
+
+
+@router.get("/disposition-signoffs", response_model=list[DispositionRecord])
+async def get_all_disposition_signoffs(component_id: str | None = None) -> list[DispositionRecord]:
+    """Global feed across every project - History screen (E6 screen 6). Same resolution
+    as get_all_events above."""
+    return [_disposition_record(s) for s in repository.query_disposition_signoffs(component_id=component_id)]
