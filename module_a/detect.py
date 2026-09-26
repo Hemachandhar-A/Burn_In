@@ -99,7 +99,6 @@ def detect(
     # ------------------------------------------------------------------
     lot_size = frames[0].lot_size  # same for all frames in one lot call
     mcd_by_component: dict[str, float | None] = {}
-    mcd_ran: bool = False
 
     if lot_size >= _MCD_LOT_SIZE_FLOOR:
         checkpoints = sorted({ck for f in frames for ck in f.robust_z})
@@ -113,7 +112,6 @@ def detect(
                 mcd = MinCovDet(random_state=_RANDOM_STATE)
                 mcd.fit(X)
                 distances = mcd.mahalanobis(X)  # squared Mahalanobis distances
-                mcd_ran = True
                 for cid, dist in zip(component_ids, distances):
                     d = float(np.sqrt(dist))  # convert to non-squared distance
                     if cid not in mcd_by_component or d > (mcd_by_component[cid] or 0.0):
