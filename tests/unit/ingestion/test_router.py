@@ -305,3 +305,25 @@ def test_demo_lot_persists_an_ingest_event_too():
 
     lot_id = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()["lot_id"]
     assert sorted(e.event_type for e in repository.query_events(lot_id)) == ["analysis_run", "ingest"]
+
+
+def test_malformed_test_date_is_a_422_naming_the_field_not_a_500():
+    response = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "next tuesday"})
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list) and len(detail) == 1
+    assert "test_date" in detail[0] and "'next tuesday'" in detail[0]  # field name and what was received
+
+
+def test_malformed_test_date_leaves_no_state_behind_so_a_corrected_retry_succeeds():
+    bad = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-13-45"})
+    assert bad.status_code == 422
+    assert store.get("L1") is None  # nothing stored: a retry must not hit "lot already exists" (409)
+    good = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26"})
+    assert good.status_code == 200
+
+
+def test_valid_iso_test_date_and_absent_test_date_still_work():
+    assert client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26T14:30:00"}).status_code == 200
+    other = {**METADATA, "lot_id": "L2"}
+    assert client.post("/lots", files=_csv_file(VALID_CSV), data=other).status_code == 200

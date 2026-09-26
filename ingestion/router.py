@@ -47,10 +47,27 @@ from storage import repository
 router = APIRouter(tags=["ingestion"])
 
 
+def _parse_test_date(test_date: str | None) -> datetime:
+    """The lot's physical test date from the metadata form (E7 step 1); now() when none was supplied. A value
+    that isn't ISO 8601 is a visible 422 naming the field and what was received (E7 step 5), never a 500."""
+    if not test_date:
+        return datetime.now(UTC)
+    try:
+        return datetime.fromisoformat(test_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                f"test_date: expected an ISO 8601 date or datetime (e.g. 2026-09-26 or 2026-09-26T14:30:00), "
+                f"got {test_date!r}"
+            ],
+        ) from None
+
+
 def _ensure_project(dataset: LotDataset, account_id: str, test_date: str | None) -> None:
     if repository.query_project(dataset.lot_id) is not None:
         return
-    parsed_test_date = datetime.fromisoformat(test_date) if test_date else datetime.now(UTC)
+    parsed_test_date = _parse_test_date(test_date)
     repository.save_project(
         project_id=dataset.lot_id, lot_id=dataset.lot_id, part_number=dataset.part_number,
         test_date=parsed_test_date, created_by=account_id,
@@ -137,6 +154,9 @@ async def upload_lot(
             status_code=409,
             detail=f"lot '{lot_id}' already exists - use POST /lots/{{lot_id}}/checkpoints to add a checkpoint",
         )
+
+    # Validated before anything is stored: a 422 must leave no state behind, or the corrected retry would 409.
+    _parse_test_date(test_date)
 
     raw = await file.read()
     try:
