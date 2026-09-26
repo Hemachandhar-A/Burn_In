@@ -5,8 +5,6 @@ Sessions completed:
   P3.1      E2 steps 1-3: robust z-scalar, per-checkpoint MCD, pooled Isolation Forest
   P3.2      E2 steps 4-6: ECOD (PyOD), percentile-normalise + max-combine, direction-awareness cap
   lot_id    Populate ModuleAResult.lot_id from FeatureFrame (new contract field from develop merge).
-            Sibling-bug scan: mcd_by_component and ecod_scores_by_cid_param are call-local dicts
-            (no cross-call persistence) — the P4 cross-lot keying bug does not exist here.
   multi-lot FIX: detect() now groups frames by lot_id and processes each lot independently.
             Previously, passing multiple lots in one call would compute lot-relative statistics
             (MCD, ECOD, percentile ranks, lot_size) across the pooled set, silently corrupting
