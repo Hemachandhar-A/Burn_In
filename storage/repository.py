@@ -97,7 +97,11 @@ def query_project(project_id: str) -> Project | None:
 
 def query_projects() -> list[Project]:
     with SessionLocal() as session:
-        return list(session.query(Project).order_by(Project.created_at.desc()).all())
+        return list(
+            session.query(Project)
+            .order_by(Project.created_at.desc(), Project.project_id.desc())
+            .all()
+        )
 
 
 def query_readings_by_part_number(part_number: str, *, exclude_lot_id: str | None = None) -> list[Reading]:
