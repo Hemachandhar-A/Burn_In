@@ -219,7 +219,7 @@ def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
     open-ended dicts that would otherwise carry the target through on a Complete lot)."""
 
 class ModuleAResult(BaseModel):
-    component_id: str; parameter: str
+    component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot
     robust_z: float; mcd_distance: float | None   # None if lot < 30 (5-feature MCD ceiling — context.md 4.2)
     isolation_forest_score: float | None            # None on a part number's first-ever lot (cold start)
     ecod_score: float
@@ -229,7 +229,7 @@ class ModuleAResult(BaseModel):
     severity_cap_reason: str | None     # populated if capped — context.md 5.16, 6.2
 
 class ModuleBResult(BaseModel):
-    component_id: str; parameter: str
+    component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot
     predicted_168h: float | None        # None if parameter outside trained three
     interval_lower: float | None; interval_upper: float | None
     physics_baseline_prediction: float | None

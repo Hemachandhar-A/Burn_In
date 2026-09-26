@@ -164,3 +164,12 @@ Entry format:
 
 ---
 
+
+## 2026-09-27 Lead - lot_id added to ModuleAResult/ModuleBResult
+- Fix: `contracts.py` `ModuleAResult` and `ModuleBResult` each gain `lot_id: str` (required, placed right after `component_id`). IMPLEMENTATION_PLAN.md Part 5.3 mirrors it.
+- **Preventive, not a reaction to an observed failure on these two types.** It was found by a sibling scan after P4 fixed a cross-lot collision in `module_b.physics_baselines` (keyed `(component_id, parameter)` without `lot_id`; two lots reusing part IDs like `U000` overwrote each other's baselines when batched). Component IDs are only unique within a lot, and these two result types carried `component_id` and `parameter` with no lot scope, so anything keying results by `(component_id, parameter)` - P1.7's harness batching a held-out set, or a future multi-lot pipeline call - would hit the same collision one layer down. `run_full_pipeline` is per-lot today, so nothing was failing.
+- OpenAPI/TS client: `PartDetailResponse` embeds both types (Part 5.6), but no registered route returns it yet, so `npm run generate-client` was rerun per Part 6 step 5 and produced no change to `openapi.json`/`schema.d.ts`. The fields will appear when `GET /parts/{component_id}` is registered.
+- **Ripple (required field):** every `ModuleAResult(...)` / `ModuleBResult(...)` construction needs `lot_id=`. None exist on `develop`. On branches: P4's `module_b/stub.py` and `module_b/predictor.py` (the `_unavailable` and real-result constructions) on `p4-module-b`, P3's `module_a/` constructions on `p3-module-a`, and their tests - fix on rebase; `lot_id` is available on every `ModuleBInput`/`FeatureFrame` they build from.
+- Status: RESOLVED by Lead on `develop`.
+
+---

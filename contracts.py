@@ -146,6 +146,7 @@ def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
 
 class ModuleAResult(BaseModel):
     component_id: str
+    lot_id: str  # component IDs are only unique within a lot - a batch spanning lots must not collide
     parameter: str
     robust_z: float
     mcd_distance: float | None  # None if lot < 30 (5-feature MCD ceiling - context.md 4.2)
@@ -159,6 +160,7 @@ class ModuleAResult(BaseModel):
 
 class ModuleBResult(BaseModel):
     component_id: str
+    lot_id: str  # component IDs are only unique within a lot - a batch spanning lots must not collide
     parameter: str
     predicted_168h: float | None  # None if parameter outside trained three
     interval_lower: float | None
