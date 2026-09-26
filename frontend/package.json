@@ -16,8 +16,10 @@
   "dependencies": {
     "@tanstack/react-query": "^5.103.2",
     "openapi-fetch": "^0.17.0",
+    "plotly.js": "^3.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-plotly.js": "^3.0.0",
     "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
@@ -26,8 +28,10 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^24.13.3",
+    "@types/plotly.js": "^3.0.14",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@types/react-plotly.js": "^2.6.4",
     "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
