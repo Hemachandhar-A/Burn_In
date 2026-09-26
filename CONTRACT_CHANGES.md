@@ -198,6 +198,6 @@ Entry format:
 - Missing/wrong: E3 step 7 requires recording the "threshold used" for every part, but `ModuleBResult` carries only `drift_rate` and `exceeds_safety_slope` - not the safety slope value the drift rate was compared against.
 - Why it matters: a bare `exceeds_safety_slope=True` can't be explained or audited without the threshold. E4 step 5's own sentence template needs it ("Predicted 168h drift exceeds the calibrated safety slope by 38%" - P5's explainability can't compute the 38%), and E3 step 7 names it explicitly. The slope is calibrated per (part_number, parameter), so it isn't recoverable downstream from any other field.
 - Proposed fix: add `safety_slope: float | None` to `ModuleBResult` (same units as `drift_rate`; `None` exactly when `forecast_unavailable=True`, like the other forecast fields), mirrored in IMPLEMENTATION_PLAN.md Part 5.3. Until resolved, `module_b/` carries the value on its own internal forecast record (P4.2), and P4.3 assembles output through a `TEMP_ModuleBResult` (= `ModuleBResult` + `safety_slope`) inside `module_b/`, never by editing `contracts.py`.
-- Status: OPEN
+- Status: RESOLVED by Lead on `develop` (b55a6cd) - see the Lead entry "2026-09-26 Lead - ModuleBResult gains safety_slope; resolves P4's "no field for the safety slope" entry". `safety_slope: float | None` adopted as proposed; P4 stub updated to populate it. No TEMP_ModuleBResult was ever built, so none to remove.
 
 ---
