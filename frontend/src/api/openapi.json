@@ -335,6 +335,86 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/disposition-signoffs": {
+      "get": {
+        "description": "Global feed across every project - History screen (E6 screen 6). Same resolution\nas get_all_events above.",
+        "operationId": "get_all_disposition_signoffs_disposition_signoffs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "component_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Component Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispositionRecord"
+                  },
+                  "title": "Response Get All Disposition Signoffs Disposition Signoffs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get All Disposition Signoffs",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/events": {
+      "get": {
+        "description": "Global feed across every project - History screen (E6 screen 6). CONTRACT_CHANGES.md\n2026-09-26 \"Routers registered; P2.8's storage routes differ from Part 5.6\" - added\nalongside the per-project route above, not instead of it.",
+        "operationId": "get_all_events_events_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventResponse"
+                  },
+                  "title": "Response Get All Events Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get All Events",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",

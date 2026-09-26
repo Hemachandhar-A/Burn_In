@@ -4,6 +4,49 @@
  */
 
 export interface paths {
+    "/disposition-signoffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get All Disposition Signoffs
+         * @description Global feed across every project - History screen (E6 screen 6). Same resolution
+         *     as get_all_events above.
+         */
+        get: operations["get_all_disposition_signoffs_disposition_signoffs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get All Events
+         * @description Global feed across every project - History screen (E6 screen 6). CONTRACT_CHANGES.md
+         *     2026-09-26 "Routers registered; P2.8's storage routes differ from Part 5.6" - added
+         *     alongside the per-project route above, not instead of it.
+         */
+        get: operations["get_all_events_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -329,6 +372,57 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_all_disposition_signoffs_disposition_signoffs_get: {
+        parameters: {
+            query?: {
+                component_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionRecord"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_all_events_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventResponse"][];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
