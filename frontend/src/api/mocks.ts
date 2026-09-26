@@ -351,7 +351,12 @@ export async function MOCK_getLotSummary(lotId: string): Promise<TEMP_LotSummary
   await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
   const rand = mulberry32(hashSeed(lotId))
   const lotSize = 77
-  const status: 'IN_PROGRESS' | 'COMPLETE' = rand() < 0.65 ? 'COMPLETE' : 'IN_PROGRESS'
+  const rolledStatus: 'IN_PROGRESS' | 'COMPLETE' = rand() < 0.65 ? 'COMPLETE' : 'IN_PROGRESS'
+  // A P1.12 fixture lot keeps the status and part number its History events describe (e.g.
+  // LOT-2024-9230 has only a 0h upload, so it can't be COMPLETE). The roll above still consumes
+  // its random number, so every other lot's output is unchanged.
+  const fixture = Object.hasOwn(MOCK_FIXTURE_LOTS, lotId) ? MOCK_FIXTURE_LOTS[lotId] : undefined
+  const status = fixture?.status ?? rolledStatus
   const flaggedCount = 2 + Math.floor(rand() * 4)
   const ids = componentIds(lotId, flaggedCount, lotSize)
 
@@ -411,7 +416,7 @@ export async function MOCK_getLotSummary(lotId: string): Promise<TEMP_LotSummary
   return {
     assessments,
     disposition,
-    part_number: `AD${partNumberSuffix}-JH`,
+    part_number: fixture?.part_number ?? `AD${partNumberSuffix}-JH`,
     manufacturer: rand() < 0.5 ? 'Analog Devices' : 'Texas Instruments',
     lot_size: lotSize,
   }
@@ -841,6 +846,18 @@ export const MOCK_FIXTURE_PROJECTS = [
     created_at: '2026-09-15T14:32:01Z',
   },
 ] as const
+
+/** What each fixture lot's History says about it: 168h reached = COMPLETE (E7 step 3). */
+const MOCK_FIXTURE_LOTS: Record<
+  string,
+  { status: 'IN_PROGRESS' | 'COMPLETE'; part_number: string }
+> = {
+  'LOT-2024-6090': { status: 'COMPLETE', part_number: 'OP27-AZ' },
+  'LOT-2024-7712': { status: 'COMPLETE', part_number: 'LM117-HV' },
+  'LOT-2024-8841': { status: 'COMPLETE', part_number: 'AD590-JH' },
+  'LOT-2024-9104': { status: 'IN_PROGRESS', part_number: 'AD590-JH' },
+  'LOT-2024-9230': { status: 'IN_PROGRESS', part_number: 'DAC8830' },
+}
 
 type FixtureEvent = Omit<MOCK_EventResponse, 'event_id'>
 

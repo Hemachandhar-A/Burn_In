@@ -1718,3 +1718,12 @@ a.nav-item.active {
   background: var(--surface);
   font-weight: 600;
 }
+
+/* A failed background refresh with earlier data still shown (P1.12 review): not an error box,
+   since the data under it is still what was last loaded. */
+.stale-note {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--sunken);
+}

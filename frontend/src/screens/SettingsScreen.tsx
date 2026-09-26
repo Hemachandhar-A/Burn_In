@@ -7,6 +7,7 @@ import { EVENTS_QUERY_KEY } from '../api/history'
 import { listProjects, PROJECTS_QUERY_KEY } from '../api/lots'
 import type {
   MOCK_CorrectiveStatusResponse,
+  MOCK_DispositionRecord,
   MOCK_PendingSettingChange,
   MOCK_SettingField,
   MOCK_SettingsResponse,
@@ -30,9 +31,9 @@ import {
   formatSettingValue,
   fromInputValue,
   isRatio,
-  parseUtc,
   SETTING_FIELDS,
   SETTING_LABELS,
+  sortableTime,
   toInputValue,
 } from './settingsFormat'
 import { VerdictBadge } from './VerdictBadge'
@@ -71,16 +72,23 @@ function SettingCard({
   const headingId = useId()
   const inputId = useId()
   const errorId = useId()
-  // Set by Cancel so the Edit button, re-mounted when the form closes, takes focus back.
-  const refocusEdit = useRef(false)
+  // Where focus goes next. The control that had it (Edit, Propose, Sign off) unmounts when the
+  // card changes state, which would otherwise drop keyboard focus to <body>.
+  const focusNext = useRef<'edit' | 'pending' | null>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [invalid, setInvalid] = useState<string | null>(null)
 
+  // An entry that already carries `signed_off_by` is finalized, not pending, even if the list
+  // still returns it; showing it as awaiting sign-off would offer a second sign-off on it.
   const pending: MOCK_PendingSettingChange | undefined = settings.pending_changes.find(
-    (p) => p.field === field,
+    (p) => p.field === field && p.signed_off_by === null,
   )
   const label = SETTING_LABELS[field]
+
+  // Someone else's proposal arrived (refetch) while this form was open: close it, or it would
+  // reopen with a stale draft the moment that proposal is finalized.
+  if (pending && editing) setEditing(false)
 
   // A config change affects every later lot (E10 step 5): refresh the log and the live status too.
   const refresh = () =>
@@ -89,37 +97,57 @@ function SettingCard({
       queryClient.invalidateQueries({ queryKey: EVENTS_QUERY_KEY }),
     ])
 
+  // A 409 (someone proposed first) or 404/403 (someone signed off first) means this card shows
+  // stale state: refetch so it shows what is actually true, next to the message.
+  const onMutationError = () => void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY })
+
   const propose = useMutation({
     mutationFn: (value: number) => proposeSetting({ field, proposed_value: value }, accountId),
     onSuccess: async () => {
+      focusNext.current = 'pending'
       setEditing(false)
       await refresh()
     },
+    onError: onMutationError,
   })
 
   const signoff = useMutation({
     mutationFn: () => signoffSetting({ field }, accountId),
     onSuccess: async (next) => {
+      focusNext.current = 'edit'
       queryClient.setQueryData(SETTINGS_QUERY_KEY, next)
       await refresh()
     },
+    onError: onMutationError,
   })
 
   function startEditing() {
     setDraft(toInputValue(field, settings[field]))
     setInvalid(null)
     propose.reset()
+    signoff.reset()
     setEditing(true)
   }
 
   function cancel() {
     setEditing(false)
     setInvalid(null)
-    refocusEdit.current = true
+    focusNext.current = 'edit'
+  }
+
+  function takeFocus(target: 'edit' | 'pending') {
+    return (el: HTMLElement | null) => {
+      if (el && focusNext.current === target) {
+        focusNext.current = null
+        el.focus()
+      }
+    }
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    // Enter in the input submits even while the Propose button is disabled; never send twice.
+    if (propose.isPending) return
     const value = fromInputValue(field, draft)
     if (value === null) {
       setInvalid(
@@ -127,6 +155,10 @@ function SettingCard({
           ? 'Enter a number greater than 0 (the N in N:1).'
           : 'Enter a percentage greater than 0 and no more than 100.',
       )
+      return
+    }
+    if (value === settings[field]) {
+      setInvalid('That is already the current value. Enter a different value to propose.')
       return
     }
     setInvalid(null)
@@ -150,12 +182,7 @@ function SettingCard({
         ) : (
           !editing && (
             <button
-              ref={(el) => {
-                if (el && refocusEdit.current) {
-                  refocusEdit.current = false
-                  el.focus()
-                }
-              }}
+              ref={takeFocus('edit')}
               type="button"
               className="button button-primary button-small"
               onClick={startEditing}
@@ -172,7 +199,7 @@ function SettingCard({
       <p className="setting-description">{DESCRIPTIONS[field]}</p>
 
       {pending && (
-        <div className="pending-change">
+        <div className="pending-change" ref={takeFocus('pending')} tabIndex={-1}>
           <p>
             {`Proposed ${formatSettingValue(field, pending.proposed_value)} by ${displayNameFor(pending.proposed_by)}.`}{' '}
             Not in force until signed off.
@@ -251,7 +278,7 @@ function CorrectiveStatus({ ceiling }: { ceiling: number | undefined }) {
   // E13 step 7: recalculated whenever the screen is viewed, never a stored alert.
   const status = useQuery({
     queryKey: CORRECTIVE_STATUS_QUERY_KEY,
-    queryFn: getCorrectiveStatus,
+    queryFn: () => getCorrectiveStatus(),
     refetchOnMount: 'always',
   })
   const data = status.data
@@ -267,7 +294,8 @@ function CorrectiveStatus({ ceiling }: { ceiling: number | undefined }) {
         </p>
       </header>
       {status.isPending && <p className="card-note">Computing…</p>}
-      {status.isError && (
+      {status.isError && data && <StaleNote what="the corrective status" />}
+      {status.isError && !data && (
         <div className="card-note form-error" role="alert">
           <ErrorLines error={status.error} />
           <button
@@ -283,7 +311,7 @@ function CorrectiveStatus({ ceiling }: { ceiling: number | undefined }) {
       {data && (
         <div className="corrective-body">
           <div className="corrective-main">
-            <span className={`badge corrective-current ${STATUS_TIER[data.status]}`}>
+            <span className={`badge corrective-current ${STATUS_TIER[data.status] ?? ''}`}>
               {data.status.replace(/_/g, ' ')}
             </span>
             <div>
@@ -324,19 +352,49 @@ function CorrectiveStatus({ ceiling }: { ceiling: number | undefined }) {
   )
 }
 
-function daysSince(iso: string): number {
-  return Math.max(0, Math.floor((Date.now() - parseUtc(iso)) / 86_400_000))
+/** Whole days since `iso`; a future timestamp (clock skew) is 0; an unparseable one is null. */
+function daysSince(iso: string): number | null {
+  const at = sortableTime(iso)
+  if (at === -Infinity) return null
+  return Math.max(0, Math.floor((Date.now() - at) / 86_400_000))
+}
+
+/** A background refetch failed but earlier data is still on screen: say it may be out of date. */
+function StaleNote({ what }: { what: string }) {
+  return (
+    <p className="card-note stale-note" role="status">
+      Could not refresh {what}; showing what was last loaded.
+    </p>
+  )
+}
+
+/**
+ * One row per part. The route returns dispositions with no confirmed outcome yet, and a dual
+ * REJECT is two sign-off records for the same part (two rows, and a duplicate React key). Keeps
+ * the most recent record per part, longest-waiting first.
+ */
+function worklistRows(pending: MOCK_DispositionRecord[]): MOCK_DispositionRecord[] {
+  const latest = new Map<string, MOCK_DispositionRecord>()
+  for (const record of pending) {
+    const key = JSON.stringify([record.project_id, record.component_id])
+    const seen = latest.get(key)
+    if (!seen || sortableTime(record.timestamp) >= sortableTime(seen.timestamp)) {
+      latest.set(key, record)
+    }
+  }
+  return [...latest.values()]
+    .map((record, index) => ({ record, index, at: sortableTime(record.timestamp) }))
+    .sort((a, b) => (a.at === b.at ? a.index - b.index : a.at < b.at ? -1 : 1))
+    .map(({ record }) => record)
 }
 
 function Worklist() {
   const client = useApiClient()
   const headingId = useId()
-  const worklist = useQuery({ queryKey: WORKLIST_QUERY_KEY, queryFn: getWorklist })
+  const worklist = useQuery({ queryKey: WORKLIST_QUERY_KEY, queryFn: () => getWorklist() })
   const projects = useQuery({ queryKey: PROJECTS_QUERY_KEY, queryFn: () => listProjects(client) })
   const lots = new Map((projects.data ?? []).map((p) => [p.project_id, p.lot_id]))
-  const rows = [...(worklist.data?.pending ?? [])].sort((a, b) =>
-    a.timestamp === b.timestamp ? 0 : a.timestamp < b.timestamp ? -1 : 1,
-  )
+  const rows = worklistRows(worklist.data?.pending ?? [])
 
   return (
     <section className="card worklist" aria-labelledby={headingId}>
@@ -350,7 +408,8 @@ function Worklist() {
         </p>
       </header>
       {worklist.isPending && <p className="card-note">Loading worklist…</p>}
-      {worklist.isError && (
+      {worklist.isError && worklist.data && <StaleNote what="the worklist" />}
+      {worklist.isError && !worklist.data && (
         <div className="card-note form-error" role="alert">
           <ErrorLines error={worklist.error} />
           <button
@@ -381,6 +440,7 @@ function Worklist() {
           <tbody>
             {rows.map((r) => {
               const lotId = lots.get(r.project_id)
+              const days = daysSince(r.timestamp)
               return (
                 <tr key={`${r.project_id}:${r.component_id}`}>
                   <td className="mono">
@@ -392,7 +452,7 @@ function Worklist() {
                   <td>
                     <VerdictBadge verdict={r.verdict} />
                   </td>
-                  <td className="mono numeric">{daysSince(r.timestamp)}d</td>
+                  <td className="mono numeric">{days === null ? '—' : `${days}d`}</td>
                 </tr>
               )
             })}
@@ -409,7 +469,7 @@ function Worklist() {
  */
 export function SettingsScreen() {
   const { session } = useAuth()
-  const settings = useQuery({ queryKey: SETTINGS_QUERY_KEY, queryFn: getSettings })
+  const settings = useQuery({ queryKey: SETTINGS_QUERY_KEY, queryFn: () => getSettings() })
 
   return (
     <section className="screen settings">
@@ -424,7 +484,8 @@ export function SettingsScreen() {
       </header>
 
       {settings.isPending && <p className="card-note">Loading settings…</p>}
-      {settings.isError && (
+      {settings.isError && settings.data && <StaleNote what="settings" />}
+      {settings.isError && !settings.data && (
         <div className="card-note form-error" role="alert">
           <p>Could not load settings.</p>
           <ErrorLines error={settings.error} />

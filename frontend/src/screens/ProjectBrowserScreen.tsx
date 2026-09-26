@@ -8,6 +8,7 @@ import { listProjects, PROJECTS_QUERY_KEY, type ProjectSummary } from '../api/lo
 import { displayNameFor } from '../auth/accounts'
 import { SortIcon } from '../shell/icons'
 import { pathToLot, screenById } from './registry'
+import { formatUtc, sortableTime } from './settingsFormat'
 
 type SortKey = 'lot_id' | 'part_number' | 'status' | 'created_at' | 'created_by'
 type Direction = 'ascending' | 'descending'
@@ -27,23 +28,44 @@ interface Row {
   statusFailed: boolean
 }
 
+/**
+ * Case-insensitive and numeric-aware (LOT-9 before LOT-10), pinned to one locale so the order
+ * never depends on the viewer's browser settings.
+ */
+const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+
+function creatorName(accountId: string): string {
+  return accountId.trim() === '' ? '' : displayNameFor(accountId)
+}
+
 function sortValue(row: Row, key: SortKey): string {
   if (key === 'status') return row.status ?? ''
-  if (key === 'created_by') return displayNameFor(row.project.created_by)
+  if (key === 'created_by') return creatorName(row.project.created_by)
   return row.project[key]
 }
 
-/** Stable, locale-independent sort: ties keep GET /projects' newest-first order. */
+function compare(a: Row, b: Row, key: SortKey): number {
+  if (key === 'created_at') {
+    // By instant, not by string: timestamps can arrive with and without an offset.
+    const x = sortableTime(a.project.created_at)
+    const y = sortableTime(b.project.created_at)
+    return x === y ? 0 : x < y ? -1 : 1
+  }
+  return collator.compare(sortValue(a, key), sortValue(b, key))
+}
+
+/** Stable sort: ties keep GET /projects' newest-first order. Blank values sort last either way. */
 function sortRows(rows: Row[], key: SortKey, direction: Direction): Row[] {
   const sign = direction === 'ascending' ? 1 : -1
   return rows
     .map((row, index) => ({ row, index }))
     .sort((a, b) => {
-      const x = sortValue(a.row, key)
-      const y = sortValue(b.row, key)
-      // Rows with no status yet sort last in both directions.
-      if (x === '' || y === '') return x === y ? a.index - b.index : x === '' ? 1 : -1
-      return x === y ? a.index - b.index : x < y ? -sign : sign
+      if (key !== 'created_at') {
+        const blankA = sortValue(a.row, key) === ''
+        const blankB = sortValue(b.row, key) === ''
+        if (blankA || blankB) return blankA === blankB ? a.index - b.index : blankA ? 1 : -1
+      }
+      return compare(a.row, b.row, key) * sign || a.index - b.index
     })
     .map(({ row }) => row)
 }
@@ -53,7 +75,9 @@ function StatusCell({ row }: { row: Row }) {
   if (row.status === null) return <span className="muted">Loading…</span>
   // Shown as sent (rule 10); underscores become spaces, same as VerdictBadge.
   return (
-    <span className={`status-chip status-chip-${row.status.toLowerCase()}`}>
+    <span
+      className={`status-chip${row.status === 'IN_PROGRESS' ? ' status-chip-in_progress' : ''}`}
+    >
       {row.status.replace(/_/g, ' ')}
     </span>
   )
@@ -82,7 +106,8 @@ export function ProjectBrowserScreen() {
   const rows: Row[] = (projects.data ?? []).map((project, i) => ({
     project,
     status: statuses[i]?.data?.disposition.status ?? null,
-    statusFailed: statuses[i]?.isError ?? false,
+    // A failed background refresh keeps the last status it had rather than hiding it.
+    statusFailed: (statuses[i]?.isError ?? false) && !statuses[i]?.data,
   }))
   const sorted = sortRows(rows, sort.key, sort.direction)
 
@@ -108,7 +133,13 @@ export function ProjectBrowserScreen() {
 
       {projects.isPending && <p className="card-note">Loading projects…</p>}
 
-      {projects.isError && (
+      {projects.isError && projects.data && (
+        <p className="card-note stale-note" role="status">
+          Could not refresh projects; showing what was last loaded.
+        </p>
+      )}
+
+      {projects.isError && !projects.data && (
         <div className="card-note form-error" role="alert">
           <p>Could not load projects.</p>
           <ul className="message-list">
@@ -170,8 +201,8 @@ export function ProjectBrowserScreen() {
                   <td>
                     <StatusCell row={row} />
                   </td>
-                  <td className="mono">{row.project.created_at.slice(0, 10)}</td>
-                  <td>{displayNameFor(row.project.created_by)}</td>
+                  <td className="mono">{formatUtc(row.project.created_at).slice(0, 10)}</td>
+                  <td>{creatorName(row.project.created_by) || <span className="muted">—</span>}</td>
                 </tr>
               ))}
             </tbody>

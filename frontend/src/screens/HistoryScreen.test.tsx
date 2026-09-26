@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { act, fireEvent, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as historyApi from '../api/history'
 import { ApiError } from '../api/errors'
@@ -283,5 +283,118 @@ describe('HistoryScreen (E6 screen 6)', () => {
     mockLog([], [])
     renderWithApi(<HistoryScreen />, { fetch: server() })
     expect(await screen.findByText(/no events on record yet/i)).toBeInTheDocument()
+  })
+})
+
+describe('HistoryScreen edge cases (P1.12 review)', () => {
+  function run(payload: Record<string, unknown>): MOCK_EventResponse {
+    return { ...EVENTS[3], payload }
+  }
+
+  async function openTrace() {
+    fireEvent.click(await screen.findByRole('button', { name: /stored diff/i }))
+    const trace = screen.getByRole('region', { name: /stored diff trace/i })
+    return within(trace)
+      .getAllByRole('listitem')
+      .map((li) => li.textContent)
+  }
+
+  test('a diff sent with empty lists or nulls is still a diff with no changes', async () => {
+    mockLog(
+      [run({ newly_activated_modules: [], resolved_forecasts: null, verdict_changes: {} })],
+      [],
+    )
+    renderWithApi(<HistoryScreen />, { fetch: server() })
+    expect(
+      await screen.findByText('Analysis run for LOT-2024-8841: no changes from the prior run'),
+    ).toBeInTheDocument()
+  })
+
+  test('a resolved forecast with no prediction on record, float noise, and a missing verdict', async () => {
+    mockLog(
+      [
+        run({
+          newly_activated_modules: { 'DUT-007': ['module_a', 'module_a'] },
+          resolved_forecasts: {
+            'DUT-007': { predicted: null, actual: 60.80000000000001 },
+            'DUT-008': { predicted: 61.49999999999999, actual: 60.8 },
+          },
+          verdict_changes: { 'DUT-009': { from: 'WATCH' } },
+        }),
+      ],
+      [],
+    )
+    const consoleError = vi.spyOn(console, 'error')
+    renderWithApi(<HistoryScreen />, { fetch: server() })
+
+    expect(await openTrace()).toEqual([
+      'Module activation: Module A activated for DUT-007',
+      'Module activation: Module A activated for DUT-007',
+      'Prediction resolved: DUT-007 had no 168h forecast on record; measured 60.8',
+      'Prediction resolved: DUT-008 168h forecast 61.5 resolved to measured 60.8',
+      'Verdict shift: DUT-009 moved from WATCH to —',
+    ])
+    expect(consoleError.mock.calls.some((a) => String(a[0]).includes('same key'))).toBe(false)
+  })
+
+  test('a repeated event id renders both rows without a duplicate React key', async () => {
+    const consoleError = vi.spyOn(console, 'error')
+    mockLog([EVENTS[2], { ...EVENTS[2], timestamp: '2026-09-16T00:00:00Z' }], [])
+    renderWithApi(<HistoryScreen />, { fetch: server() })
+
+    await screen.findAllByText('Added checkpoints 96h, 168h to LOT-2024-8841')
+    expect(rows()).toHaveLength(2)
+    expect(consoleError.mock.calls.some((a) => String(a[0]).includes('same key'))).toBe(false)
+  })
+
+  test('timestamps sort by instant across offsets; an unparseable one goes last, shown raw', async () => {
+    mockLog(
+      [
+        { ...EVENTS[2], event_id: 'bad', timestamp: 'garbage' },
+        // 06:30Z - older, despite reading "12:00".
+        { ...EVENTS[2], event_id: 'offset', timestamp: '2026-09-15T12:00:00+05:30' },
+        { ...EVENTS[2], event_id: 'utc', timestamp: '2026-09-15T07:00:00Z' },
+      ],
+      [],
+    )
+    renderWithApi(<HistoryScreen />, { fetch: server() })
+    await screen.findAllByText(/added checkpoints/i)
+
+    expect(rows().map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual([
+      '2026-09-15 07:00:00',
+      '2026-09-15 06:30:00',
+      'garbage',
+    ])
+  })
+
+  test('a disposition with an empty rationale says so instead of showing empty quotes', async () => {
+    mockLog([], [{ ...SIGNOFFS[0], rationale: '  ' }])
+    renderWithApi(<HistoryScreen />, { fetch: server() })
+    expect(await screen.findByText('(no rationale recorded)')).toBeInTheDocument()
+    expect(screen.queryByText(/“/)).not.toBeInTheDocument()
+  })
+
+  test('a failed background refresh keeps the last complete log, flagged as stale', async () => {
+    mockLog()
+    const { queryClient } = renderWithApi(<HistoryScreen />, { fetch: server() })
+    await screen.findByText(/dual sign-off completed/i)
+
+    vi.spyOn(historyApi, 'listEvents').mockRejectedValue(new ApiError(503, ['down']))
+    await act(() => queryClient.refetchQueries({ queryKey: ['events'] }))
+
+    expect(await screen.findByText(/could not refresh the history log/i)).toBeInTheDocument()
+    expect(screen.getByText(/dual sign-off completed/i)).toBeInTheDocument()
+    expect(screen.queryByText(/could not load the history log/i)).not.toBeInTheDocument()
+  })
+
+  test('never shows half a log: events without sign-offs is an error, not a partial list', async () => {
+    vi.spyOn(historyApi, 'listEvents').mockResolvedValue(EVENTS)
+    vi.spyOn(historyApi, 'listDispositionSignoffs').mockRejectedValue(
+      new ApiError(500, ['sign-off store unavailable']),
+    )
+    renderWithApi(<HistoryScreen />, { fetch: server() })
+
+    expect(await screen.findByText('sign-off store unavailable')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })

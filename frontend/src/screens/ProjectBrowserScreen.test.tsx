@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { Route, Routes, useParams } from 'react-router-dom'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as lotDetailApi from '../api/lotDetail'
@@ -162,5 +162,86 @@ describe('ProjectBrowserScreen (E6 screen 5)', () => {
     expect(await screen.findByText('database is locked')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
     expect(await screen.findByRole('link', { name: 'LOT-A' })).toBeInTheDocument()
+  })
+})
+
+describe('ProjectBrowserScreen edge cases (P1.12 review)', () => {
+  const base = PROJECTS[0]
+
+  test('lot ids sort case-insensitively and numerically (LOT-9 before LOT-10)', async () => {
+    const { fetch } = fakeServer({
+      'GET /projects': {
+        body: [
+          { ...base, project_id: 'a', lot_id: 'LOT-10' },
+          { ...base, project_id: 'b', lot_id: 'lot-2' },
+          { ...base, project_id: 'c', lot_id: 'LOT-9' },
+        ],
+      },
+    })
+    renderWithApi(routed, { fetch })
+    await screen.findByRole('link', { name: 'LOT-10' })
+
+    fireEvent.click(screen.getByRole('button', { name: /lot id/i }))
+    expect(lotOrder()).toEqual(['lot-2', 'LOT-9', 'LOT-10'])
+  })
+
+  test('created dates sort by instant and display in UTC, whatever offset they arrive with', async () => {
+    const { fetch } = fakeServer({
+      'GET /projects': {
+        body: [
+          // 2026-09-14T19:30Z, despite reading "15th".
+          {
+            ...base,
+            project_id: 'a',
+            lot_id: 'LOT-OFFSET',
+            created_at: '2026-09-15T01:00:00+05:30',
+          },
+          { ...base, project_id: 'b', lot_id: 'LOT-UTC', created_at: '2026-09-14T20:00:00Z' },
+        ],
+      },
+    })
+    renderWithApi(routed, { fetch })
+    await screen.findByRole('link', { name: 'LOT-UTC' })
+
+    expect(lotOrder()).toEqual(['LOT-UTC', 'LOT-OFFSET'])
+    expect(within(dataRows()[1]).getByText('2026-09-14')).toBeInTheDocument()
+  })
+
+  test('a blank creator shows a dash and sorts last', async () => {
+    const { fetch } = fakeServer({
+      'GET /projects': {
+        body: [
+          { ...base, project_id: 'a', lot_id: 'LOT-X', created_by: '' },
+          { ...base, project_id: 'b', lot_id: 'LOT-Y', created_by: 'r.mehta' },
+        ],
+      },
+    })
+    renderWithApi(routed, { fetch })
+    await screen.findByRole('link', { name: 'LOT-X' })
+
+    fireEvent.click(screen.getByRole('button', { name: /created by/i }))
+    expect(lotOrder()).toEqual(['LOT-Y', 'LOT-X'])
+    expect(within(dataRows()[1]).getByText('—')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /created by/i }))
+    expect(lotOrder()).toEqual(['LOT-Y', 'LOT-X'])
+  })
+
+  test('a failed background refresh keeps the list and its statuses, flagged as stale', async () => {
+    let calls = 0
+    const { fetch } = fakeServer({
+      'GET /projects': () =>
+        ++calls === 1 ? { body: PROJECTS } : { status: 503, body: { detail: 'down' } },
+    })
+    const { queryClient } = renderWithApi(routed, { fetch })
+    await waitFor(() => expect(within(dataRows()[0]).getByText('IN PROGRESS')).toBeInTheDocument())
+
+    vi.spyOn(lotDetailApi, 'getLotSummary').mockRejectedValue(new Error('down'))
+    await act(() => queryClient.refetchQueries())
+
+    expect(await screen.findByText(/could not refresh projects/i)).toBeInTheDocument()
+    expect(screen.queryByText(/could not load projects/i)).not.toBeInTheDocument()
+    expect(dataRows()).toHaveLength(3)
+    expect(within(dataRows()[0]).getByText('IN PROGRESS')).toBeInTheDocument()
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument()
   })
 })

@@ -15,11 +15,12 @@ import { displayNameFor } from '../auth/accounts'
 import { ChevronDownIcon, ChevronUpIcon } from '../shell/icons'
 import { pathToPart } from './registry'
 import {
+  formatNumber,
   formatSettingValue,
   formatUtc,
   isSettingField,
-  parseUtc,
   SETTING_LABELS,
+  sortableTime,
 } from './settingsFormat'
 import { VerdictBadge } from './VerdictBadge'
 
@@ -47,8 +48,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readDiff(payload: Record<string, unknown>): Diff | null {
+  const keys = ['newly_activated_modules', 'resolved_forecasts', 'verdict_changes']
+  // Recognized by its keys, not by their values being objects: a backend that sends `[]` or
+  // null for "nothing changed" still sent a diff, not an unknown payload.
+  if (!keys.some((k) => Object.hasOwn(payload, k))) return null
   const { newly_activated_modules: a, resolved_forecasts: r, verdict_changes: v } = payload
-  if (!isRecord(a) && !isRecord(r) && !isRecord(v)) return null
   return {
     activations: Object.entries(isRecord(a) ? a : {}).map(([id, modules]) => [
       id,
@@ -145,29 +149,51 @@ function describeEvent(event: MOCK_EventResponse, lot: string): string {
   return genericDescription(p)
 }
 
+/** A verdict from the stored diff, verbatim; a missing one is a dash, never "undefined". */
+function TraceVerdict({ verdict }: { verdict: unknown }) {
+  return typeof verdict === 'string' && verdict !== '' ? (
+    <VerdictBadge verdict={verdict} />
+  ) : (
+    <span className="muted">—</span>
+  )
+}
+
 function DiffTrace({ diff, id }: { diff: Diff; id: string }) {
   const headingId = useId()
   const items: ReactNode[] = [
     ...diff.activations.flatMap(([component, modules]) =>
-      modules.map((m) => (
-        <li key={`a-${component}-${m}`}>
+      modules.map((m, i) => (
+        <li key={`a-${component}-${i}`}>
           <span className="trace-kind">Module activation:</span> {moduleName(m)} activated for{' '}
           <span className="mono">{component}</span>
         </li>
       )),
     ),
-    ...diff.resolved.map(([component, { predicted, actual }]) => (
-      <li key={`r-${component}`}>
-        <span className="trace-kind">Prediction resolved:</span>{' '}
-        <span className="mono">{component}</span> 168h forecast{' '}
-        <span className="mono">{String(predicted)}</span> resolved to measured{' '}
-        <span className="mono">{String(actual)}</span>
-      </li>
-    )),
+    ...diff.resolved.map(([component, { predicted, actual }]) => {
+      const forecast = formatNumber(predicted)
+      const measured = formatNumber(actual) ?? '—'
+      return (
+        <li key={`r-${component}`}>
+          <span className="trace-kind">Prediction resolved:</span>{' '}
+          <span className="mono">{component}</span>{' '}
+          {forecast === null ? (
+            // A part whose forecast was unavailable (E7 step 10) still gets a measured 168h.
+            <>
+              had no 168h forecast on record; measured <span className="mono">{measured}</span>
+            </>
+          ) : (
+            <>
+              168h forecast <span className="mono">{forecast}</span> resolved to measured{' '}
+              <span className="mono">{measured}</span>
+            </>
+          )}
+        </li>
+      )
+    }),
     ...diff.verdicts.map(([component, { from, to }]) => (
       <li key={`v-${component}`}>
         <span className="trace-kind">Verdict shift:</span> <span className="mono">{component}</span>{' '}
-        moved from <VerdictBadge verdict={String(from)} /> to <VerdictBadge verdict={String(to)} />
+        moved from <TraceVerdict verdict={from} /> to <TraceVerdict verdict={to} />
       </li>
     )),
   ]
@@ -200,7 +226,12 @@ function EventRow({ entry, lotFor }: { entry: Entry; lotFor: (projectId: string)
               {r.component_id}
             </Link>{' '}
             on <span className="mono">{lotFor(r.project_id)}</span>{' '}
-            <VerdictBadge verdict={r.verdict} /> “{r.rationale}”{' '}
+            <VerdictBadge verdict={r.verdict} />{' '}
+            {r.rationale.trim() === '' ? (
+              <span className="muted">(no rationale recorded)</span>
+            ) : (
+              <>“{r.rationale}”</>
+            )}{' '}
             <span className="muted">
               (against analysis run <span className="mono">{r.analysis_run_id}</span>)
             </span>
@@ -253,14 +284,58 @@ function EventRow({ entry, lotFor }: { entry: Entry; lotFor: (projectId: string)
   )
 }
 
+/** Unique React keys even if the server repeats an id: a repeat gets a `#n` suffix. */
+function uniqueKeys(keys: string[]): string[] {
+  const seen = new Map<string, number>()
+  return keys.map((key) => {
+    const n = seen.get(key) ?? 0
+    seen.set(key, n + 1)
+    return n === 0 ? key : `${key}#${n}`
+  })
+}
+
+/**
+ * Events and sign-offs as one timeline, newest first. Equal (or unparseable) timestamps keep
+ * server order; an unparseable timestamp sorts as the oldest instead of scrambling the sort.
+ */
+function timeline(events: MOCK_EventResponse[], signoffs: MOCK_DispositionRecord[]): Entry[] {
+  const eventKeys = uniqueKeys(events.map((e) => `e:${e.event_id}`))
+  const signoffKeys = uniqueKeys(
+    signoffs.map((r) => `d:${r.project_id}:${r.component_id}:${r.account_id}:${r.timestamp}`),
+  )
+  const all: Entry[] = [
+    ...events.map((event, i): Entry => ({
+      kind: 'event',
+      key: eventKeys[i],
+      at: sortableTime(event.timestamp),
+      event,
+    })),
+    ...signoffs.map((record, i): Entry => ({
+      kind: 'disposition',
+      key: signoffKeys[i],
+      at: sortableTime(record.timestamp),
+      record,
+    })),
+  ]
+  return all
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) =>
+      a.entry.at === b.entry.at ? a.index - b.index : a.entry.at > b.entry.at ? -1 : 1,
+    )
+    .map(({ entry }) => entry)
+}
+
 /**
  * E6 screen 6: the full event and disposition log, identical for both accounts (context.md
  * 5.14) - nothing here reads who is signed in. `analysis_run` entries carry their stored diff.
  */
 export function HistoryScreen() {
   const client = useApiClient()
-  const events = useQuery({ queryKey: EVENTS_QUERY_KEY, queryFn: listEvents })
-  const signoffs = useQuery({ queryKey: SIGNOFFS_QUERY_KEY, queryFn: listDispositionSignoffs })
+  const events = useQuery({ queryKey: EVENTS_QUERY_KEY, queryFn: () => listEvents() })
+  const signoffs = useQuery({
+    queryKey: SIGNOFFS_QUERY_KEY,
+    queryFn: () => listDispositionSignoffs(),
+  })
   // Only to name each project's lot. If it fails, the log still shows, with project ids.
   const projects = useQuery({ queryKey: PROJECTS_QUERY_KEY, queryFn: () => listProjects(client) })
 
@@ -268,27 +343,10 @@ export function HistoryScreen() {
   const lotFor = (projectId: string) => lots.get(projectId) ?? projectId
 
   const failed = [events, signoffs].filter((q) => q.isError)
-  const entries: Entry[] =
-    events.data && signoffs.data
-      ? [
-          ...events.data.map((event): Entry => ({
-            kind: 'event',
-            key: `e:${event.event_id}`,
-            at: parseUtc(event.timestamp),
-            event,
-          })),
-          ...signoffs.data.map((record, i): Entry => ({
-            kind: 'disposition',
-            key: `d:${i}:${record.project_id}:${record.component_id}:${record.timestamp}`,
-            at: parseUtc(record.timestamp),
-            record,
-          })),
-        ]
-          .map((entry, index) => ({ entry, index }))
-          // Newest first; equal timestamps keep server order.
-          .sort((a, b) => b.entry.at - a.entry.at || a.index - b.index)
-          .map(({ entry }) => entry)
-      : []
+  // Only a complete log is shown: with one half missing, the page would present a partial log
+  // as the full record. A failed background refresh keeps the last complete one, flagged stale.
+  const loaded = !!events.data && !!signoffs.data
+  const entries: Entry[] = loaded ? timeline(events.data ?? [], signoffs.data ?? []) : []
 
   return (
     <section className="screen history">
@@ -305,7 +363,13 @@ export function HistoryScreen() {
         <p className="card-note">Loading history…</p>
       )}
 
-      {failed.length > 0 && (
+      {failed.length > 0 && loaded && (
+        <p className="card-note stale-note" role="status">
+          Could not refresh the history log; showing what was last loaded.
+        </p>
+      )}
+
+      {failed.length > 0 && !loaded && (
         <div className="card-note form-error" role="alert">
           <p>Could not load the history log.</p>
           <ul className="message-list">
