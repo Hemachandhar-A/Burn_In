@@ -239,3 +239,12 @@ Entry format:
 - Status: OPEN, non-blocking.
 
 ---
+
+## 2026-09-27 P2 - Three ingestion gaps found on merge review: demo-lot bypasses the pipeline, only analysis_run events persist, test_date parse is unhandled
+- Attribution: these are **P2's own findings**, flagged in P2's merge report (P2.5 review), not a new Lead discovery. They were never turned into an instruction to P2 before P2 went offline - a message that should have reached them did not.
+- 1. **Demo-lot bypasses the pipeline:** `POST /lots/demo` (`ingestion/router.py`) only calls `store.put`. It never runs `fusion.run_full_pipeline` / `storage.save_analysis_run` / `storage.log_event("analysis_run")`, which `POST /lots` and `POST /lots/{lot_id}/checkpoints` do (P2.5), so a demo lot gets no `Project` row and no analysis run.
+- 2. **Only `analysis_run` events persist:** the router's only `repository.log_event` call is `analysis_run`. `ingest` and `checkpoint_add` go only to the in-process `store.events` list, so the persisted `events` table (History screen, `GET /events`) never shows them. `config_change` is written by nothing (E10's config-change flow is not built) - **still open, not closed by this fix.**
+- 3. **`test_date` parse is unhandled:** `_ensure_project` runs `datetime.fromisoformat(test_date)` on the raw form string, so a malformed date is an unhandled `ValueError` -> HTTP 500 instead of a visible 422 (E7 step 5).
+- Status: Lead is fixing these directly on `p2-ingestion` (one commit each) since P2 flagged them but was never instructed further before going offline. Unchanged and out of scope: `store.put` still happens before the pipeline runs (disclosed simplification, logged separately). **P2: review on waking.**
+
+---
