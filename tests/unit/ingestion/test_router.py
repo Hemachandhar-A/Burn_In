@@ -253,9 +253,89 @@ def test_post_lots_checkpoints_reuses_the_same_project_row_and_adds_another_run(
     assert runs[1].diff_vs_prior is not None
 
 
-def test_post_lots_demo_does_not_require_a_project_row():
-    # /lots/demo is unchanged by P2.5 - out of scope per Part 10's session wording.
+def test_post_lots_demo_creates_a_project_row():
+    # Was test_post_lots_demo_does_not_require_a_project_row, which pinned /lots/demo as unchanged by P2.5
+    # ("out of scope per Part 10's session wording") - a scope note, not a design choice. The demo route now
+    # runs the same pipeline-and-persist sequence as POST /lots, so it gets a Project row (Lead, 2026-09-27).
     response = client.post("/lots/demo", data={"account_id": "a.sharma"})
     assert response.status_code == 200
     lot_id = response.json()["lot_id"]
-    assert _repository().query_project(lot_id) is None
+    assert _repository().query_project(lot_id) is not None
+
+
+# --- P2-flagged findings, fixed by the Lead while P2 was offline (CONTRACT_CHANGES.md 2026-09-27) ---
+
+
+def test_demo_lot_runs_the_pipeline_and_persists_a_real_analysis_run():
+    response = client.post("/lots/demo", data={"account_id": "a.sharma"})
+    assert response.status_code == 200
+    lot_id = response.json()["lot_id"]
+
+    from storage import repository
+
+    project = repository.query_project(lot_id)
+    assert project is not None and project.part_number == "DEMO-PN"
+    run = repository.query_latest_project_data(lot_id)
+    assert run is not None
+    stored = json.loads(run.results_json)
+    assert stored["per_component"] and stored["lot_disposition"]["verdict"]  # a real AnalysisResults, persisted
+    assert json.loads(run.raw_data)["lot_id"] == lot_id
+    assert "analysis_run" in {e.event_type for e in repository.query_events(lot_id)}
+
+
+def test_ingest_and_checkpoint_add_events_are_persisted_alongside_analysis_run():
+    from storage import repository
+
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    types = [e.event_type for e in repository.query_events("L1")]
+    assert sorted(types) == ["analysis_run", "ingest"]
+
+    later = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    client.post("/lots/L1/checkpoints", files=_csv_file(later), data={"account_id": "r.mehta"})
+    events = repository.query_events("L1")
+    assert sorted(e.event_type for e in events) == ["analysis_run", "analysis_run", "checkpoint_add", "ingest"]
+    # Each ingestion event is attributed to the account that did it (E7 step 11).
+    by_type = {e.event_type: e.account_id for e in events if e.event_type != "analysis_run"}
+    assert by_type == {"ingest": "a.sharma", "checkpoint_add": "r.mehta"}
+    assert all(isinstance(e.payload, dict) for e in events)
+
+
+def test_demo_lot_persists_an_ingest_event_too():
+    from storage import repository
+
+    lot_id = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()["lot_id"]
+    assert sorted(e.event_type for e in repository.query_events(lot_id)) == ["analysis_run", "ingest"]
+
+
+def test_malformed_test_date_is_a_422_naming_the_field_not_a_500():
+    response = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "next tuesday"})
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list) and len(detail) == 1
+    assert "test_date" in detail[0] and "'next tuesday'" in detail[0]  # field name and what was received
+
+
+def test_malformed_test_date_leaves_no_state_behind_so_a_corrected_retry_succeeds():
+    bad = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-13-45"})
+    assert bad.status_code == 422
+    assert store.get("L1") is None  # nothing stored: a retry must not hit "lot already exists" (409)
+    good = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26"})
+    assert good.status_code == 200
+
+
+def test_valid_iso_test_date_and_absent_test_date_still_work():
+    assert client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26T14:30:00"}).status_code == 200
+    other = {**METADATA, "lot_id": "L2"}
+    assert client.post("/lots", files=_csv_file(VALID_CSV), data=other).status_code == 200
+
+
+def test_demo_route_attributes_its_events_and_project_to_the_acting_account():
+    """E7 step 11: every ingestion event carries the account that did it. Two different accounts, so a
+    hardcoded identity in load_demo_lot can match at most one of them."""
+    from storage import repository
+
+    for account in ("a.sharma", "r.mehta"):
+        lot_id = client.post("/lots/demo", data={"account_id": account}).json()["lot_id"]
+        events = {e.event_type: e.account_id for e in repository.query_events(lot_id)}
+        assert events == {"ingest": account, "analysis_run": account}
+        assert repository.query_project(lot_id).created_by == account

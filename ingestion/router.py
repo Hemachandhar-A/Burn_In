@@ -47,10 +47,27 @@ from storage import repository
 router = APIRouter(tags=["ingestion"])
 
 
+def _parse_test_date(test_date: str | None) -> datetime:
+    """The lot's physical test date from the metadata form (E7 step 1); now() when none was supplied. A value
+    that isn't ISO 8601 is a visible 422 naming the field and what was received (E7 step 5), never a 500."""
+    if not test_date:
+        return datetime.now(UTC)
+    try:
+        return datetime.fromisoformat(test_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                f"test_date: expected an ISO 8601 date or datetime (e.g. 2026-09-26 or 2026-09-26T14:30:00), "
+                f"got {test_date!r}"
+            ],
+        ) from None
+
+
 def _ensure_project(dataset: LotDataset, account_id: str, test_date: str | None) -> None:
     if repository.query_project(dataset.lot_id) is not None:
         return
-    parsed_test_date = datetime.fromisoformat(test_date) if test_date else datetime.now(UTC)
+    parsed_test_date = _parse_test_date(test_date)
     repository.save_project(
         project_id=dataset.lot_id, lot_id=dataset.lot_id, part_number=dataset.part_number,
         test_date=parsed_test_date, created_by=account_id,
@@ -95,6 +112,19 @@ def _run_pipeline_and_persist(
     )
 
 
+def _log_ingestion_event(
+    dataset: LotDataset, account_id: str, event_type: str, test_date: str | None = None
+) -> None:
+    """Persist an `ingest` / `checkpoint_add` event (E7 step 11, context.md 5.10) alongside the
+    `analysis_run` one - previously these only reached the in-process `store.events` list. The Project row
+    must exist first (events reference it), so it is ensured here; `_ensure_project` is idempotent."""
+    _ensure_project(dataset, account_id, test_date)
+    repository.log_event(
+        project_id=dataset.lot_id, account_id=account_id, event_type=event_type,
+        payload={"reading_count": len(dataset.readings), "status": dataset.status},
+    )
+
+
 def _normalize_and_correct(
     readings: list, reference_expected_json: str | None
 ) -> list:
@@ -125,6 +155,9 @@ async def upload_lot(
             detail=f"lot '{lot_id}' already exists - use POST /lots/{{lot_id}}/checkpoints to add a checkpoint",
         )
 
+    # Validated before anything is stored: a 422 must leave no state behind, or the corrected retry would 409.
+    _parse_test_date(test_date)
+
     raw = await file.read()
     try:
         readings = parse_lot_csv(
@@ -142,6 +175,7 @@ async def upload_lot(
         account_id=account_id,
     )
     store.put(lot_id, dataset, test_date=test_date, event_type="ingest", account_id=account_id)
+    _log_ingestion_event(dataset, account_id, "ingest", test_date)
     _run_pipeline_and_persist(dataset, account_id, test_date=test_date)
     return LotUploadResponse(
         lot_id=dataset.lot_id, part_number=dataset.part_number, status=dataset.status,
@@ -174,6 +208,7 @@ async def upload_checkpoint(
 
     merged = merge_checkpoint(existing, new_readings)
     store.put(lot_id, merged, event_type="checkpoint_add", account_id=account_id)
+    _log_ingestion_event(merged, account_id, "checkpoint_add")
     _run_pipeline_and_persist(merged, account_id)
     return LotUploadResponse(
         lot_id=merged.lot_id, part_number=merged.part_number, status=merged.status,
@@ -208,6 +243,8 @@ async def load_demo_lot(account_id: str = Form(...)) -> LotUploadResponse:
     lot_id = f"demo-{uuid.uuid4().hex[:8]}"
     generated = generate_lot(lot_id=lot_id, part_number="DEMO-PN", seed=42, account_id=account_id)
     store.put(lot_id, generated.dataset)
+    _log_ingestion_event(generated.dataset, account_id, "ingest")
+    _run_pipeline_and_persist(generated.dataset, account_id)  # same sequence as POST /lots (P2.5)
     return LotUploadResponse(
         lot_id=generated.dataset.lot_id, part_number=generated.dataset.part_number,
         status=generated.dataset.status, reading_count=len(generated.dataset.readings),
