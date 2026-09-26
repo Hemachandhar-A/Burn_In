@@ -1,4 +1,4 @@
-"""module_a/detect.py — real implementation through P3.2 + lot_id patch.
+"""module_a/detect.py — real implementation through P3.2 + lot_id patch + multi-lot fix.
 
 Sessions completed:
   P3.0      Stub — correctly-shaped fixed fake data
@@ -7,13 +7,20 @@ Sessions completed:
   lot_id    Populate ModuleAResult.lot_id from FeatureFrame (new contract field from develop merge).
             Sibling-bug scan: mcd_by_component and ecod_scores_by_cid_param are call-local dicts
             (no cross-call persistence) — the P4 cross-lot keying bug does not exist here.
+  multi-lot FIX: detect() now groups frames by lot_id and processes each lot independently.
+            Previously, passing multiple lots in one call would compute lot-relative statistics
+            (MCD, ECOD, percentile ranks, lot_size) across the pooled set, silently corrupting
+            every per-lot result. Confirmed with real numbers: MCD 213.92 (batched) vs 145.39
+            (alone) for the same component. Fix: public detect() routes to _detect_single_lot()
+            per lot and concatenates results preserving input order.
 
-
-Contract (unchanged):
-  Input:  list[FeatureFrame]                 — from features.compute() (P2)
+Contract:
+  Input:  list[FeatureFrame]                 — from features.compute() (P2). May span multiple
+                                               lots; each lot is processed independently.
           prior_frames: list[FeatureFrame]   — pooled cross-lot history for the same
                                                part number(s), used to train IF only.
-  Output: list[ModuleAResult]               — one result per input frame, same order
+                                               These intentionally span lots (E2 step 3).
+  Output: list[ModuleAResult]               — one result per input frame, same order.
 
 E2 step notes
 -------------
@@ -28,8 +35,10 @@ Step 4 — ECOD (pyod.models.ecod.ECOD):
 Step 5 — Percentile-normalise + max-combine:
   Each detector's raw score is converted to a percentile rank (0–1) within the lot:
     percentile_rank(score, all_scores) = rank(score) / n  [scipy.stats.rankdata]
-  For absent scores (cold-start IF → None, small-lot MCD → None): contribute 0.0
-  (most-benign interpretation — no signal, no severity boost).
+  For absent scores (cold-start IF → None, small-lot MCD → None): absent detector
+  arrays are all 0.0, so rankdata gives (n+1)/(2n) ≈ 0.5 to all components (average
+  rank of tied zeros). This floor is always < _CAP_PERCENTILE_THRESHOLD for n >= 2,
+  so it cannot alone trigger spurious capping — confirmed in test_p32_hardening.py.
   Combined severity: max(z_pct, mcd_pct, iso_pct, ecod_pct).
 
 Step 6 — Direction-awareness cap:
@@ -92,15 +101,17 @@ def detect(
     Parameters
     ----------
     frames:
-        One FeatureFrame per (component_id, parameter) pair for the current lot.
+        FeatureFrames for one or more lots. All lot-relative statistics (MCD, ECOD,
+        percentile ranks) are computed per lot_id. Order is preserved in the output.
     prior_frames:
         FeatureFrames from *previous* lots of the same part number(s), used as the
-        Isolation Forest's training set only.  Omit or pass [] for cold start.
+        Isolation Forest's training set only. These intentionally span lots (E2 step 3).
+        Omit or pass [] for cold start.
 
     Returns
     -------
     list[ModuleAResult]
-        Same length and order as *frames*.  Empty input → empty output.
+        Same length and order as *frames*. Empty input → empty output.
     """
     if not frames:
         return []
@@ -108,10 +119,46 @@ def detect(
     if prior_frames is None:
         prior_frames = []
 
+    # Build IF models once from prior_frames (intentionally cross-lot pooled, E2 step 3).
+    if_models = _build_if_models(prior_frames)
+
+    # Group frames by lot_id, preserving insertion order (Python 3.7+ dict guarantee).
+    lots: dict[str, list[tuple[int, FeatureFrame]]] = {}
+    for idx, frame in enumerate(frames):
+        lots.setdefault(frame.lot_id, []).append((idx, frame))
+
+    # Process each lot independently and collect (original_index, result) pairs.
+    indexed_results: list[tuple[int, ModuleAResult]] = []
+    for lot_frames_indexed in lots.values():
+        original_indices = [t[0] for t in lot_frames_indexed]
+        lot_frames = [t[1] for t in lot_frames_indexed]
+        lot_results = _detect_single_lot(lot_frames, if_models)
+        indexed_results.extend(zip(original_indices, lot_results))
+
+    # Restore original input order.
+    indexed_results.sort(key=lambda t: t[0])
+    return [r for _, r in indexed_results]
+
+
+# ---------------------------------------------------------------------------
+# Private: per-lot processing
+# ---------------------------------------------------------------------------
+
+def _detect_single_lot(
+    frames: list[FeatureFrame],
+    if_models: dict[str, IsolationForest],
+) -> list[ModuleAResult]:
+    """Score all frames from a *single* lot. Called once per lot_id by detect().
+
+    All statistics (MCD, ECOD, percentile ranks) are computed over `frames` only,
+    which all share the same lot_id. IF models are passed in pre-built from prior_frames.
+    """
+    lot_size = frames[0].lot_size
+    n = len(frames)
+
     # ------------------------------------------------------------------
     # Step 2 — MCD per checkpoint (lot-relative)
     # ------------------------------------------------------------------
-    lot_size = frames[0].lot_size
     mcd_by_component: dict[str, float] = {}
 
     if lot_size >= _MCD_LOT_SIZE_FLOOR:
@@ -129,32 +176,15 @@ def detect(
                     d = float(np.sqrt(dist))
                     if cid not in mcd_by_component or d > mcd_by_component[cid]:
                         mcd_by_component[cid] = d
-            except Exception:
+            except (ValueError, np.linalg.LinAlgError):
+                # Expected failure: singular / not-full-rank covariance matrix.
+                # Any other exception in this block is a real bug and must propagate.
                 pass
 
     # ------------------------------------------------------------------
-    # Step 3 — Isolation Forest (pooled cross-lot, NOT lot-relative)
-    # ------------------------------------------------------------------
-    prior_by_param: dict[str, list[FeatureFrame]] = {}
-    for f in prior_frames:
-        prior_by_param.setdefault(f.parameter, []).append(f)
-
-    if_models: dict[str, IsolationForest] = {}
-    for param, pframes in prior_by_param.items():
-        if not pframes:
-            continue
-        X_prior = _value_matrix(pframes)
-        if X_prior.shape[0] == 0:
-            continue
-        clf = IsolationForest(random_state=_RANDOM_STATE)
-        clf.fit(X_prior)
-        if_models[param] = clf
-
-    # ------------------------------------------------------------------
     # Step 4 — ECOD (lot-relative, PyOD)
-    # Group frames by parameter; fit one ECOD per parameter.
+    # Group current lot's frames by parameter; fit one ECOD per parameter.
     # ------------------------------------------------------------------
-    # Group current frames by parameter for ECOD.
     frames_by_param: dict[str, list[FeatureFrame]] = {}
     for f in frames:
         frames_by_param.setdefault(f.parameter, []).append(f)
@@ -171,11 +201,8 @@ def detect(
             ecod_scores_by_cid_param[(frame.component_id, frame.parameter)] = float(score)
 
     # ------------------------------------------------------------------
-    # Step 5 — Percentile-normalise each detector within the lot, then
-    # max-combine. We need lot-wide arrays per detector.
-    # Collect raw scores across all frames first, then rank.
+    # Step 5 — Percentile-normalise each detector within this lot, then max-combine.
     # ------------------------------------------------------------------
-    n = len(frames)
 
     # Robust z scalars
     z_raw = np.array([
@@ -183,17 +210,14 @@ def detect(
         for f in frames
     ])
 
-    # MCD distances (None → 0.0 for ranking purposes)
+    # MCD distances (absent → 0.0, see docstring note on absent-detector floor)
     mcd_raw = np.array([
         mcd_by_component.get(f.component_id, 0.0) if lot_size >= _MCD_LOT_SIZE_FLOOR else 0.0
         for f in frames
     ])
 
-    # IF scores (None → 0.0 = most benign; note: sklearn IF score is negated anomaly,
-    # so more negative = more anomalous; we negate to make higher = more anomalous).
-    iso_available = np.array([
-        f.parameter in if_models for f in frames
-    ])
+    # IF scores (absent/cold-start → 0.0; sklearn IF convention: lower = more anomalous,
+    # so we negate: higher = more anomalous, consistent with ECOD and z-score).
     iso_raw = np.array([
         -float(if_models[f.parameter].score_samples(_value_matrix([f]))[0])
         if f.parameter in if_models else 0.0
@@ -212,7 +236,7 @@ def detect(
             return np.array([0.5])  # single-element lot: mid-range percentile
         return rankdata(arr) / n
 
-    z_pct = _pct(z_raw)
+    z_pct   = _pct(z_raw)
     mcd_pct = _pct(mcd_raw)
     iso_pct = _pct(iso_raw)
     ecod_pct = _pct(ecod_raw)
@@ -239,21 +263,17 @@ def detect(
             mcd_distance = raw
             mcd_tag = raw is not None
 
-        # Step 3: IF score (already negated for ranking; restore sign for storage)
+        # Step 3: IF score (restore sklearn sign for storage: lower = more anomalous)
         iso_score: float | None = None
         if frame.parameter in if_models:
             X_cur = _value_matrix([frame])
             if X_cur.shape[0] > 0:
-                # score_samples: lower = more anomalous (sklearn convention)
                 iso_score = float(if_models[frame.parameter].score_samples(X_cur)[0])
 
         # Step 4: ECOD score
         ecod_score = ecod_scores_by_cid_param.get((frame.component_id, frame.parameter), 0.0)
 
-        # Step 6: direction-awareness cap
-        # Cap fires when: direction == below_median AND combined percentile is high enough
-        # that it would pull severity toward REJECT territory.
-        # severity_cap_reason populated now; severity_tier wired to thresholds in P3.3.
+        # Step 6: direction-awareness cap (WARNING: do NOT remove — E2 pitfall note)
         severity_cap_reason: str | None = None
         if direction == "below_median" and combined[i] >= _CAP_PERCENTILE_THRESHOLD:
             severity_cap_reason = "below_median_direction_cap"
@@ -278,6 +298,32 @@ def detect(
         ))
 
     return results
+
+
+def _build_if_models(
+    prior_frames: list[FeatureFrame],
+) -> dict[str, IsolationForest]:
+    """Train one IsolationForest per parameter from prior_frames.
+
+    prior_frames intentionally span multiple lots (E2 step 3: pooled cross-lot history).
+    Returns empty dict on cold start (no prior_frames).
+    """
+    prior_by_param: dict[str, list[FeatureFrame]] = {}
+    for f in prior_frames:
+        prior_by_param.setdefault(f.parameter, []).append(f)
+
+    if_models: dict[str, IsolationForest] = {}
+    for param, pframes in prior_by_param.items():
+        if not pframes:
+            continue
+        X_prior = _value_matrix(pframes)
+        if X_prior.shape[0] == 0:
+            continue
+        clf = IsolationForest(random_state=_RANDOM_STATE)
+        clf.fit(X_prior)
+        if_models[param] = clf
+
+    return if_models
 
 
 # ---------------------------------------------------------------------------
