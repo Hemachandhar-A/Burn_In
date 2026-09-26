@@ -201,3 +201,12 @@ Entry format:
 - Status: RESOLVED by Lead on `develop` (b55a6cd) - see the Lead entry "2026-09-26 Lead - ModuleBResult gains safety_slope; resolves P4's "no field for the safety slope" entry". `safety_slope: float | None` adopted as proposed; P4 stub updated to populate it. No TEMP_ModuleBResult was ever built, so none to remove.
 
 ---
+
+## 2026-09-26 P4 - Where do Module B's trained models come from when fusion calls module_b.predict()?
+- Missing/wrong: Part 5.7 has `run_full_pipeline` call `module_b.predict()` with a lot's frames, and E3 step 2 says "one global model per part number, pooled across lots" - but nothing says what those lots are at runtime, when training happens, or what a part number with no training history gets. `context.md` 5.9 says the model "was trained on physics-grounded synthetic data," which answers *what* but not *where it's wired*. No stored-model artifact, training entry point, or part-number registry exists in the plan.
+- Why it matters: without an answer, `predict` either needs models passed in (P5 has none to pass), or every uploaded lot's part number is unseen and every forecast comes back `forecast_unavailable=True` - honest, but Module B would never actually run in the demo.
+- Proposed fix (Lead decision): pick the runtime training source and pin it in Part 5.3/5.7. Two candidates: (a) the synthetic prior - calibrate per part number on a deterministic P1-generator corpus for that part number (what P4.3 does meanwhile, see below); (b) the part number's own Complete-lot history via `storage.query_readings_by_part_number` once >= 2 Complete lots exist, falling back to (a) otherwise. Either way, disclose in `context.md` Part 8 that the synthetic prior's intervals are calibrated on synthetic lots, not on the uploaded data's own history, so real data at a different parameter scale than the generator's is out of distribution.
+- Meanwhile: `module_b.predict(frames, config=None, *, models=None)` - with `models=None` it uses `module_b.predictor.TEMP_synthetic_models(part_number)`, which generates `TEMP_SYNTHETIC_LOTS` Complete lots with P1's `generate_lot` (fixed seeds), runs `features.compute`, and calibrates via P4.2's `calibrate_drift_models`, cached per part number in-process. Callers can pass `models=` explicitly to bypass it.
+- Status: OPEN
+
+---
