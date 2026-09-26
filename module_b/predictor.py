@@ -45,6 +45,7 @@ def TEMP_synthetic_models(part_number: str) -> dict[tuple[str, str], CalibratedD
 def _unavailable(frame: ModuleBInput) -> ModuleBResult:
     return ModuleBResult(
         component_id=frame.component_id,
+        lot_id=frame.lot_id,
         parameter=frame.parameter,
         predicted_168h=None,
         interval_lower=None,
@@ -92,6 +93,7 @@ def predict(
         results.append(
             ModuleBResult(
                 component_id=f.component_id,
+                lot_id=f.lot_id,
                 parameter=f.parameter,
                 predicted_168h=fc.predicted_168h,
                 interval_lower=fc.interval_lower,

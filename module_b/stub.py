@@ -11,6 +11,7 @@ from contracts import ModuleBResult
 STUB_RESULTS: tuple[ModuleBResult, ...] = (
     ModuleBResult(
         component_id="STUB-C001",
+        lot_id="STUB-LOT",
         parameter="iddq",
         predicted_168h=12.4,
         interval_lower=11.1,
@@ -24,6 +25,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
     ),
     ModuleBResult(
         component_id="STUB-C002",
+        lot_id="STUB-LOT",
         parameter="leakage",
         predicted_168h=48.0,
         interval_lower=41.5,
@@ -37,6 +39,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
     ),
     ModuleBResult(
         component_id="STUB-C003",
+        lot_id="STUB-LOT",
         parameter="vdd_ripple",
         predicted_168h=None,
         interval_lower=None,
