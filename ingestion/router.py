@@ -9,15 +9,34 @@ per-event attribution (`ingestion.store`'s interim `events` list).
 
 `account_id` is a form field, not `Depends(get_current_account)` - `identity/` (P5) doesn't
 exist yet (same interim as P2.1's stub). `ingestion.store` is an in-process placeholder for
-`project_data` (P2.6) - not durable, replaced there. Real pipeline/persistence wiring
-(`fusion.run_full_pipeline`, `storage.save_analysis_run`) is session P2.5.
+`project_data` (P2.6) - not durable, replaced there.
+
+Session P2.5: real pipeline/persistence wiring. `POST /lots` and `POST /lots/{lot_id}/checkpoints`
+call `fusion.run_full_pipeline` after a successful save, then `storage.save_analysis_run(...)`,
+then `storage.log_event("analysis_run", ...)`. A `storage.Project` row is created on first
+upload with `project_id == lot_id` - `Project`/`ProjectData`/`Event` are keyed by `project_id`,
+not `lot_id`, but this codebase has no notion of more than one project per lot, so reusing the
+lot_id as the project_id avoids inventing a second identifier for the same thing; checkpoints
+reuse the same row (`repository.query_project` no-ops the second time). `Project.test_date` has
+no form field of its own yet on the checkpoint route (only on the initial upload), so it defaults
+to "now" if the lot's first upload didn't supply one.
+
+`AnalysisResults` (the fusion stub's output) doesn't carry the per-component module-activation/
+forecast-resolution fields `storage.repository`'s pinned `results_json` shape wants
+(`module_a_ran`, `module_b_ran`, `predicted_168h`, `actual_168h`, `explanation_sentence`) - a gap
+already logged in CONTRACT_CHANGES.md by P2.6/P2.7 and still open. Until `RiskAssessment` carries
+real activation/forecast data, `module_a_ran`/`module_b_ran` are populated `True` (the stub always
+runs both) and `predicted_168h`/`actual_168h`/`explanation_sentence` stay `None` - an honest
+"not yet available" (AGENTS.md rule 12), not a guess.
 """
 import json
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile
 
-from contracts import LotDataset, LotUploadResponse
+from contracts import AnalysisResults, LotDataset, LotUploadResponse, ScreeningConfig
+from fusion.pipeline import run_full_pipeline
 from generator.lot import generate_lot
 from ingestion import store
 from ingestion.merge import compute_status, merge_checkpoint
@@ -25,8 +44,57 @@ from ingestion.offset import apply_tester_offset_correction
 from ingestion.parsing import IngestionValidationError, parse_lot_csv
 from ingestion.quality import QualityFlag, run_quality_checks
 from ingestion.units import normalize_readings
+from storage import repository
 
 router = APIRouter(tags=["ingestion"])
+
+
+def _ensure_project(dataset: LotDataset, account_id: str, test_date: str | None) -> None:
+    if repository.query_project(dataset.lot_id) is not None:
+        return
+    parsed_test_date = datetime.fromisoformat(test_date) if test_date else datetime.now(UTC)
+    repository.save_project(
+        project_id=dataset.lot_id, lot_id=dataset.lot_id, part_number=dataset.part_number,
+        test_date=parsed_test_date, created_by=account_id,
+    )
+
+
+def _analysis_results_to_dict(results: AnalysisResults) -> dict:
+    return {
+        "per_component": {
+            assessment.component_id: {
+                "verdict": assessment.verdict,
+                "module_a_ran": True,
+                "module_b_ran": True,
+                "predicted_168h": None,
+                "actual_168h": None,
+                "explanation_sentence": None,
+            }
+            for assessment in results.assessments
+        },
+        "lot_disposition": {
+            "pda_result": results.disposition.pda_result,
+            "verdict": results.disposition.verdict,
+            "is_forecast": results.disposition.is_forecast,
+            "status": results.disposition.status,
+        },
+    }
+
+
+def _run_pipeline_and_persist(
+    dataset: LotDataset, account_id: str, test_date: str | None = None
+) -> None:
+    _ensure_project(dataset, account_id, test_date)
+    results = run_full_pipeline(dataset, ScreeningConfig())
+    repository.save_analysis_run(
+        project_id=dataset.lot_id,
+        raw_data=dataset.model_dump(mode="json"),
+        results=_analysis_results_to_dict(results),
+    )
+    repository.log_event(
+        project_id=dataset.lot_id, account_id=account_id, event_type="analysis_run",
+        payload={"verdict": results.disposition.verdict, "pda_result": results.disposition.pda_result},
+    )
 
 
 def _normalize_and_correct(
@@ -76,6 +144,7 @@ async def upload_lot(
         account_id=account_id,
     )
     store.put(lot_id, dataset, test_date=test_date, event_type="ingest", account_id=account_id)
+    _run_pipeline_and_persist(dataset, account_id, test_date=test_date)
     return LotUploadResponse(
         lot_id=dataset.lot_id, part_number=dataset.part_number, status=dataset.status,
         reading_count=len(dataset.readings),
@@ -107,6 +176,7 @@ async def upload_checkpoint(
 
     merged = merge_checkpoint(existing, new_readings)
     store.put(lot_id, merged, event_type="checkpoint_add", account_id=account_id)
+    _run_pipeline_and_persist(merged, account_id)
     return LotUploadResponse(
         lot_id=merged.lot_id, part_number=merged.part_number, status=merged.status,
         reading_count=len(merged.readings),

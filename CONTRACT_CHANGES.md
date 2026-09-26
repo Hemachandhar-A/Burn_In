@@ -153,3 +153,12 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-26 P2.5 - `ingestion/router.py` now calls `fusion.run_full_pipeline`/`storage.save_analysis_run`; the still-open `RiskAssessment`/`AnalysisResults` gap now has a concrete population choice
+- Missing/wrong: continuing the still-OPEN "P2 - p2-ingestion merged" and "P2.6 - `project_data.results_json`'s shape" entries above - `contracts.RiskAssessment`/`LotDisposition` still don't carry `module_a_ran`/`module_b_ran`/`predicted_168h`/`actual_168h`/`explanation_sentence`, the fields `storage/repository.py`'s pinned `results_json` shape (per P2.7) wants per component.
+- Why it matters: `ingestion/router.py`'s new `_analysis_results_to_dict` (this session, P2.5) is the first real caller building that dict from an actual `AnalysisResults` (previously only test fixtures built it by hand) - it has to pick concrete values for the fields `AnalysisResults` can't supply, not leave them unset.
+- Proposed fix: not a new gap, just a population choice for the existing one, made explicitly rather than left implicit: `module_a_ran=True`/`module_b_ran=True` for every assessment (the stub - and, once real, `fusion.run_full_pipeline` - always runs both modules; there is no per-assessment flag saying otherwise), `predicted_168h`/`actual_168h`/`explanation_sentence` all `None` (AGENTS.md rule 12 - honestly "not yet available", not guessed). No `TEMP_` marker needed since this isn't a new placeholder type, just a call site for the already-logged gap. When the Lead resolves the underlying gap (adding these fields to `RiskAssessment` or introducing a richer per-component result type), `_analysis_results_to_dict` is the one place that needs to change.
+- Also new this session: a `storage.Project` row is now created on a lot's first upload, with `project_id` set equal to `lot_id` (no session had wired `save_project` since P2.1 built it - this codebase has no notion of more than one project per lot, so reusing the lot_id avoids inventing a second identifier for the same thing). Not a contract change - `Project.project_id`/`lot_id` are already two separate columns, this only fixes what value the caller passes for `project_id`.
+- Status: OPEN (the underlying `RiskAssessment`/`AnalysisResults` gap, unchanged); this session's population choice is not itself blocked on a resolution.
+
+---
