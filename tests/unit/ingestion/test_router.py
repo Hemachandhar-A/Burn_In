@@ -281,3 +281,27 @@ def test_demo_lot_runs_the_pipeline_and_persists_a_real_analysis_run():
     assert stored["per_component"] and stored["lot_disposition"]["verdict"]  # a real AnalysisResults, persisted
     assert json.loads(run.raw_data)["lot_id"] == lot_id
     assert "analysis_run" in {e.event_type for e in repository.query_events(lot_id)}
+
+
+def test_ingest_and_checkpoint_add_events_are_persisted_alongside_analysis_run():
+    from storage import repository
+
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    types = [e.event_type for e in repository.query_events("L1")]
+    assert sorted(types) == ["analysis_run", "ingest"]
+
+    later = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    client.post("/lots/L1/checkpoints", files=_csv_file(later), data={"account_id": "r.mehta"})
+    events = repository.query_events("L1")
+    assert sorted(e.event_type for e in events) == ["analysis_run", "analysis_run", "checkpoint_add", "ingest"]
+    # Each ingestion event is attributed to the account that did it (E7 step 11).
+    by_type = {e.event_type: e.account_id for e in events if e.event_type != "analysis_run"}
+    assert by_type == {"ingest": "a.sharma", "checkpoint_add": "r.mehta"}
+    assert all(isinstance(e.payload, dict) for e in events)
+
+
+def test_demo_lot_persists_an_ingest_event_too():
+    from storage import repository
+
+    lot_id = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()["lot_id"]
+    assert sorted(e.event_type for e in repository.query_events(lot_id)) == ["analysis_run", "ingest"]
