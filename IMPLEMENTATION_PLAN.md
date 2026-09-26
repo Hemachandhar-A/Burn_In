@@ -223,7 +223,7 @@ class ModuleAResult(BaseModel):
     robust_z: float; mcd_distance: float | None   # None if lot < 30 (5-feature MCD ceiling — context.md 4.2)
     isolation_forest_score: float | None            # None on a part number's first-ever lot (cold start)
     ecod_score: float
-    explainable_tags: dict[str, bool]   # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": True}
+    explainable_tags: dict[str, bool]   # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": False}
     direction: Literal["above_median", "below_median"]   # feeds the direction-awareness cap — context.md 4.2
     severity_tier: Literal["PASS", "REVIEW", "REJECT"]
     severity_cap_reason: str | None     # populated if capped — context.md 5.16, 6.2
