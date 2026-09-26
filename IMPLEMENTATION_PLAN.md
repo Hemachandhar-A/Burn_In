@@ -581,6 +581,7 @@ Daily rebase regardless of position in the order; conflicts caught daily are min
 - [ ] Every field consumed/produced matches `contracts.py` exactly, or a `CONTRACT_CHANGES.md` entry exists for the gap — on the frontend, every API call goes through the generated client, never a hand-written `fetch`
 - [ ] 7.3's checklist for this stage is fully covered
 - [ ] No edits outside this person's owned directory
+- [ ] If the branch adds or changes a router, its `app.include_router(...)` in `api/main.py` is part of **this same merge** — never a separate follow-up. A router that exists and passes its own tests but isn't registered is not a live route: it is absent from the OpenAPI schema, so the frontend's generated client has nothing to build against. The Lead makes the `api/main.py` edit in the merge commit (or the merge is not complete); after merging, confirm the routes appear in `/docs` or the OpenAPI schema.
 
 ---
 
