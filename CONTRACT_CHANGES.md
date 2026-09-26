@@ -134,3 +134,12 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-26 Lead - Routers registered; P2.8's storage routes differ from Part 5.6 (decision needed)
+- `ingestion/`, `storage/` and `report/` routers are now registered in `api/main.py`; the OpenAPI schema lists their routes (`tests/unit/test_api_registration.py` guards this).
+- **Mismatch found while checking the schema:** Part 5.6 specifies `GET /events` and `GET /disposition-signoffs` (global, no project scope - the History screen, E6 screen 6, shows the full log identically to both accounts) and `GET /projects/{project_id}` returning `ProjectDataResponse`. P2.8 built `GET /projects/{project_id}/events`, `GET /projects/{project_id}/disposition-signoffs`, and `GET /projects/{project_id}` returning `ProjectSummary` (the last is P2's documented deferral: `results_json` is still a plain dict, see the `save_analysis_run` mismatch, still open).
+- Why it matters: P1's History screen would need to fan out one request per project to rebuild a global log, which the plan does not describe. `GET /projects/{project_id}` cannot serve screens 3-4 on reload until `ProjectDataResponse` is real.
+- Proposed fix (Lead decision, not made here): add the global `GET /events` and `GET /disposition-signoffs` routes as Part 5.6 says (the per-project ones can stay as extras), and fix `GET /projects/{project_id}` together with the `save_analysis_run` dict-vs-`AnalysisResults` question.
+- Status: OPEN
+
+---

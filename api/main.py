@@ -1,11 +1,16 @@
 """FastAPI application instance (Lead-owned).
 
-Skeleton only: app instance, CORS for the Vite dev origin, and /health. Routers are
-registered here by the Lead as each one lands (session L2); the StaticFiles mount for
-the built frontend is added in L3 (scripts/build_demo.sh).
+App instance, CORS for the Vite dev origin, /health, and router registration. A router is
+registered here in the same merge that introduces it (IMPLEMENTATION_PLAN.md Part 8) - a merged
+session is not a reachable route. The StaticFiles mount for the built frontend is added in L3
+(scripts/build_demo.sh).
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from ingestion.router import router as ingestion_router
+from report.router import router as report_router
+from storage.router import router as storage_router
 
 VITE_DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
@@ -18,6 +23,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(ingestion_router)
+app.include_router(storage_router)
+app.include_router(report_router)
 
 
 @app.get("/health", tags=["meta"])
