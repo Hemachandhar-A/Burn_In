@@ -1454,3 +1454,95 @@ a.nav-item.active {
   background: #dbe4f5;
   color: #334155;
 }
+
+/* ---------------------------------------------------------------- History (E6 screen 6) */
+
+.history-table td {
+  vertical-align: top;
+}
+
+.history-table th:nth-child(1),
+.history-table th:nth-child(2),
+.history-table th:nth-child(3) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.history-table td:nth-child(1),
+.history-table td:nth-child(2),
+.history-table td:nth-child(3) {
+  white-space: nowrap;
+}
+
+.event-type::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  background: var(--ink);
+  vertical-align: 1px;
+}
+
+.event-description {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.event-text .badge,
+.event-description .badge {
+  margin: 0 2px;
+}
+
+.diff-toggle {
+  display: inline-flex;
+  text-decoration: none;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.history-table tr.is-expanded td {
+  border-bottom: 0;
+}
+
+.diff-row td {
+  padding-top: 0;
+}
+
+.diff-trace {
+  padding: 12px 14px;
+  border: 1px solid #d6e0f5;
+  border-radius: 2px;
+  background: var(--tint);
+}
+
+.diff-trace-title {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #d6e0f5;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.diff-trace ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+
+.trace-kind {
+  font-weight: 600;
+}
