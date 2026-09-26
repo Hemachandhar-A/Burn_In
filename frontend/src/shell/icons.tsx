@@ -138,3 +138,29 @@ export const ClipboardIcon = () => (
     <path d="M8.5 10.5h7M8.5 14h7M8.5 17.5h4.5" />
   </Icon>
 )
+
+/** Up/down chevrons for a sortable column; the active direction's chevron is drawn, the other not. */
+export const SortIcon = ({ direction }: { direction: 'ascending' | 'descending' | null }) => (
+  <Icon size={14}>
+    {direction !== 'descending' && <path d="m8 9 4-4 4 4" />}
+    {direction !== 'ascending' && <path d="m8 15 4 4 4-4" />}
+  </Icon>
+)
+
+export const ChevronDownIcon = () => (
+  <Icon size={16}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+)
+
+export const ChevronUpIcon = () => (
+  <Icon size={16}>
+    <path d="m6 15 6-6 6 6" />
+  </Icon>
+)
+
+export const PencilIcon = () => (
+  <Icon size={14}>
+    <path d="M4 20h4L19 9l-4-4L4 16z" />
+  </Icon>
+)

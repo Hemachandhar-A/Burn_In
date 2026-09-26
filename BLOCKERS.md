@@ -78,3 +78,12 @@ Entry format:
 - What was tried: the Ingest screen now refuses these ids before sending (`lotIdProblem` in `frontend/src/api/lots.ts`), so they can't be created from the UI. Any other client, or a CSV-driven script, still can.
 - Proposed fix (P2's call): return 422 from `POST /lots` for a `lot_id` containing `/` or made only of dots, with the same wording, so the rule lives on the server too.
 - Status: OPEN
+
+---
+
+## 2026-09-26 P1 - MOCK_ stand in for the seven routes Project Browser, History and Settings need (P1.12)
+- Blocked on: `GET /events` and `GET /disposition-signoffs` (P2, storage/router.py - approved by the Lead on 2026-09-26 in CONTRACT_CHANGES.md, not built yet; only the per-project variants are live), `GET /settings`, `POST /settings/propose`, `POST /settings/signoff` (P5.5, identity/router.py), `GET /settings/worklist`, `GET /settings/corrective-status` (P5.8, capa/router.py). Checked against the live schema (`app.openapi()['paths']` on this branch, rebased on `develop` @ b55a6cd): none are there. `GET /projects` is real and wired through the generated client.
+- What was tried: hand-typed mocks per screen in `frontend/src/api/mocks.ts`, field for field against `contracts.py`: `MOCK_EventResponse`, `MOCK_DispositionRecord` (History); `MOCK_SettingsResponse`, `MOCK_PendingSettingChange`, `MOCK_SettingsProposalRequest`, `MOCK_SettingsSignoffRequest`, `MOCK_WorklistResponse`, `MOCK_CorrectiveStatusResponse` (Settings). They share one fixture world (`MOCK_FIXTURE_PROJECTS`) and a mutable in-memory store, so a proposal and its sign-off show up in the next `GET /settings` and `GET /events`. The mock enforces the two-distinct-account rule (403 when the proposer signs off their own change). Called only from `frontend/src/api/history.ts` and `frontend/src/api/settings.ts`, one function per route.
+- Consequence: History and Settings show fixture data, not the database. The Project Browser's Status column reads the (still mocked) `GET /lots/{lot_id}` - see CONTRACT_CHANGES.md "Project Browser, History, Settings" item 1.
+- When the real routes land: `npm run generate-client`, then edit each function in `history.ts` / `settings.ts` to take the ApiClient and call its route (`listProjects` in `lots.ts` is the template); the two POSTs drop their `accountId` argument. Delete the mocks once nothing calls them and mark this RESOLVED in the same session.
+- Status: OPEN

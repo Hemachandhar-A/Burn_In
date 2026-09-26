@@ -1395,3 +1395,62 @@ a.nav-item.active {
   font-size: 13px;
   color: #334155;
 }
+
+/* ---------------------------------------------------------------- Project Browser (E6 screen 5) */
+
+.table td.strong {
+  font-weight: 600;
+}
+
+.sortable-table th {
+  padding: 0;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sort-button:hover {
+  color: var(--text);
+}
+
+.sort-button .icon {
+  flex-shrink: 0;
+  color: var(--faint);
+}
+
+.sortable-table th[aria-sort] .sort-button,
+.sortable-table th[aria-sort] .sort-button .icon {
+  color: var(--text);
+}
+
+/* Lot status is not a severity: neutral tints only, never the PASS/WATCH/REJECT colors. */
+.status-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--tint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #475569;
+}
+
+.status-chip-in_progress {
+  background: #dbe4f5;
+  color: #334155;
+}
