@@ -176,7 +176,7 @@ def test_model_beats_every_physics_baseline_on_held_out_lots(horizon):
     errors = {"model": [], "persistence": [], "linear": [], "power_law": []}
     for f, i, m in zip(test, inputs, model_pred):
         scale = abs(f.lot_median_0h)
-        b = base[(i.component_id, i.parameter)]
+        b = base[(i.lot_id, i.component_id, i.parameter)]
         errors["model"].append(abs(m - f.value_168h) / scale)
         for name in ("persistence", "linear", "power_law"):
             errors[name].append(abs(getattr(b, name) - f.value_168h) / scale)

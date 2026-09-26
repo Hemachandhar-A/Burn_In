@@ -179,9 +179,9 @@ def test_physics_baselines_fits_one_exponent_per_lot_and_parameter():
     leak = [_power_law_part(f"C{i}", 10.0, 0.3, 0.3, parameter="leakage") for i in range(30)]
     out = physics_baselines(iddq + leak)
     assert len(out) == 60
-    assert out[("C0", "iddq")].power_law_exponent == pytest.approx(0.2)
-    assert out[("C0", "leakage")].power_law_exponent == pytest.approx(0.3)
-    b = out[("C0", "iddq")]
+    assert out[("L1", "C0", "iddq")].power_law_exponent == pytest.approx(0.2)
+    assert out[("L1", "C0", "leakage")].power_law_exponent == pytest.approx(0.3)
+    b = out[("L1", "C0", "iddq")]
     assert b.persistence == persistence(iddq[0])
     assert b.linear == linear(iddq[0])
     assert b.power_law == pytest.approx(power_law(iddq[0], 0.2))
@@ -203,7 +203,7 @@ def test_power_law_baseline_beats_linear_on_generated_healthy_parts():
         inputs = [to_module_b_input(f).model_copy(update={"value_96h": None, "delta_96h": None}) for f in frames]
         preds = physics_baselines(inputs)
         for f in frames:
-            b = preds[(f.component_id, f.parameter)]
+            b = preds[(f.lot_id, f.component_id, f.parameter)]
             scale = abs(f.lot_median_0h) or 1.0
             maes["linear"].append(abs(b.linear - f.value_168h) / scale)
             maes["power_law"].append(abs(b.power_law - f.value_168h) / scale)

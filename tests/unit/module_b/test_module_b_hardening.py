@@ -202,7 +202,7 @@ def test_physics_gap_is_exactly_zero_when_model_and_physics_agree(monkeypatch, l
     def agreeing_forecast(models, inputs):
         out = []
         for i in inputs:
-            p = base[(i.component_id, i.parameter)].power_law
+            p = base[(i.lot_id, i.component_id, i.parameter)].power_law
             out.append(DriftForecast(i.component_id, i.parameter, "96h", p, p - 1.0, p + 1.0, 0.0, 1.0, False))
         return out
     monkeypatch.setattr(predictor_mod, "forecast", agreeing_forecast)
@@ -320,3 +320,33 @@ def test_too_few_calibration_rows_at_one_horizon_drops_that_horizon_instead_of_c
 
 def test_tiny_lots_get_no_model_rather_than_an_uncalibrated_one():
     assert calibrate_drift_models(_frames([1, 2], n_parts=12, parameter="iddq")) == {}
+
+
+# --- physics_baselines keyed by the true uniqueness scope (lot_id, component_id, parameter) -----------
+
+
+def _reused_ids(seed: int) -> list[ModuleBInput]:
+    # Real uploads commonly number parts U000, U001, ... in every lot; the generator's lot-prefixed IDs hide
+    # this, so strip the prefix to get two lots that genuinely share component_ids.
+    return [to_module_b_input(f).model_copy(update={"component_id": f"U{f.component_id[-4:]}"})
+            for f in _frames([seed])]
+
+
+def test_two_lots_reusing_component_ids_get_independent_physics_baselines_when_batched_together(models):
+    from module_b.baselines import physics_baselines
+    lot_a, lot_b = _reused_ids(310), _reused_ids(311)
+    assert {(i.component_id, i.parameter) for i in lot_a} == {(i.component_id, i.parameter) for i in lot_b}
+
+    together = physics_baselines(lot_a + lot_b)
+    separate = {**physics_baselines(lot_a), **physics_baselines(lot_b)}
+    assert len(together) == len(lot_a) + len(lot_b)  # nothing overwritten
+    assert together == separate
+    assert together[("PN-1-H310", "U0000", "iddq")] != together[("PN-1-H311", "U0000", "iddq")]
+
+    # And through predict: every part's physics baseline and gap match its own lot processed alone.
+    batched = predict(lot_a + lot_b, models=models)
+    alone = predict(lot_a, models=models) + predict(lot_b, models=models)
+    for got, want in zip(batched, alone):
+        assert got.component_id == want.component_id
+        assert got.physics_baseline_prediction == want.physics_baseline_prediction
+        assert got.physics_disagreement_gap == want.physics_disagreement_gap

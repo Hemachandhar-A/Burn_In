@@ -88,7 +88,7 @@ def predict(
         if fc is None:
             results.append(_unavailable(f))
             continue
-        physics = baselines[(u.component_id, u.parameter)].power_law
+        physics = baselines[(u.lot_id, u.component_id, u.parameter)].power_law
         results.append(
             ModuleBResult(
                 component_id=f.component_id,

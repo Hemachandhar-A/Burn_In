@@ -107,8 +107,10 @@ def fit_lot_exponent(frames: list[ModuleBInput]) -> float:
     return float(min(max(n, EXPONENT_RANGE[0]), EXPONENT_RANGE[1]))
 
 
-def physics_baselines(frames: list[ModuleBInput]) -> dict[tuple[str, str], BaselinePredictions]:
-    """All three baselines for every frame, keyed (component_id, parameter). The power-law exponent is fit
+def physics_baselines(frames: list[ModuleBInput]) -> dict[tuple[str, str, str], BaselinePredictions]:
+    """All three baselines for every frame, keyed (lot_id, component_id, parameter) - the true uniqueness
+    scope: real lots commonly reuse component IDs (U001, U002, ...), so a batch spanning lots must not let
+    one lot's part overwrite another's. The power-law exponent is fit
     once per (lot_id, parameter) group, so a mixed batch of lots/parameters is handled correctly."""
     groups: dict[tuple[str, str], list[ModuleBInput]] = {}
     for f in frames:
@@ -118,7 +120,7 @@ def physics_baselines(frames: list[ModuleBInput]) -> dict[tuple[str, str], Basel
     for group in groups.values():
         n = fit_lot_exponent(group)
         for f in group:
-            out[(f.component_id, f.parameter)] = BaselinePredictions(
+            out[(f.lot_id, f.component_id, f.parameter)] = BaselinePredictions(
                 persistence=persistence(f),
                 linear=linear(f),
                 power_law=power_law(f, n),

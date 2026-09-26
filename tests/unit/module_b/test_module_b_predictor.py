@@ -62,7 +62,7 @@ def test_physics_baseline_is_the_lot_fitted_power_law_and_the_gap_is_computed_fr
     # Baselines are fit over the whole batch (the lot), not one part at a time - the exponent is per lot.
     base = physics_baselines(lot)
     for i, r in zip(lot, predict(lot, models=models)):
-        expected = base[(i.component_id, i.parameter)].power_law
+        expected = base[(i.lot_id, i.component_id, i.parameter)].power_law
         assert r.physics_baseline_prediction == pytest.approx(expected)
         assert r.physics_disagreement_gap == pytest.approx(abs(r.predicted_168h - expected))
         assert r.physics_disagreement_gap >= 0
