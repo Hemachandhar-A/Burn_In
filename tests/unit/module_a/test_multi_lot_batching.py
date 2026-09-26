@@ -209,40 +209,94 @@ class TestMultiLotBatching:
             )
 
     def test_single_lot_unchanged_by_refactor(self):
-        """Single-lot detect() must give identical results before and after the fix.
-        The refactor (grouping by lot_id) must be a no-op for single-lot inputs."""
+        """Single-lot detect() must give the same numbers before and after the multi-lot fix.
+
+        The literals below were computed with the PRE-fix detect.py (commit a1607a7) and confirmed
+        identical on the fixed one, so this pins the actual behavior, not just that two calls agree.
+        A fixed single lot (35 parts, one outlier at index 3) scored against a fixed prior lot."""
         from module_a.detect import detect
 
-        lot = _lot("LOT_X", n=35, seed=7)
+        lot = _lot("LOT_GOLD", n=35, seed=7, outlier_idx=3, outlier_mult=6.0)
+        prior = _lot("LOT_PRIOR", n=50, seed=8)
+        by_cid = {r.component_id: r for r in detect(lot, prior_frames=prior)}
 
-        # Run twice — must be identical (determinism + no side-effects)
-        r1 = detect(lot)
-        r2 = detect(lot)
+        golden = {
+            # component: (robust_z, mcd_distance, isolation_forest_score, ecod_score, direction)
+            "C0000": (0.8933193100139069, 0.9055357703836712, -0.4552403815725375, 2.7539872962892358, "below_median"),
+            "C0003": (117.62599037028066, 127.91611700524372, -0.669326490777558, 7.110696122978827, "above_median"),
+            "C0017": (0.22734264148941802, 0.2686678720633663, -0.4150706054324596, 1.4477356428428816, "below_median"),
+            "C0034": (1.6542085459380502, 1.7778269366319832, -0.5125330137648394, 4.0661736852554045, "above_median"),
+        }
+        for cid, (z, mcd, iso, ecod, direction) in golden.items():
+            r = by_cid[cid]
+            assert r.robust_z == pytest.approx(z, rel=1e-6), cid
+            assert r.mcd_distance == pytest.approx(mcd, rel=1e-6), cid
+            assert r.isolation_forest_score == pytest.approx(iso, rel=1e-6), cid
+            assert r.ecod_score == pytest.approx(ecod, rel=1e-6), cid
+            assert r.direction == direction, cid
+            assert r.severity_cap_reason is None, cid
 
-        for a, b in zip(r1, r2):
-            assert a.robust_z == b.robust_z
-            assert a.ecod_score == b.ecod_score
-            assert a.mcd_distance == b.mcd_distance
-            assert a.severity_cap_reason == b.severity_cap_reason
+        # And it stays deterministic run to run.
+        again = {r.component_id: r for r in detect(lot, prior_frames=prior)}
+        assert all(by_cid[c].ecod_score == again[c].ecod_score for c in by_cid)
 
     def test_prior_frames_still_pooled_across_lots(self):
         """IF prior_frames are intentionally cross-lot pooled (E2 step 3 spec).
-        The fix must NOT affect how prior_frames are used — they stay pooled."""
+
+        A single prior lot cannot prove that, so the prior spans two distinct lots. If prior_frames
+        were scoped per lot, (a) relabelling the same frames as one lot would change the scores, or
+        (b) one lot's history would stand in for the pool."""
         from module_a.detect import detect
 
-        prior = _lot("LOT_PRIOR", n=50, seed=8)
+        prior_a = _lot("PRIOR_A", n=40, seed=11)
+        prior_b = _lot("PRIOR_B", n=40, seed=12, component_ids=[f"D{i:04d}" for i in range(40)])
         current = _lot("LOT_CURR", n=35, seed=9)
 
-        results_with_prior = detect(current, prior_frames=prior)
-        results_without_prior = detect(current)
+        def iso(prior):
+            return [r.isolation_forest_score for r in detect(current, prior_frames=prior)]
 
-        # With prior frames, IF models are trained → iso scores should be non-None
-        scores_with = [r.isolation_forest_score for r in results_with_prior]
-        scores_without = [r.isolation_forest_score for r in results_without_prior]
+        together = iso(prior_a + prior_b)
+        assert all(s is not None for s in together), "With prior frames, IF scores must be non-None"
+        assert all(s is None for s in iso([])), "Without prior frames, IF scores must be None (cold start)"
 
-        assert all(s is not None for s in scores_with), (
-            "With prior frames, IF scores must be non-None (not cold start)"
-        )
-        assert all(s is None for s in scores_without), (
-            "Without prior frames, IF scores must be None (cold start)"
-        )
+        # (a) The same frames under one lot_id: identical scores, so lot_id plays no part in the pooling.
+        one_lot = [f.model_copy(update={"lot_id": "ONE_POOLED_LOT"}) for f in prior_a + prior_b]
+        assert iso(one_lot) == together
+
+        # (b) Both lots contribute: dropping either one changes the scores.
+        assert iso(prior_a) != together
+        assert iso(prior_b) != together
+
+    def test_per_lot_grouping_and_pooled_prior_hold_together(self):
+        """Current frames spanning two lots AND prior_frames spanning two other lots, at once.
+
+        Each current lot must score exactly as it does alone against the same pooled prior (per-lot
+        grouping), and that prior must be the pool of both prior lots, not one of them (pooled IF)."""
+        from module_a.detect import detect
+
+        shared_ids = [f"C{i:04d}" for i in range(35)]
+        lot_a = _lot("LOT_A", n=35, component_ids=shared_ids, seed=1, outlier_idx=0)
+        lot_b = _lot("LOT_B", n=35, component_ids=shared_ids, seed=2, outlier_idx=0)
+        prior_a = _lot("PRIOR_A", n=40, seed=11)
+        prior_b = _lot("PRIOR_B", n=40, seed=12, component_ids=[f"D{i:04d}" for i in range(40)])
+        prior = prior_a + prior_b
+
+        batched = detect(lot_a + lot_b, prior_frames=prior)
+        alone = detect(lot_a, prior_frames=prior) + detect(lot_b, prior_frames=prior)
+        assert [(r.lot_id, r.component_id) for r in batched] == [(f.lot_id, f.component_id) for f in lot_a + lot_b]
+
+        def key(r):
+            return (r.lot_id, r.component_id)
+
+        want = {key(r): r for r in alone}
+        for r in batched:
+            w = want[key(r)]
+            assert r.robust_z == w.robust_z, key(r)
+            assert r.ecod_score == w.ecod_score, key(r)
+            assert r.mcd_distance == pytest.approx(w.mcd_distance, abs=1e-9), key(r)
+            assert r.isolation_forest_score == w.isolation_forest_score, key(r)
+            assert r.severity_cap_reason == w.severity_cap_reason, key(r)
+
+        # The pooled history, not a single prior lot, is what the IF scored against.
+        only_a = {key(r): r.isolation_forest_score for r in detect(lot_a + lot_b, prior_frames=prior_a)}
+        assert any(only_a[key(r)] != r.isolation_forest_score for r in batched)
