@@ -10,8 +10,8 @@ Physics baseline (step 6): the power-law baseline (module_b.baselines), with its
 whole batch per (lot, parameter) - callers pass a lot's frames together, as fusion does. The gap is
 |predicted_168h - physics_baseline_prediction|; the sign is recoverable from the two stored values.
 
-TEMP model source (CONTRACT_CHANGES.md 2026-09-26 P4, "Where do Module B's trained models come from",
-OPEN): with `models=None`, each part number gets a synthetic prior - TEMP_SYNTHETIC_LOTS Complete lots
+Model source (permanent - CONTRACT_CHANGES.md 2026-09-27 Lead, resolving "Where do Module B's trained
+models come from"): with `models=None`, each part number gets a synthetic prior - SYNTHETIC_LOTS Complete lots
 from P1's `generate_lot` (fixed seeds), run through `features.compute`, calibrated with P4.2's
 `calibrate_drift_models`, cached in-process. Its intervals are calibrated on synthetic lots, not on the
 uploaded part's own history.
@@ -29,15 +29,15 @@ from module_b.model import usable_input
 # The three parameters the generator - and so every trained model - covers (context.md 1.3, 5.9).
 TRAINED_PARAMETERS = frozenset({"iddq", "leakage", "prop_delay"})
 
-TEMP_SYNTHETIC_LOTS = 14
-_TEMP_SYNTHETIC_ACCOUNT = "module_b.synthetic_prior"  # generate_lot requires an attribution; never stored
+SYNTHETIC_LOTS = 14
+_SYNTHETIC_ACCOUNT = "module_b.synthetic_prior"  # generate_lot requires an attribution; never stored
 
 
 @cache
-def TEMP_synthetic_models(part_number: str) -> dict[tuple[str, str], CalibratedDriftModel]:
+def synthetic_models(part_number: str) -> dict[tuple[str, str], CalibratedDriftModel]:
     frames = []
-    for seed in range(TEMP_SYNTHETIC_LOTS):
-        lot = generate_lot(f"SYNTHETIC-{part_number}-{seed:03d}", part_number, seed, account_id=_TEMP_SYNTHETIC_ACCOUNT)
+    for seed in range(SYNTHETIC_LOTS):
+        lot = generate_lot(f"SYNTHETIC-{part_number}-{seed:03d}", part_number, seed, account_id=_SYNTHETIC_ACCOUNT)
         frames += compute(lot.dataset)
     return calibrate_drift_models(frames)
 
@@ -78,7 +78,7 @@ def predict(
     if models is None:
         models = {}
         for part_number in sorted({u.part_number for u in in_scope}):
-            models.update(TEMP_synthetic_models(part_number))
+            models.update(synthetic_models(part_number))
 
     forecasts = iter(forecast(models, in_scope))
     baselines = physics_baselines(in_scope)

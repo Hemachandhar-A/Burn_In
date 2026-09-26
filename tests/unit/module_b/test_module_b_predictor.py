@@ -12,7 +12,7 @@ from module_b import predict
 from module_b.baselines import physics_baselines
 from module_b.calibration import calibrate_drift_models, forecast
 from module_b.model import view_at_24h
-from module_b.predictor import TEMP_SYNTHETIC_LOTS, TRAINED_PARAMETERS, TEMP_synthetic_models
+from module_b.predictor import SYNTHETIC_LOTS, TRAINED_PARAMETERS, synthetic_models
 
 FORECAST_FIELDS = (
     "predicted_168h", "interval_lower", "interval_upper", "physics_baseline_prediction",
@@ -27,7 +27,7 @@ def _lot_inputs(seed: int, part_number: str = "PN-1") -> list[ModuleBInput]:
 
 @pytest.fixture(scope="module")
 def models():
-    return TEMP_synthetic_models("PN-1")
+    return synthetic_models("PN-1")
 
 
 @pytest.fixture(scope="module")
@@ -125,9 +125,9 @@ def test_trained_parameters_are_exactly_the_generator_three():
 
 
 def test_synthetic_models_are_cached_deterministic_and_keyed_to_the_part_number(models):
-    assert TEMP_synthetic_models("PN-1") is models
+    assert synthetic_models("PN-1") is models
     assert set(models) == {("PN-1", p) for p in TRAINED_PARAMETERS}
-    assert TEMP_SYNTHETIC_LOTS >= 2
+    assert SYNTHETIC_LOTS >= 2
 
 
 def test_predict_without_models_uses_the_synthetic_prior_for_that_part_number(models, lot):

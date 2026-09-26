@@ -20,7 +20,7 @@ from generator.lot import generate_lot
 from module_b import predict
 from module_b.calibration import DriftForecast, calibrate_drift_models, forecast
 from module_b.model import build_training_set, feature_matrix, view_at_24h
-from module_b.predictor import TEMP_synthetic_models
+from module_b.predictor import synthetic_models
 
 REPO = Path(__file__).resolve().parents[3]
 FORECAST_FIELDS = (
@@ -48,7 +48,7 @@ def _without_96h(f: FeatureFrame) -> FeatureFrame:
 
 @pytest.fixture(scope="module")
 def models():
-    return TEMP_synthetic_models("PN-1")
+    return synthetic_models("PN-1")
 
 
 @pytest.fixture(scope="module")
@@ -86,11 +86,11 @@ def test_full_pipeline_is_bit_identical_across_fresh_processes_and_hash_seeds():
 
 def test_recalibrating_from_scratch_in_process_gives_identical_results(lot):
     first = predict(lot)
-    TEMP_synthetic_models.cache_clear()
+    synthetic_models.cache_clear()
     try:
         assert predict(lot) == first
     finally:
-        TEMP_synthetic_models.cache_clear()
+        synthetic_models.cache_clear()
 
 
 # --- 2. Interval ordering at the tight and wide extremes -------------------------------------
@@ -161,7 +161,7 @@ def test_out_of_scope_frames_trigger_no_training_and_no_baseline_fit(monkeypatch
     # pooled into a lot's power-law exponent fit.
     def boom(*a, **k):
         raise AssertionError("an out-of-scope parameter reached training")
-    monkeypatch.setattr(predictor_mod, "TEMP_synthetic_models", boom)
+    monkeypatch.setattr(predictor_mod, "synthetic_models", boom)
     odd = [i.model_copy(update={"parameter": "IDDQ", "part_number": "PN-ODD"}) for i in lot[:20]]
     assert all(r.forecast_unavailable for r in predict(odd))
 
