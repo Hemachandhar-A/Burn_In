@@ -21,13 +21,11 @@ reuse the same row (`repository.query_project` no-ops the second time). `Project
 no form field of its own yet on the checkpoint route (only on the initial upload), so it defaults
 to "now" if the lot's first upload didn't supply one.
 
-`AnalysisResults` (the fusion stub's output) doesn't carry the per-component module-activation/
-forecast-resolution fields `storage.repository`'s pinned `results_json` shape wants
-(`module_a_ran`, `module_b_ran`, `predicted_168h`, `actual_168h`, `explanation_sentence`) - a gap
-already logged in CONTRACT_CHANGES.md by P2.6/P2.7 and still open. Until `RiskAssessment` carries
-real activation/forecast data, `module_a_ran`/`module_b_ran` are populated `True` (the stub always
-runs both) and `predicted_168h`/`actual_168h`/`explanation_sentence` stay `None` - an honest
-"not yet available" (AGENTS.md rule 12), not a guess.
+Session P2 follow-up: the `RiskAssessment`/`AnalysisResults` gap logged by P2.6/P2.7/P2.5 was
+resolved on `develop` (`RiskAssessment` now carries `module_a_ran`, `module_b_ran`,
+`predicted_168h`, `actual_168h`, `explanation_sentence` per component). `_analysis_results_to_dict`
+reads all five straight off each `RiskAssessment` instance - no hardcoding or computation here;
+whatever the fusion pipeline (still stub-only) puts on the assessment is what gets persisted.
 """
 import json
 import uuid
@@ -64,11 +62,11 @@ def _analysis_results_to_dict(results: AnalysisResults) -> dict:
         "per_component": {
             assessment.component_id: {
                 "verdict": assessment.verdict,
-                "module_a_ran": True,
-                "module_b_ran": True,
-                "predicted_168h": None,
-                "actual_168h": None,
-                "explanation_sentence": None,
+                "module_a_ran": assessment.module_a_ran,
+                "module_b_ran": assessment.module_b_ran,
+                "predicted_168h": assessment.predicted_168h,
+                "actual_168h": assessment.actual_168h,
+                "explanation_sentence": assessment.explanation_sentence,
             }
             for assessment in results.assessments
         },
