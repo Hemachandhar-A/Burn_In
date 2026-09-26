@@ -231,3 +231,11 @@ Entry format:
 - Status: OPEN, non-blocking - found during `p4-module-b`'s non-finite-exposure check, not a reason to hold that merge.
 
 ---
+
+## 2026-09-27 Lead - Isolation Forest / ECOD feature scope - 0h/24h only, or all available checkpoints
+- Missing/wrong: `module_a/detect.py` (`p3-module-a`) feeds Isolation Forest and ECOD only `[value_0h, value_24h]` (`_value_matrix`), never `value_96h` or `value_168h`, so a defect that shows only at a later checkpoint is invisible to those two detectors. Only the robust z-score (worst |z| across every checkpoint key, including `"168h"`) and MCD (per checkpoint) see later checkpoints.
+- Why it matters: E2 does not specify which features IF and ECOD should use, and it is now more consequential because 168h is confirmed in scope for Module A generally (the 168h reversal: Module A is the post-hoc full-series screen). A latent defect that activates after 24h is exactly the case this design otherwise tries to catch.
+- Proposed fix: n/a - flagged for P3.3 to decide alongside the real threshold wiring, since it is the same session already touching this file's scoring logic. Options for P3 to weigh: keep 0h/24h only and disclose it; or add 96h/168h columns (with the absent-checkpoint handling that implies: an In-Progress lot has none, and a Complete lot's frames may lack 96h).
+- Status: OPEN, non-blocking.
+
+---
