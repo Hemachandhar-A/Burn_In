@@ -11,6 +11,7 @@ from features.compute import compute
 from generator.lot import generate_lot
 from module_b.calibration import (
     DEFAULT_CONFIDENCE_LEVEL,
+    DriftForecast,
     calibrate_drift_models,
     conformal_upper_quantile,
     drift_rate,
@@ -237,3 +238,17 @@ def _one_frame(t0: float) -> FeatureFrame:
         lot_median_0h=10.0, lot_median_24h=11.0, robust_z={"0h": 0.0, "24h": 0.0},
         lot_size=77, used_pooled_fallback=False, elapsed_hours={"0h": t0, "24h": 24.0},
     )
+
+
+def test_e3_step7_recording_fields_all_exist_on_module_b_result():
+    # E3 step 7: predicted value, calibrated interval, drift rate, physics-disagreement gap, threshold used,
+    # flag outcome - every one must have a home on the contract, and every DriftForecast value must map to it.
+    from dataclasses import fields
+
+    from contracts import ModuleBResult
+
+    required = {"predicted_168h", "interval_lower", "interval_upper", "drift_rate",
+                "physics_disagreement_gap", "safety_slope", "exceeds_safety_slope"}
+    assert required <= set(ModuleBResult.model_fields)
+    carried = {f.name for f in fields(DriftForecast)} - {"horizon"}
+    assert carried <= set(ModuleBResult.model_fields)

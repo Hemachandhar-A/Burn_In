@@ -20,6 +20,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
         physics_disagreement_gap=0.3,
         drift_rate=0.0143,
         exceeds_safety_slope=False,
+        safety_slope=0.0183,
         forecast_unavailable=False,
     ),
     ModuleBResult(
@@ -32,6 +33,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
         physics_disagreement_gap=4.0,
         drift_rate=0.2262,
         exceeds_safety_slope=True,
+        safety_slope=0.0520,
         forecast_unavailable=False,
     ),
     ModuleBResult(
@@ -44,6 +46,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
         physics_disagreement_gap=None,
         drift_rate=None,
         exceeds_safety_slope=None,
+        safety_slope=None,
         forecast_unavailable=True,
     ),
 )

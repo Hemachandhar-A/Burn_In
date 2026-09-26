@@ -13,6 +13,7 @@ FORECAST_FIELDS = (
     "physics_disagreement_gap",
     "drift_rate",
     "exceeds_safety_slope",
+    "safety_slope",
 )
 
 
@@ -89,3 +90,12 @@ def test_predict_on_empty_input_returns_empty():
 def test_predict_takes_the_canonical_module_b_input():
     # The canonical contract type is the only input shape - no local TEMP_ wrapper (CONTRACT_CHANGES 2026-09-26).
     assert inspect.signature(predict).parameters["frames"].annotation == list[ModuleBInput]
+
+
+def test_stub_records_the_threshold_used_and_its_flag_agrees_with_it():
+    # E3 step 7 / CONTRACT_CHANGES 2026-09-26: safety_slope is the threshold drift_rate was compared against.
+    for result in STUB_RESULTS:
+        if result.forecast_unavailable:
+            continue
+        assert result.safety_slope is not None
+        assert result.exceeds_safety_slope == (result.drift_rate > result.safety_slope)

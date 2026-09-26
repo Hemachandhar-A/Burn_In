@@ -59,8 +59,9 @@ class CalibratedDriftModel:
 
 @dataclass(frozen=True)
 class DriftForecast:
-    """Module B's per-part forecast before P4.3 assembles ModuleBResult. `safety_slope` is carried here
-    because ModuleBResult has no field for it yet (CONTRACT_CHANGES.md 2026-09-26 P4)."""
+    """Module B's per-part calibrated forecast, before P4.3 adds the physics-disagreement gap and assembles
+    ModuleBResult. `safety_slope` maps straight onto ModuleBResult.safety_slope (E3 step 7's "threshold
+    used")."""
 
     component_id: str
     parameter: str
