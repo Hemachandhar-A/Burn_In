@@ -8,10 +8,11 @@ Sections mirror the plan:
   5.1 config   5.2 ingestion -> features   5.3 features -> modules
   5.4 modules -> fusion   5.5 database schema (SQLAlchemy)   5.6 REST API models
 """
+import math
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -61,6 +62,15 @@ class Reading(BaseModel):
     checkpoint_hour: float  # explicit numeric, not an assumed 0/24/96/168 - context.md 5.9
     value: float
     unit: str
+
+    @field_validator("value", "checkpoint_hour")
+    @classmethod
+    def _must_be_finite(cls, v: float, info) -> float:
+        # A literal NaN/inf is neither a reading nor "no reading" (a blank cell is): reject it here, once,
+        # so Module A, the feature statistics and the report never see it (rule 7 - never silently coerced).
+        if not math.isfinite(v):
+            raise ValueError(f"{info.field_name} must be a finite number, got {v!r}")
+        return v
 
 
 class LotDataset(BaseModel):

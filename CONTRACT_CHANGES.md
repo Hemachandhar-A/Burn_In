@@ -182,3 +182,11 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`; L3 pre-warm requirement OPEN until that session.
 
 ---
+
+## 2026-09-27 Lead - Reading rejects non-finite value/checkpoint_hour at the contract boundary (resolves P4's NaN/inf entry)
+- Fix: `contracts.py` `Reading` gets a `field_validator` on `value` and `checkpoint_hour` that raises a clear `ValueError` ("`value` must be a finite number, got nan") for NaN/inf (`math.isfinite`) - never silently coerced (AGENTS.md rule 7). Done once, at the boundary, because Module B's own defence (`module_b.model.usable_input`) only protects Module B: Module A, the feature statistics and the report all still saw raw NaN. Resolves P4's entry "Reading.value (and checkpoint_hour) accept NaN/inf; a NaN CSV cell reaches FeatureFrame unchanged" (on the unmerged `p4-module-b` branch - **P4: set it to RESOLVED, pointing here, on your next rebase**). A literal `NaN` cell is now an error; only a *blank* cell means "no reading" (Part 5.2's pinned wide layout).
+- No existing test on `develop` constructed a `Reading` with a non-finite value, so none needed updating; two new tests in `tests/unit/test_smoke.py` pin the rejection and that ordinary values still pass.
+- **OPEN, P2 follow-up - not done, and it is user-visible right now:** confirmed by running both parsers on a CSV with a `NaN`/`inf` cell - `parse_lot_csv` and `parse_wide_lot_csv` now raise a raw pydantic `ValidationError`, which neither catches, so `POST /lots` and `POST /lots/{lot_id}/checkpoints` would return an unhandled 500 for such an upload instead of the visible, specific 422 that E7 step 7 requires. **P2:** catch the validation error where each parser constructs a `Reading` (`ingestion/parsing.py`, the two `Reading(...)` sites) and append a line-numbered message to the parser's existing `errors` list so it surfaces through `IngestionValidationError` -> 422, e.g. `line 5: value 'NaN' is not a finite number`; add a test for a NaN and an inf cell in both formats. Not assumed done.
+- Status: RESOLVED (contract side); P2-side confirmation OPEN.
+
+---
