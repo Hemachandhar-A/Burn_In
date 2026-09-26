@@ -1,12 +1,12 @@
 import { act, render, screen } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
-import { useAuth, type AuthState, type TEMP_TokenResponse } from '../auth/AuthContext'
+import { useAuth, type AuthState, type TokenResponse } from '../auth/AuthContext'
 import { AuthProvider } from '../auth/AuthProvider'
 import { useApiClient } from './ApiClientContext'
 import { ApiClientProvider } from './ApiClientProvider'
 import type { ApiClient } from './client'
 
-const TOKEN: TEMP_TokenResponse = {
+const TOKEN: TokenResponse = {
   access_token: 'jwt-abc',
   token_type: 'bearer',
   account_id: 'asharma',

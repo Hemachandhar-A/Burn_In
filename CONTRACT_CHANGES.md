@@ -164,3 +164,9 @@ Entry format:
 
 ---
 
+
+## 2026-09-26 P1 - No route lists the login accounts (Login screen can't populate its account picker)
+- Missing/wrong: Part 5.6 has `POST /auth/login` (`LoginRequest.account_id` + `pin`) but no way to learn which accounts exist, or their display names and roles, before anyone is signed in. E6 screen 1 is "select one of the two named accounts". The picker needs `account_id` to send, and `display_name` + `role` to show. `TokenResponse` also carries no display name, so the shell can't say "A. Sharma" after sign-in either.
+- Why it matters: without it the frontend has to hard-code the accounts, which drifts from `scripts/seed.py` the moment an id or name changes, with nothing flagging it.
+- Proposed fix: `GET /auth/accounts` (no auth, public fields only) -> `list[AccountSummary]`, with `class AccountSummary(BaseModel): account_id: str; display_name: str; role: str` in contracts.py 5.6, served from `accounts` by `identity/router.py` (P5.4, same session as `/auth/login`). Optionally add `display_name: str` to `TokenResponse`, or the shell can look it up from that list. Until then: `TEMP_LOGIN_ACCOUNTS` / `TEMP_AccountSummary` in `frontend/src/auth/accounts.ts`, mirroring seed.py (ids `a.sharma`, `r.mehta`), public fields only, no PINs.
+- Status: OPEN

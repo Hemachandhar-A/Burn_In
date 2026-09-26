@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import App from './App'
 import { AppProviders } from './AppProviders'
-import { useAuth, type Session, type TEMP_TokenResponse } from './auth/AuthContext'
+import { useAuth, type Session, type TokenResponse } from './auth/AuthContext'
 import { SCREENS } from './screens/registry'
 
 const SESSION: Session = { token: 'jwt-abc', accountId: 'asharma', role: 'Quality Engineer' }
-const OTHER: TEMP_TokenResponse = {
+const OTHER: TokenResponse = {
   access_token: 'jwt-xyz',
   token_type: 'bearer',
   account_id: 'rmehta',
@@ -20,13 +20,13 @@ afterEach(() => window.history.replaceState(null, '', '/'))
 describe('App', () => {
   test('a fresh load starts at Login (rule 13: a hard refresh re-prompts)', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Select Account' })).toBeInTheDocument()
   })
 
   test('a fresh load of a deep screen URL also lands on Login', () => {
     window.history.replaceState(null, '', '/#/lots/LOT-001')
     render(<App />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Select Account' })).toBeInTheDocument()
   })
 
   test('screens live in the URL hash, so the server only ever serves "/"', () => {

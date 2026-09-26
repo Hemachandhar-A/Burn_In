@@ -2,12 +2,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { describe, expect, test } from 'vitest'
 import { AppRoutes } from './AppRoutes'
-import { useAuth, type Session, type TEMP_TokenResponse } from './auth/AuthContext'
+import { useAuth, type Session, type TokenResponse } from './auth/AuthContext'
 import { AuthProvider } from './auth/AuthProvider'
 import { pathToLot, pathToPart, SCREENS } from './screens/registry'
 
 const SESSION: Session = { token: 'jwt-abc', accountId: 'asharma', role: 'Quality Engineer' }
-const LOGIN: TEMP_TokenResponse = {
+const LOGIN: TokenResponse = {
   access_token: 'jwt-new',
   token_type: 'bearer',
   account_id: 'rmehta',
@@ -43,7 +43,11 @@ function renderAt(path: string | string[], session: Session | null = SESSION) {
   )
 }
 
-const h1 = (name: string) => screen.getByRole('heading', { level: 1, name })
+/** Login's page heading is the product name (per its design); its form is the "Select Account" group. */
+const h1 = (name: string) =>
+  name === 'Login'
+    ? screen.getByRole('group', { name: 'Select Account' })
+    : screen.getByRole('heading', { level: 1, name })
 const click = (name: string) => act(() => fireEvent.click(screen.getByRole('button', { name })))
 const location = () => screen.getByTestId('location').textContent
 

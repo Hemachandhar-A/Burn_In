@@ -48,9 +48,12 @@ export function errorMessages(body: unknown, status: number): string[] {
 /** Turns whatever a call threw (ApiError, a network failure, anything) into lines to show. */
 export function describeFailure(error: unknown): string[] {
   if (error instanceof ApiError) return error.messages
-  // fetch() rejects with a TypeError when the server can't be reached at all.
+  // fetch() rejects with a TypeError when there's no response the page may read: server down,
+  // or a crash whose 500 carries no CORS headers, which the browser reports the same way.
   if (error instanceof TypeError) {
-    return ['Could not reach the API server. Check that the backend is running.']
+    return [
+      'No readable response from the API server. Check that the backend is running; if it is, its log shows the error.',
+    ]
   }
   return [error instanceof Error && error.message ? error.message : 'Something went wrong.']
 }

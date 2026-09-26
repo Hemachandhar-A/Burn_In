@@ -151,9 +151,9 @@ describe('errorMessages', () => {
     },
   )
 
-  test('describeFailure explains an unreachable server instead of showing "Failed to fetch"', () => {
+  test('describeFailure explains a missing response instead of showing "Failed to fetch"', () => {
     expect(describeFailure(new TypeError('Failed to fetch'))).toEqual([
-      'Could not reach the API server. Check that the backend is running.',
+      'No readable response from the API server. Check that the backend is running; if it is, its log shows the error.',
     ])
   })
 })

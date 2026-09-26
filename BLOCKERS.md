@@ -46,3 +46,11 @@ Entry format:
   asking P2 to build against an unmerged branch.
 
 ---
+
+## 2026-09-26 P1 - MOCK_LoginRequest / MOCK_TokenResponse stand in for POST /auth/login (Login screen)
+- Blocked on: `POST /auth/login` (Part 5.6, `identity/router.py`, P5.4). It isn't in the live OpenAPI schema (`app.openapi()['paths']` on `develop` @ b55a6cd: `/health`, `/lots`, `/lots/demo`, `/lots/{lot_id}/checkpoints`, `/lots/{lot_id}/quality`, `/lots/{lot_id}/report`, `/projects`, `/projects/{project_id}`, `/projects/{project_id}/disposition-signoffs`, `/projects/{project_id}/events`), and `identity/` isn't on `develop`.
+- What was tried: a hand-typed mock per the Login screen. `frontend/src/api/mocks.ts` has `MOCK_LoginRequest` and `MOCK_TokenResponse` (field for field `contracts.py` `LoginRequest`/`TokenResponse`) and `MOCK_login`, which accepts `scripts/seed.py`'s demo PINs and returns 401 otherwise. The token is an opaque placeholder, not a JWT. Only `frontend/src/api/auth.ts` `login()` calls it.
+- Consequence: Part 7.3's Frontend row, "login round-trips a real JWT", can't pass until this lands. The hard-refresh-re-prompts half already works (in-memory token, rule 13).
+- When P5.4 lands: `npm run generate-client`, change `login()` to take the ApiClient and call `client.POST('/auth/login', { body })`, point `TokenResponse` in `frontend/src/auth/AuthContext.ts` at `components['schemas']['TokenResponse']`, delete the mocks, and mark this RESOLVED in the same session.
+- Status: OPEN
+

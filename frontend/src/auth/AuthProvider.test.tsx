@@ -1,16 +1,16 @@
 import { act, render, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { useAuth, type TEMP_TokenResponse } from './AuthContext'
+import { useAuth, type TokenResponse } from './AuthContext'
 import { AuthProvider } from './AuthProvider'
 
-const TOKEN: TEMP_TokenResponse = {
+const TOKEN: TokenResponse = {
   access_token: 'jwt-abc',
   token_type: 'bearer',
   account_id: 'asharma',
   role: 'Quality Engineer',
 }
-const OTHER: TEMP_TokenResponse = {
+const OTHER: TokenResponse = {
   access_token: 'jwt-xyz',
   token_type: 'bearer',
   account_id: 'rmehta',
@@ -72,14 +72,14 @@ describe('AuthProvider', () => {
     })
   })
 
-  test.each<[string, Partial<Record<keyof TEMP_TokenResponse, string>>]>([
+  test.each<[string, Partial<Record<keyof TokenResponse, string>>]>([
     ['an empty token', { access_token: '' }],
     ['a whitespace token', { access_token: '   ' }],
     ['a non-bearer token type', { token_type: 'basic' }],
     ['an empty account id', { account_id: '' }],
   ])('signIn rejects %s and stays signed out', (_label, patch) => {
     const { result } = setup()
-    const bad = { ...TOKEN, ...patch } as unknown as TEMP_TokenResponse
+    const bad = { ...TOKEN, ...patch } as unknown as TokenResponse
 
     expect(() => act(() => result.current.signIn(bad))).toThrow(/login response/)
     expect(result.current.session).toBeNull()

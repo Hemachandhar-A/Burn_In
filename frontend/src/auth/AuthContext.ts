@@ -1,17 +1,11 @@
 import { createContext, useContext } from 'react'
+import type { MOCK_TokenResponse } from '../api/mocks'
 
 /**
- * Local mirror of contracts.py `TokenResponse` (Part 5.6). TEMP_ because `POST /auth/login`
- * isn't registered in api/main.py yet (lands in P5.4), so the generated schema has no
- * `components['schemas']['TokenResponse']` to import. Swap this for the generated type the
- * first time `npm run generate-client` picks up that route (P1.10).
+ * contracts.py `TokenResponse`. Hand-typed in api/mocks.ts while `POST /auth/login` isn't in the
+ * live schema (P5.4). When it is, point this at `components['schemas']['TokenResponse']`.
  */
-export interface TEMP_TokenResponse {
-  access_token: string
-  token_type: 'bearer'
-  account_id: string
-  role: string
-}
+export type TokenResponse = MOCK_TokenResponse
 
 export interface Session {
   token: string
@@ -27,7 +21,7 @@ export interface AuthState {
   /** null on a fresh load and while signed in. */
   endedBy: SessionEnd | null
   /** Throws on a response that couldn't authenticate anything (blank token, non-bearer). */
-  signIn: (response: TEMP_TokenResponse) => void
+  signIn: (response: TokenResponse) => void
   signOut: () => void
   /** Stable across renders; returns the token at call time, for the API client's requests. */
   getToken: () => string | null

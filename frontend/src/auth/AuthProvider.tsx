@@ -4,7 +4,7 @@ import {
   type AuthState,
   type Session,
   type SessionEnd,
-  type TEMP_TokenResponse,
+  type TokenResponse,
 } from './AuthContext'
 
 interface AuthProviderProps {
@@ -15,7 +15,7 @@ interface AuthProviderProps {
   onSessionEnd?: () => void
 }
 
-function toSession(response: TEMP_TokenResponse): Session {
+function toSession(response: TokenResponse): Session {
   const token = response.access_token?.trim()
   const accountId = response.account_id?.trim()
   if (!token || response.token_type !== 'bearer' || !accountId) {
@@ -39,7 +39,7 @@ export function AuthProvider({ children, initialSession = null, onSessionEnd }: 
   const tokenRef = useRef<string | null>(initialSession?.token ?? null)
 
   const signIn = useCallback(
-    (response: TEMP_TokenResponse) => {
+    (response: TokenResponse) => {
       const next = toSession(response)
       const replacing = tokenRef.current !== null
       tokenRef.current = next.token
