@@ -105,7 +105,7 @@ Entry format:
 - Missing/wrong: E11 step 4 (`essential-features.md`) and context.md 5.15 both say `results_json` mirrors "the same structure Stage 8's JSON export produces" and the diff (`diff_vs_prior`) must distinguish three cases - a module activating for the first time, a forecast resolving into an actual, and a verdict moving - but no `contracts.py` type exists for either the results payload or the diff, and E9 (the report/JSON export that's supposed to define this shape) hasn't been built yet (P2.7, prereq P2.4+P2.6, comes after this session).
 - Why it matters: `storage.save_analysis_run(project_id, raw_data, results)` needs *some* concrete shape for `results` to diff against the prior run; guessing the wrong one now means P2.7 (or whoever calls this from `fusion.run_full_pipeline`, P2.5/P5) has to reshape it later.
 - Proposed fix: `storage/repository.py` documents (module docstring) a `TEMP_ANALYSIS_RESULTS_DICT` shape - `results` is a plain dict `{"per_component": {component_id: {"verdict", "module_a_ran", "module_b_ran", "predicted_168h", "actual_168h"}}}`, not `contracts.AnalysisResults` (which doesn't carry per-component module-activation/forecast-resolution detail, only ranks/verdict). The diff is computed and stored as a dict with `newly_activated_modules`, `resolved_forecasts`, `verdict_changes` keys, matching context.md 5.15's three named cases exactly, `None` only for a project's first-ever run. When P2.7/E9 pins the real JSON export shape, `_diff_analysis_results` in `storage/repository.py` and its callers (P2.5's `ingestion/router.py` -> `fusion.run_full_pipeline`, once that lands) need to build `results` in whatever shape actually gets produced - this TEMP shape is a placeholder for testing the diff logic and the append-only table mechanics, not a claim about what E9 will produce.
-- Status: RESOLVED by P2.7 - see the entry below ("P2.7 - `results_json` shape pinned for real, and `raw_data`'s shape pinned too").
+- Status: RESOLVED by P2.7 - see the entry below ("P2.7 - `results_json` shape pinned for real, and `raw_data`'s shape pinned too"). The underlying `RiskAssessment` gap this entry pointed at is now RESOLVED by the Lead (see "Lead - RiskAssessment gains the per-component fields" below).
 
 ---
 
@@ -123,7 +123,7 @@ Entry format:
 - **P2:** `insufficient_data_components` must now be populated from `ingestion.quality.check_missing_checkpoints` in `ingestion/router.py`, and `GET /lots/{lot_id}/quality` can stay as the detailed view. I updated the two assertions in `tests/unit/ingestion/test_router.py` that pinned the old exact response body (Lead edit in a P2 directory, limited to those two lines, because leaving `develop` red was worse). Also: the stale "no frozen field yet" `test_date` comment in the router can go now that `Project.test_date` exists.
 - **P2 is unblocked on P2.5** (`fusion.run_full_pipeline` and `storage.save_analysis_run` are both on `develop`).
 - **Still open, not resolved here:** `save_analysis_run` takes `results: dict`, not `contracts.AnalysisResults` as Part 5.5 specifies. It needs a dedicated look (the diff needs per-component module-activation/forecast-resolution fields that `RiskAssessment`/`LotDisposition` do not carry).
-- Status: RESOLVED (merge and fixes); the `save_analysis_run` mismatch remains OPEN.
+- Status: RESOLVED (merge and fixes); the `save_analysis_run` mismatch is now also RESOLVED - see "Lead - RiskAssessment gains the per-component fields" below.
 
 ---
 
@@ -141,5 +141,15 @@ Entry format:
 - Why it matters: P1's History screen would need to fan out one request per project to rebuild a global log, which the plan does not describe. `GET /projects/{project_id}` cannot serve screens 3-4 on reload until `ProjectDataResponse` is real.
 - Proposed fix (Lead decision, not made here): add the global `GET /events` and `GET /disposition-signoffs` routes as Part 5.6 says (the per-project ones can stay as extras), and fix `GET /projects/{project_id}` together with the `save_analysis_run` dict-vs-`AnalysisResults` question.
 - Status: OPEN
+
+---
+
+## 2026-09-26 Lead - RiskAssessment gains the per-component fields; closes the RiskAssessment/AnalysisResults gap and P2.5's entry
+- Fix: `contracts.py` `RiskAssessment` gains `module_a_ran: bool`, `module_b_ran: bool`, `predicted_168h: float | None`, `actual_168h: float | None`, `explanation_sentence: str | None` (required-but-nullable, no defaults - a producer must state them). No new types; `save_analysis_run`'s signature and `AnalysisResults` are unchanged, since `RiskAssessment` already flows through both. IMPLEMENTATION_PLAN.md Part 5.4 mirrors it.
+- **Adopts P2's own field choice as the permanent answer**, not a Lead-designed alternative. The earlier StoredAnalysisResults design never reached the repo and is superseded. P2.5's population values (`module_a_ran`/`module_b_ran` = True, the rest None) were already correct while the fields did not formally exist.
+- Resolves: the original "RiskAssessment/AnalysisResults gap" (the P2.6 `results_json` entry and the open note in the Lead "p2-ingestion merged" entry, both on `develop`, statuses updated in place) and P2.5's entry "`ingestion/router.py` now calls `fusion.run_full_pipeline`/`storage.save_analysis_run`..." (on the unmerged `p2-ingestion` branch, so its Status line can't be edited from here - **P2: set it to RESOLVED, pointing at this entry, on your next rebase**).
+- **P2 follow-up (one function):** `ingestion/router.py`'s `_analysis_results_to_dict` still hardcodes `module_a_ran=True` etc. Now that the fields exist, it should read them off each `assessment` (`assessment.module_a_ran`, `.module_b_ran`, `.predicted_168h`, `.actual_168h`, `.explanation_sentence`); left hardcoded, it would mask real values once P5's fusion populates them.
+- **Ripple, mechanical:** the fields are required, so every `RiskAssessment(...)` construction needs them. Fixed on `develop`: the P5.1 stub in `fusion/pipeline.py` (Lead edit in a P5 directory, one call). Still to fix on their own branches: P1's harness tests (`tests/unit/harness/test_p16_edge_cases.py`, two call sites on `p1-generator`), and P3/P4's copies of the `fusion/pipeline.py` stub on `p3-module-a`/`p4-module-b` (rebase onto `develop` brings the fixed version).
+- Status: RESOLVED by Lead on `develop`.
 
 ---
