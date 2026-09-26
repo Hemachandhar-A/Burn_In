@@ -5,7 +5,8 @@ import type { components } from './schema'
 export type LotUploadResponse = components['schemas']['LotUploadResponse']
 export type ProjectSummary = components['schemas']['ProjectSummary']
 type UploadLotBody = components['schemas']['Body_upload_lot_lots_post']
-type UploadCheckpointBody = components['schemas']['Body_upload_checkpoint_lots__lot_id__checkpoints_post']
+type UploadCheckpointBody =
+  components['schemas']['Body_upload_checkpoint_lots__lot_id__checkpoints_post']
 
 /** The ingestion metadata form (E7 step 1). Lot-level metadata comes from here, never CSV columns. */
 export interface LotMetadata {
@@ -75,7 +76,10 @@ export async function uploadCheckpoint(
 }
 
 /** `POST /lots/demo`: the synthetic demo lot (E7 step 2). The schema declares a urlencoded form body. */
-export async function loadDemoLot(client: ApiClient, accountId: string): Promise<LotUploadResponse> {
+export async function loadDemoLot(
+  client: ApiClient,
+  accountId: string,
+): Promise<LotUploadResponse> {
   return unwrap(
     await client.POST('/lots/demo', {
       body: { account_id: accountId },
@@ -83,6 +87,9 @@ export async function loadDemoLot(client: ApiClient, accountId: string): Promise
     }),
   )
 }
+
+/** react-query cache key for `GET /projects`; invalidate it after anything that creates a lot. */
+export const PROJECTS_QUERY_KEY = ['projects'] as const
 
 /** `GET /projects`: every project on record (E11), newest first. */
 export async function listProjects(client: ApiClient): Promise<ProjectSummary[]> {

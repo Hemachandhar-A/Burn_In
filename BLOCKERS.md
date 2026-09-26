@@ -54,3 +54,10 @@ Entry format:
 - When P5.4 lands: `npm run generate-client`, change `login()` to take the ApiClient and call `client.POST('/auth/login', { body })`, point `TokenResponse` in `frontend/src/auth/AuthContext.ts` at `components['schemas']['TokenResponse']`, delete the mocks, and mark this RESOLVED in the same session.
 - Status: OPEN
 
+---
+
+## 2026-09-26 P1 - POST /lots rejects the pinned wide CSV layout (router never calls parse_wide_lot_csv)
+- Blocked on: `ingestion/router.py` (P2). `upload_lot` and `upload_checkpoint` only call `parse_lot_csv` (long format). `ingestion/parsing.py` implements `parse_wide_lot_csv` for the layout E7 step 1 pins (`component_id, checkpoint_hour, <parameter>_<unit>...`), but no route reaches it. Found while screenshot-verifying Ingest against a running backend: a wide file comes back 422 with "missing required column for 'parameter' / 'value' / 'unit'".
+- What was tried: the Ingest screen shows those messages correctly (E7 step 5) and needs no change either way, since it sends the file as-is. Verified the screen's happy path with the long format, which the route accepts: POST /lots -> IN_PROGRESS, 24 readings; then POST /lots/{id}/checkpoints with a 168h file -> COMPLETE, 36 readings. Not fixing it here: `ingestion/` is P2's directory (rule 2).
+- Proposed fix (P2's call): detect the layout from the header row (`checkpoint_hour` present and no `parameter`/`value` column -> wide) and dispatch to `parse_wide_lot_csv`, in both upload routes.
+- Status: OPEN

@@ -1,10 +1,14 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { describe, expect, test } from 'vitest'
+import { ApiClientContext } from './api/ApiClientContext'
+import { createApiClient } from './api/client'
 import { AppRoutes } from './AppRoutes'
 import { useAuth, type Session, type TokenResponse } from './auth/AuthContext'
 import { AuthProvider } from './auth/AuthProvider'
 import { pathToLot, pathToPart, SCREENS } from './screens/registry'
+import { fakeServer, TEST_API } from './test-utils'
 
 const SESSION: Session = { token: 'jwt-abc', accountId: 'asharma', role: 'Quality Engineer' }
 const LOGIN: TokenResponse = {
@@ -33,13 +37,21 @@ function Harness() {
 
 function renderAt(path: string | string[], session: Session | null = SESSION) {
   const entries = Array.isArray(path) ? path : [path]
+  // Real screens (Ingest) query the API; answer with an empty backend so routing is all that's tested.
+  const { fetch } = fakeServer({ 'GET /projects': { body: [] } })
+  const client = createApiClient({ baseUrl: TEST_API, getToken: () => null, fetch })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <AuthProvider initialSession={session}>
-      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
-        <AppRoutes />
-        <Harness />
-      </MemoryRouter>
-    </AuthProvider>,
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider initialSession={session}>
+        <ApiClientContext.Provider value={client}>
+          <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
+            <AppRoutes />
+            <Harness />
+          </MemoryRouter>
+        </ApiClientContext.Provider>
+      </AuthProvider>
+    </QueryClientProvider>,
   )
 }
 
@@ -48,6 +60,11 @@ const h1 = (name: string) =>
   name === 'Login'
     ? screen.getByRole('group', { name: 'Select Account' })
     : screen.getByRole('heading', { level: 1, name })
+const signOut = () => {
+  fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+}
+const mainNav = () => screen.getByRole('navigation', { name: 'Main' })
 const click = (name: string) => act(() => fireEvent.click(screen.getByRole('button', { name })))
 const location = () => screen.getByTestId('location').textContent
 
@@ -174,14 +191,14 @@ describe('auth guard (rule 13)', () => {
 
   test('an explicit Sign out does not bounce the next account back to the old page', () => {
     renderAt('/settings')
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    signOut()
     click('test: sign in')
     expect(h1('Ingest')).toBeInTheDocument()
   })
 
   test('Back after Sign out cannot reopen a guarded screen', () => {
     renderAt(['/ingest', '/settings'])
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    signOut()
 
     click('test: back')
 
@@ -197,28 +214,81 @@ describe('navigation shell', () => {
     expect(screen.getByText('Quality Engineer')).toBeInTheDocument()
   })
 
-  test('links the four top-level screens; Lot Dashboard and Part Detail are reached from data', () => {
+  test('lists every signed-in screen in E6 order; the id-bound two are disabled until there is an id', () => {
     renderAt('/ingest')
-    const nav = screen.getByRole('navigation')
-    const labels = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent)
-    expect(labels).toEqual(['Ingest', 'Project Browser', 'History', 'Settings'])
+    const items = within(mainNav())
+      .getAllByRole('listitem')
+      .map((li) => li.textContent)
+    expect(items).toEqual([
+      'Ingest',
+      'Lot Dashboard (Ingest or open a lot first)',
+      'Part Detail (Open a part from a lot first)',
+      'Project Browser',
+      'History',
+      'Settings',
+    ])
+    const links = within(mainNav())
+      .getAllByRole('link')
+      .map((a) => a.textContent)
+    expect(links).toEqual(['Ingest', 'Project Browser', 'History', 'Settings'])
+  })
+
+  test('the Part Detail nav item follows the part last opened', () => {
+    renderAt('/parts/C0042')
+    fireEvent.click(within(mainNav()).getByRole('link', { name: 'Settings' }))
+    expect(within(mainNav()).getByRole('link', { name: 'Part Detail' })).toHaveAttribute(
+      'href',
+      '/parts/C0042',
+    )
+  })
+
+  test('the lot and part worked on are forgotten on Sign out', () => {
+    renderAt('/lots/LOT-9')
+    signOut()
+    click('test: sign in')
+    expect(within(mainNav()).queryByRole('link', { name: 'Lot Dashboard' })).toBeNull()
+  })
+
+  test('the Lot Dashboard nav item follows the lot currently open, and survives leaving it', () => {
+    renderAt('/lots/LOT 9')
+    expect(within(mainNav()).getByRole('link', { name: 'Lot Dashboard' })).toHaveAttribute(
+      'href',
+      '/lots/LOT%209',
+    )
+    fireEvent.click(within(mainNav()).getByRole('link', { name: 'History' }))
+    expect(within(mainNav()).getByRole('link', { name: 'Lot Dashboard' })).toHaveAttribute(
+      'href',
+      '/lots/LOT%209',
+    )
+    expect(within(mainNav()).queryByRole('link', { name: 'Part Detail' })).toBeNull()
+  })
+
+  test('the breadcrumb names the current screen', () => {
+    renderAt('/history')
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(within(crumb).getByText('History')).toHaveAttribute('aria-current', 'page')
   })
 
   test('marks only the current screen as the active nav link', () => {
     renderAt('/history')
-    expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('link', { name: 'Ingest' })).not.toHaveAttribute('aria-current')
+    expect(within(mainNav()).getByRole('link', { name: 'History' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(mainNav()).getByRole('link', { name: 'Ingest' })).not.toHaveAttribute(
+      'aria-current',
+    )
   })
 
   test('nav links move between screens', () => {
     renderAt('/ingest')
-    fireEvent.click(screen.getByRole('link', { name: 'History' }))
+    fireEvent.click(within(mainNav()).getByRole('link', { name: 'History' }))
     expect(h1('History')).toBeInTheDocument()
   })
 
   test('Sign out discards the session and returns to Login, without the nav shell', () => {
     renderAt('/settings')
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    signOut()
     expect(h1('Login')).toBeInTheDocument()
     expect(screen.queryByRole('navigation')).toBeNull()
   })

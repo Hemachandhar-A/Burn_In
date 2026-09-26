@@ -1,7 +1,9 @@
 /**
  * The seven screens of essential-features.md E6, in E6 order - the one list the router, the
  * nav shell and the tests all read, so a screen can't exist in one place and be missing from
- * another. `session` is the Part 10 session that builds it out from a placeholder.
+ * another. `session` is the Part 10 session that builds it out from a placeholder. Lot Dashboard
+ * and Part Detail are in the nav too, but need an id: AppShell links them to the lot/part last
+ * worked on, and shows them disabled until there is one.
  */
 export const SCREENS = [
   { id: 'login', title: 'Login', path: '/login', e6Step: 1, session: 'P1.10', inNav: false },
@@ -12,7 +14,7 @@ export const SCREENS = [
     path: '/lots/:lotId',
     e6Step: 3,
     session: 'P1.11',
-    inNav: false,
+    inNav: true,
   },
   {
     id: 'partDetail',
@@ -20,7 +22,7 @@ export const SCREENS = [
     path: '/parts/:componentId',
     e6Step: 4,
     session: 'P1.11',
-    inNav: false,
+    inNav: true,
   },
   {
     id: 'projects',
