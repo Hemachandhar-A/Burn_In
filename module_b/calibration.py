@@ -36,7 +36,13 @@ from mapie.regression import ConformalizedQuantileRegressor
 
 from contracts import FeatureFrame, ModuleBInput, to_module_b_input
 from module_b.baselines import TARGET_HOURS, is_healthy, persistence
-from module_b.model import DEFAULT_SEED, build_training_set, feature_matrix, make_quantile_regressor
+from module_b.model import (
+    DEFAULT_SEED,
+    build_training_set,
+    feature_matrix,
+    make_quantile_regressor,
+    usable_input,
+)
 
 DEFAULT_CONFIDENCE_LEVEL = 0.90
 DEFAULT_SLOPE_QUANTILE = 0.95
@@ -49,7 +55,7 @@ class CalibratedDriftModel:
     part_number: str
     parameter: str
     regressors: dict[str, ConformalizedQuantileRegressor]  # keyed by horizon; a horizon with no
-    # calibration rows is absent, and inputs at that horizon get no forecast
+    # (or too few) calibration rows is absent, and inputs at that horizon get no forecast
     safety_slope: float
     confidence_level: float
     slope_quantile: float
@@ -106,11 +112,22 @@ def conformal_upper_quantile(values, q: float) -> float:
     return float(arr[rank - 1])
 
 
+def _enough_to_conformalize(n_rows: int, confidence_level: float) -> bool:
+    """MAPIE's own finite-sample requirement: both 1/confidence_level and 1/(1 - confidence_level) must be
+    below the number of conformity scores (11+ rows at 0.90) - checked up front, not caught as an error."""
+    return n_rows > max(1 / confidence_level, 1 / (1 - confidence_level))
+
+
 def _calibrate_one(
     frames: list[FeatureFrame], confidence_level: float, slope_quantile: float, calibration_fraction: float,
     seed: int,
 ) -> CalibratedDriftModel | None:
-    complete = [f for f in frames if f.value_168h is not None]
+    # Only frames with a finite measured 168h and usable inputs count - as lots, as CQR rows, as slope rows.
+    complete = [
+        f for f in frames
+        if f.value_168h is not None and math.isfinite(f.value_168h)
+        and usable_input(to_module_b_input(f)) is not None
+    ]
     if len({f.lot_id for f in complete}) < 2:
         return None
     train_lots, cal_lots = split_lots([f.lot_id for f in complete], calibration_fraction, seed)
@@ -120,7 +137,7 @@ def _calibrate_one(
 
     healthy_rates = []
     for f in cal_frames:
-        seen = to_module_b_input(f)
+        seen = usable_input(to_module_b_input(f))
         if is_healthy(seen):
             healthy_rates.append(drift_rate(seen, f.value_168h))
     try:
@@ -136,8 +153,12 @@ def _calibrate_one(
     is_24h = np.isnan(cal.X[:, 1])  # delta_96h column
     regressors = {}
     for horizon, mask in (("96h", ~is_24h), ("24h", is_24h)):
-        if mask.any():
+        # Too few calibration rows at one horizon (e.g. a calibration lot that mostly lacks 96h) drops that
+        # horizon - its inputs come back forecast_unavailable - rather than crashing the whole key.
+        if _enough_to_conformalize(int(mask.sum()), confidence_level):
             regressors[horizon] = copy.deepcopy(fitted).conformalize(cal.X[mask], cal.y[mask])
+    if not regressors:
+        return None
 
     first = complete[0]
     return CalibratedDriftModel(

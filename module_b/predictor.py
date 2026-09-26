@@ -24,6 +24,7 @@ from features.compute import compute
 from generator.lot import generate_lot
 from module_b.baselines import physics_baselines
 from module_b.calibration import CalibratedDriftModel, calibrate_drift_models, forecast
+from module_b.model import usable_input
 
 # The three parameters the generator - and so every trained model - covers (context.md 1.3, 5.9).
 TRAINED_PARAMETERS = frozenset({"iddq", "leakage", "prop_delay"})
@@ -65,23 +66,29 @@ def predict(
 ) -> list[ModuleBResult]:
     """One ModuleBResult per input, in input order. Callers convert each FeatureFrame with
     contracts.to_module_b_input first - 168h never reaches here. `config` is accepted for the Part 5.7
-    call shape; no ScreeningConfig field governs Module B yet."""
-    in_scope = [f for f in frames if f.parameter in TRAINED_PARAMETERS]
+    call shape; no ScreeningConfig field governs Module B yet.
+
+    Every input passes `usable_input` first: a non-finite required input is forecast_unavailable, and a
+    non-finite 96h read is treated as absent (forecast at the 24h horizon) - so no NaN/inf ever reaches the
+    model, the physics fit, or a returned field."""
+    # Parallel to `frames`: the cleaned input to forecast from, or None when the part is declined.
+    usable = [usable_input(f) if f.parameter in TRAINED_PARAMETERS else None for f in frames]
+    in_scope = [u for u in usable if u is not None]
     if models is None:
         models = {}
-        for part_number in sorted({f.part_number for f in in_scope}):
+        for part_number in sorted({u.part_number for u in in_scope}):
             models.update(TEMP_synthetic_models(part_number))
 
-    forecasts = dict(zip((id(f) for f in in_scope), forecast(models, in_scope)))
+    forecasts = iter(forecast(models, in_scope))
     baselines = physics_baselines(in_scope)
 
     results = []
-    for f in frames:
-        fc = forecasts.get(id(f))
+    for f, u in zip(frames, usable):
+        fc = next(forecasts) if u is not None else None
         if fc is None:
             results.append(_unavailable(f))
             continue
-        physics = baselines[(f.component_id, f.parameter)].power_law
+        physics = baselines[(u.component_id, u.parameter)].power_law
         results.append(
             ModuleBResult(
                 component_id=f.component_id,

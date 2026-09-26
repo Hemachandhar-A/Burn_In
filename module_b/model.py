@@ -18,6 +18,7 @@ Complete-lot part, since early rejection runs on 24h-only In-Progress lots and a
 rows that always had 96h would never have learned its NaN branch.
 """
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -70,6 +71,28 @@ def view_at_24h(frame: ModuleBInput) -> ModuleBInput:
     )
 
 
+def usable_input(frame: ModuleBInput) -> ModuleBInput | None:
+    """The one gate every input passes before training, calibration or prediction. `Reading.value` accepts
+    NaN/inf and a literal "NaN" CSV cell reaches FeatureFrame unchanged (CONTRACT_CHANGES.md 2026-09-26 P4
+    non-finite readings), so finiteness is checked here rather than assumed.
+
+    None when a required input - value_0h/24h, lot_median_0h/24h, elapsed 0h/24h - is non-finite, or the
+    24h read isn't after the 0h read: a missing required input is forecast_unavailable, never a guess
+    (AGENTS.md rule 7). A non-finite or out-of-order 96h read is an absent 96h read: the 24h view, not a
+    value - the same thing a None 96h already means (rule 7: missing 96h is allowed, never filled in)."""
+    t0 = frame.elapsed_hours.get("0h", math.nan)
+    t24 = frame.elapsed_hours.get("24h", math.nan)
+    required = (frame.value_0h, frame.value_24h, frame.lot_median_0h, frame.lot_median_24h, t0, t24)
+    if not all(math.isfinite(v) for v in required) or t24 <= t0:
+        return None
+    if frame.value_96h is None:
+        return frame
+    t96 = frame.elapsed_hours.get("96h", math.nan)
+    if not (math.isfinite(frame.value_96h) and math.isfinite(t96) and t96 > t24):
+        return view_at_24h(frame)
+    return frame
+
+
 def feature_matrix(inputs: list[ModuleBInput]) -> np.ndarray:
     rows = []
     for f in inputs:
@@ -107,9 +130,11 @@ def build_training_set(frames: list[FeatureFrame]) -> TrainingSet:
     inputs: list[ModuleBInput] = []
     targets: list[float] = []
     for frame in frames:
-        if frame.value_168h is None:
+        if frame.value_168h is None or not math.isfinite(frame.value_168h):
             continue
-        seen = to_module_b_input(frame)
+        seen = usable_input(to_module_b_input(frame))
+        if seen is None:
+            continue
         views = [seen, view_at_24h(seen)] if seen.value_96h is not None else [seen]
         for view in views:
             inputs.append(view)
