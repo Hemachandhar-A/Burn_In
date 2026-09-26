@@ -76,7 +76,11 @@ function RankedList({
                 <td className="mono">
                   <Link
                     to={pathToPart(row.component_id)}
-                    state={{ lotId: row.lot_id, verdict: row.verdict, worstParameter: row.worst_parameter }}
+                    state={{
+                      lotId: row.lot_id,
+                      verdict: row.verdict,
+                      worstParameter: row.worst_parameter,
+                    }}
                   >
                     {row.component_id}
                   </Link>
@@ -121,17 +125,34 @@ function DpaResultPanel({ result }: { result: MOCK_DPAWorkOrderResponse }) {
 /** E6 screen 3: Early-Check (In-Progress, Module B only) or Full Disposition (Complete, both). */
 export function LotDashboardScreen() {
   const { lotId } = useParams()
+
+  if (!lotId) {
+    return (
+      <section className="screen">
+        <h1 className="screen-title">Lot Dashboard</h1>
+        <p className="card-note">No lot selected.</p>
+      </section>
+    )
+  }
+
+  // Keyed by lotId: navigating from one lot's dashboard to another's would otherwise re-render
+  // this same component instance (React Router doesn't remount for a param-only change), leaving
+  // a DPA work order or a report/DPA error from the PREVIOUS lot showing under the new one's
+  // data. A fresh key remounts with fresh state instead of needing an effect to reset it by hand.
+  return <LotDashboardForLot key={lotId} lotId={lotId} />
+}
+
+function LotDashboardForLot({ lotId }: { lotId: string }) {
   const client = useApiClient()
   const [dpaResult, setDpaResult] = useState<MOCK_DPAWorkOrderResponse | null>(null)
 
   const summary = useQuery({
     queryKey: ['lot-summary', lotId],
-    queryFn: () => getLotSummary(lotId!),
-    enabled: !!lotId,
+    queryFn: () => getLotSummary(lotId),
   })
 
   const report = useMutation({
-    mutationFn: () => downloadReport(client, lotId!),
+    mutationFn: () => downloadReport(client, lotId),
     onSuccess: ({ blob, filename }) => {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -145,18 +166,9 @@ export function LotDashboardScreen() {
   })
 
   const dpa = useMutation({
-    mutationFn: () => generateDpaWorkOrder(lotId!),
+    mutationFn: () => generateDpaWorkOrder(lotId),
     onSuccess: (result) => setDpaResult(result),
   })
-
-  if (!lotId) {
-    return (
-      <section className="screen">
-        <h1 className="screen-title">Lot Dashboard</h1>
-        <p className="card-note">No lot selected.</p>
-      </section>
-    )
-  }
 
   const data = summary.data
   const byModuleA = data

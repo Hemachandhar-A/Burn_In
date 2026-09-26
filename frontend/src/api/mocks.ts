@@ -252,6 +252,14 @@ export interface MOCK_DPAWorkOrderResponse {
 
 const MOCK_LATENCY_SHORT_MS = 200
 
+/**
+ * Anchor for synthetic *past* records (a disposition or confirmed outcome that already exists,
+ * as opposed to one just submitted through the form). Using `Date.now()` there would violate rule
+ * 9 (same input, same seed, same output, every time) - the exact same component would show a
+ * different "N days ago" timestamp depending on what day the app happens to be opened.
+ */
+const MOCK_REFERENCE_DATE_MS = Date.parse('2026-09-20T12:00:00Z')
+
 /** deterministic per-string seed (rule 9: same input, same seed, same output). */
 function hashSeed(value: string): number {
   let h = 2166136261
@@ -304,10 +312,35 @@ function round(value: number, decimals = 1): number {
 function componentIds(lotId: string, count: number, lotSize: number): string[] {
   const rand = mulberry32(hashSeed(lotId))
   const chosen = new Set<number>()
-  while (chosen.size < count) {
+  // Capped at lotSize distinct numbers exist to choose from; without this, a caller passing
+  // count >= lotSize would spin forever never reaching `count` distinct values.
+  const target = Math.min(count, lotSize)
+  while (chosen.size < target) {
     chosen.add(1 + Math.floor(rand() * lotSize))
   }
   return [...chosen].sort((a, b) => a - b).map((n) => `DUT-${String(n).padStart(3, '0')}`)
+}
+
+/**
+ * A component id, deterministic per `seed`, guaranteed not to satisfy `exclude` - used for DPA's
+ * "control part from the unflagged population" (E13 step 5), which must be neither an
+ * already-flagged component nor one of the other two recommendations already chosen. Scans a
+ * deterministically shuffled 1..lotSize once (no risk of the unbounded retry a plain "roll again
+ * until it's free" loop would have); if every id in range is excluded, falls back to an id
+ * outside the lot entirely (lotSize + 1), which by construction cannot collide.
+ */
+function pickExcludedComponentId(seed: string, lotSize: number, exclude: Set<string>): string {
+  const rand = mulberry32(hashSeed(seed))
+  const order = Array.from({ length: lotSize }, (_, i) => i + 1)
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  for (const n of order) {
+    const id = `DUT-${String(n).padStart(3, '0')}`
+    if (!exclude.has(id)) return id
+  }
+  return `DUT-${String(lotSize + 1).padStart(3, '0')}`
 }
 
 /**
@@ -388,24 +421,40 @@ export async function MOCK_getLotSummary(lotId: string): Promise<TEMP_LotSummary
 export async function MOCK_generateDpaWorkOrder(lotId: string): Promise<MOCK_DPAWorkOrderResponse> {
   await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
   const summary = await MOCK_getLotSummary(lotId)
-  const byModuleA = [...summary.assessments].sort((a, b) => b.module_a_rank - a.module_a_rank)
+  const flaggedIds = new Set(summary.assessments.map((a) => a.component_id))
+  const usedIds = new Set<string>()
   const recommendations: MOCK_DPARecommendation[] = []
+
+  const byModuleA = [...summary.assessments].sort((a, b) => b.module_a_rank - a.module_a_rank)
   if (byModuleA[0]) {
     recommendations.push({
       component_id: byModuleA[0].component_id,
       reason: `Highest-severity part in this lot (${byModuleA[0].worst_parameter}).`,
     })
+    usedIds.add(byModuleA[0].component_id)
   }
-  const nearBoundary = [...summary.assessments].sort(
-    (a, b) => Math.abs(a.module_b_rank - 0.5) - Math.abs(b.module_b_rank - 0.5),
-  )[0]
-  if (nearBoundary && nearBoundary.component_id !== recommendations[0]?.component_id) {
+
+  // Excludes whatever was just picked above, not only the exact first entry - a lot with two
+  // parts of identical rank could otherwise recommend the same component_id twice.
+  const nearBoundary = [...summary.assessments]
+    .filter((a) => !usedIds.has(a.component_id))
+    .sort((a, b) => Math.abs(a.module_b_rank - 0.5) - Math.abs(b.module_b_rank - 0.5))[0]
+  if (nearBoundary) {
     recommendations.push({
       component_id: nearBoundary.component_id,
       reason: 'Highest-uncertainty part nearest the WATCH/REJECT boundary.',
     })
+    usedIds.add(nearBoundary.component_id)
   }
-  const controlId = componentIds(`${lotId}-control`, 1, summary.lot_size)[0]
+
+  // A genuine control part: neither already recommended above nor itself one of the lot's
+  // flagged components - otherwise "unflagged population" would be false and the work order
+  // could list the same component_id twice (a duplicate React key, and a nonsensical DPA order).
+  const controlId = pickExcludedComponentId(
+    `${lotId}-control`,
+    summary.lot_size,
+    new Set([...usedIds, ...flaggedIds]),
+  )
   recommendations.push({
     component_id: controlId,
     reason: 'Control part from the unflagged population.',
@@ -432,7 +481,8 @@ export async function MOCK_getPartDetail(
   await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
   const rand = mulberry32(hashSeed(componentId))
   const param =
-    MOCK_PARAMETERS.find((p) => p.name === hint?.worstParameter) ?? pickWeighted(MOCK_PARAMETERS, rand)
+    MOCK_PARAMETERS.find((p) => p.name === hint?.worstParameter) ??
+    pickWeighted(MOCK_PARAMETERS, rand)
   const lotId = hint?.lotId ?? `LOT-2024-${String(1000 + Math.floor(rand() * 9000))}`
   const partNumber = `AD${Math.floor(100 + rand() * 900)}-JH`
   const verdict: Verdict =
@@ -499,17 +549,21 @@ export async function MOCK_getPartDetail(
         forecast_unavailable: false,
       }
 
+  // Cold-start (no prior lots for this part number): null, per ModuleAResult's own doc comment -
+  // and a null score can never itself be one of the "explainable" detectors that corroborated
+  // the flag (explainable_tags), so the tag is derived from the score, never rolled separately.
+  const isolationForestScore = rand() < 0.15 ? null : round(rand(), 3)
   const moduleA: MOCK_ModuleAResult = {
     component_id: componentId,
     parameter: param.name,
     robust_z: robustZ['24h'],
     mcd_distance: round(15 + rand() * 20),
-    isolation_forest_score: rand() < 0.15 ? null : round(rand(), 3),
+    isolation_forest_score: isolationForestScore,
     ecod_score: round(0.6 + rand() * 0.39, 3),
     explainable_tags: {
       robust_z: true,
       mcd: true,
-      isolation_forest: rand() > 0.5,
+      isolation_forest: isolationForestScore !== null && rand() > 0.5,
       ecod: true,
     },
     direction: 'above_median',
@@ -517,17 +571,26 @@ export async function MOCK_getPartDetail(
     severity_cap_reason: null,
   }
 
+  // Sized off MOCK_PARAMETERS itself, not hardcoded to 4 - a future addition to that list would
+  // otherwise silently produce `share_pct: NaN` / a negative `neg_log_p` for the new entry, since
+  // a fixed-length literal here wouldn't grow to match a longer parameter pool.
   const contribPool = MOCK_PARAMETERS.filter((p) => p.name !== param.name)
-  const mcdRaw = [rand() * 0.7 + 0.3, rand() * 0.4, rand() * 0.2, rand() * 0.1]
+  const allParams = [param, ...contribPool]
+  const mcdRaw = allParams.map((_, i) =>
+    i === 0 ? 0.3 + rand() * 0.7 : rand() * (0.4 / 2 ** (i - 1)),
+  )
   const mcdTotal = mcdRaw.reduce((s, v) => s + v, 0)
-  const mcdContributions: TEMP_MCDContribution[] = [param, ...contribPool]
+  const mcdContributions: TEMP_MCDContribution[] = allParams
     .map((p, i) => ({ parameter: p.name, share_pct: round((mcdRaw[i] / mcdTotal) * 100, 1) }))
     .sort((a, b) => b.share_pct - a.share_pct)
 
-  const ecodContributions: TEMP_ECODContribution[] = [param, ...contribPool].map((p, i) => ({
+  const ecodContributions: TEMP_ECODContribution[] = allParams.map((p, i) => ({
     parameter: p.name,
-    tail: i === 3 ? 'Left Tail' : 'Right Tail',
-    neg_log_p: round(i === 0 ? 3.5 + rand() * 2 : (1.2 - i * 0.3) * (1 + rand() * 0.5), 2),
+    tail: i === allParams.length - 1 ? 'Left Tail' : 'Right Tail',
+    neg_log_p: round(
+      i === 0 ? 3.5 + rand() * 2 : Math.max(0.05, 1.2 - i * 0.3) * (1 + rand() * 0.5),
+      2,
+    ),
   }))
   ecodContributions.sort((a, b) => b.neg_log_p - a.neg_log_p)
 
@@ -548,7 +611,7 @@ export async function MOCK_getPartDetail(
             verdict: verdict === 'PASS' ? 'ACCEPT' : verdict === 'WATCH' ? 'HOLD' : 'REJECT',
             rationale: 'Signed off against the analysis available at the time.',
             timestamp: new Date(
-              Date.now() - 86_400_000 * (2 + Math.floor(rand() * 5)),
+              MOCK_REFERENCE_DATE_MS - 86_400_000 * (2 + Math.floor(rand() * 5)),
             ).toISOString(),
             analysis_run_id: '02',
           },
@@ -564,7 +627,7 @@ export async function MOCK_getPartDetail(
             account_id: 'r.mehta',
             confirmed_outcome: verdict === 'REJECT' ? 'Confirmed Defective' : 'Confirmed Good',
             note: null,
-            recorded_at: new Date(Date.now() - 86_400_000).toISOString(),
+            recorded_at: new Date(MOCK_REFERENCE_DATE_MS - 86_400_000).toISOString(),
             analysis_run_id: '02',
           },
         ]
@@ -582,8 +645,13 @@ export async function MOCK_getPartDetail(
     module_a: moduleA,
     module_b: moduleB,
     explanation_sentence: explanation,
-    confidence_qualifier:
-      disagreementPct !== 0 && Math.abs(disagreementPct) > 25
+    // E4 step 6: derived from the CQR interval width and the physics-vs-model gap - both of
+    // which only exist when Module B actually produced a forecast. A part with no forecast has
+    // nothing to be confident (or borderline) about; claiming otherwise would be exactly the
+    // kind of certainty rule 12 says this project must never claim it doesn't have.
+    confidence_qualifier: unrecognizedParameter
+      ? 'Not applicable — drift prediction unavailable'
+      : Math.abs(disagreementPct) > 25
         ? 'High confidence'
         : 'Borderline — recommend retest',
     severity_cap_note: capNote,

@@ -246,16 +246,20 @@ function McdCard({ dSquared, rows }: { dSquared: number; rows: TEMP_MCDContribut
         </div>
         <span className="chip mono">D² = {dSquared}</span>
       </header>
-      <div className="contribution-list">
-        {rows.map((row) => (
-          <ContributionBar
-            key={row.parameter}
-            label={row.parameter}
-            valueText={`${row.share_pct}%`}
-            pct={row.share_pct}
-          />
-        ))}
-      </div>
+      {rows.length === 0 ? (
+        <p className="card-note">No per-parameter contribution available.</p>
+      ) : (
+        <div className="contribution-list">
+          {rows.map((row) => (
+            <ContributionBar
+              key={row.parameter}
+              label={row.parameter}
+              valueText={`${row.share_pct}%`}
+              pct={row.share_pct}
+            />
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -271,17 +275,21 @@ function EcodCard({ oScore, rows }: { oScore: number; rows: TEMP_ECODContributio
         </div>
         <span className="chip mono">O_score = {oScore}</span>
       </header>
-      <div className="contribution-list">
-        {rows.map((row) => (
-          <ContributionBar
-            key={row.parameter}
-            label={row.parameter}
-            sublabel={row.tail}
-            valueText={`-log(p) = ${row.neg_log_p}`}
-            pct={(row.neg_log_p / max) * 100}
-          />
-        ))}
-      </div>
+      {rows.length === 0 ? (
+        <p className="card-note">No per-parameter contribution available.</p>
+      ) : (
+        <div className="contribution-list">
+          {rows.map((row) => (
+            <ContributionBar
+              key={row.parameter}
+              label={row.parameter}
+              sublabel={row.tail}
+              valueText={`-log(p) = ${row.neg_log_p}`}
+              pct={(row.neg_log_p / max) * 100}
+            />
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -291,15 +299,42 @@ function lastSignoff(history: MOCK_DispositionRecord[]): MOCK_DispositionRecord 
   return [...history].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))[0]
 }
 
+type PartDetailNavState = {
+  lotId?: string
+  verdict?: 'PASS' | 'WATCH' | 'REJECT'
+  worstParameter?: string
+} | null
+
 /** E6 screen 4, opened from either ranked list on the Lot Dashboard. */
 export function PartDetailScreen() {
   const { componentId } = useParams()
-  const location = useLocation()
-  const navState = location.state as {
-    lotId?: string
-    verdict?: 'PASS' | 'WATCH' | 'REJECT'
-    worstParameter?: string
-  } | null
+  const navState = useLocation().state as PartDetailNavState
+
+  if (!componentId) {
+    return (
+      <section className="screen">
+        <h1 className="screen-title">Part Detail</h1>
+        <p className="card-note">No component selected.</p>
+      </section>
+    )
+  }
+
+  // Keyed by componentId: clicking from one part to another (e.g. a different row in a Lot
+  // Dashboard ranked list) would otherwise re-render this same component instance rather than
+  // remount it, leaving an unsent rationale, an open confirmed-outcome form, or a stale
+  // disposition/confirmed-outcome error from the PREVIOUS part carried over - and submittable
+  // against the new one. A fresh key remounts with fresh state instead of needing an effect to
+  // reset it by hand.
+  return <PartDetailForComponent key={componentId} componentId={componentId} navState={navState} />
+}
+
+function PartDetailForComponent({
+  componentId,
+  navState,
+}: {
+  componentId: string
+  navState: PartDetailNavState
+}) {
   const { session } = useAuth()
   const queryClient = useQueryClient()
   const accountId = session?.accountId ?? ''
@@ -314,19 +349,18 @@ export function PartDetailScreen() {
   const detail = useQuery({
     queryKey: ['part-detail', componentId],
     queryFn: () =>
-      getPartDetail(componentId!, {
+      getPartDetail(componentId, {
         lotId: navState?.lotId,
         verdict: navState?.verdict,
         worstParameter: navState?.worstParameter,
       }),
-    enabled: !!componentId,
   })
 
   const queryKey = ['part-detail', componentId]
 
   const disposition = useMutation({
     mutationFn: (verdict: 'ACCEPT' | 'HOLD' | 'REJECT') =>
-      submitDisposition(componentId!, { verdict, rationale: rationale.trim() }, accountId),
+      submitDisposition(componentId, { verdict, rationale: rationale.trim() }, accountId),
     onSuccess: () => {
       setRationale('')
       void queryClient.invalidateQueries({ queryKey })
@@ -336,7 +370,7 @@ export function PartDetailScreen() {
   const confirmedOutcomeMutation = useMutation({
     mutationFn: () =>
       submitConfirmedOutcome(
-        componentId!,
+        componentId,
         { confirmed_outcome: confirmedOutcome, note: confirmedNote.trim() || null },
         accountId,
       ),
@@ -350,15 +384,6 @@ export function PartDetailScreen() {
   const rationaleId = useId()
   const outcomeId = useId()
   const noteId = useId()
-
-  if (!componentId) {
-    return (
-      <section className="screen">
-        <h1 className="screen-title">Part Detail</h1>
-        <p className="card-note">No component selected.</p>
-      </section>
-    )
-  }
 
   if (detail.isPending) {
     return (
@@ -485,14 +510,18 @@ export function PartDetailScreen() {
                 <div>
                   <p className="summary-label">Physics Baseline</p>
                   <p className="mono disagreement-value">
-                    {data.module_b.physics_baseline_prediction} {data.feature_frame.unit}
+                    {data.module_b.physics_baseline_prediction === null
+                      ? '—'
+                      : `${data.module_b.physics_baseline_prediction} ${data.feature_frame.unit}`}
                   </p>
                   <p className="muted">Power-law extrapolation baseline</p>
                 </div>
                 <div>
                   <p className="summary-label">Live ML Model</p>
                   <p className="mono disagreement-value">
-                    {data.module_b.predicted_168h} {data.feature_frame.unit}
+                    {data.module_b.predicted_168h === null
+                      ? '—'
+                      : `${data.module_b.predicted_168h} ${data.feature_frame.unit}`}
                   </p>
                   <p className="muted">Gradient-boosted regression</p>
                 </div>
@@ -500,11 +529,9 @@ export function PartDetailScreen() {
               <div className="disagreement-net">
                 <p className="summary-label">Net Disagreement Gap</p>
                 <p className="mono">
-                  {data.module_b.physics_disagreement_gap !== null &&
-                  data.module_b.physics_disagreement_gap >= 0
-                    ? '+'
-                    : ''}
-                  {data.module_b.physics_disagreement_gap} {data.feature_frame.unit}
+                  {data.module_b.physics_disagreement_gap === null
+                    ? '—'
+                    : `${data.module_b.physics_disagreement_gap >= 0 ? '+' : ''}${data.module_b.physics_disagreement_gap} ${data.feature_frame.unit}`}
                 </p>
               </div>
             </section>

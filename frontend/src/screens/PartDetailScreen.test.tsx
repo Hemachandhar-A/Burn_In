@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { ApiError } from '../api/errors'
 import type { TEMP_PartDetailResponse } from '../api/mocks'
@@ -95,6 +95,15 @@ function setup(path = '/parts/DUT-042') {
   const server = fakeServer({})
   return renderWithApi(routed(), { fetch: server.fetch, path })
 }
+
+/** Jumps between two parts without unmounting anything outside the `<Routes>`, the same way
+ * clicking a different ranked-list row does - `routed()` alone can't exercise this. */
+const routedWithNav = (other: string) => (
+  <>
+    {routed()}
+    <Link to={other}>go</Link>
+  </>
+)
 
 describe('Part Detail screen (E6 screen 4)', () => {
   beforeEach(() => {
@@ -320,5 +329,57 @@ describe('Part Detail screen (E6 screen 4)', () => {
       { fetch: server.fetch, path: '/' },
     )
     expect(screen.getByText('No component selected.')).toBeInTheDocument()
+  })
+
+  test('navigating to a different part clears an unsent rationale, not just its own screen', async () => {
+    vi.spyOn(partsApi, 'getPartDetail').mockResolvedValue(DETAIL())
+    const server = fakeServer({})
+    renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale'), {
+      target: { value: 'Half-typed note meant for DUT-042 only.' },
+    })
+
+    fireEvent.click(screen.getByRole('link', { name: 'go' }))
+    await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))
+    await screen.findByLabelText('Technical Disposition Rationale')
+    expect(screen.getByLabelText('Technical Disposition Rationale')).toHaveValue('')
+    // And the buttons are disabled again, since the new screen starts with no rationale either.
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled()
+  })
+
+  test('navigating to a different part clears a stale disposition error from the previous one', async () => {
+    vi.spyOn(partsApi, 'getPartDetail').mockResolvedValue(DETAIL())
+    vi.spyOn(partsApi, 'submitDisposition').mockRejectedValue(
+      new ApiError(422, ['A technical rationale is required.']),
+    )
+    const server = fakeServer({})
+    renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale'), {
+      target: { value: 'x' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('A technical rationale is required.')
+
+    fireEvent.click(screen.getByRole('link', { name: 'go' }))
+    await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  test('navigating to a different part collapses an open Record Confirmed Outcome form', async () => {
+    vi.spyOn(partsApi, 'getPartDetail').mockResolvedValue(DETAIL())
+    const server = fakeServer({})
+    renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Record Confirmed Outcome' }))
+    expect(screen.getByLabelText('Confirmed Outcome')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: 'go' }))
+    await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))
+    expect(screen.queryByLabelText('Confirmed Outcome')).toBeNull()
   })
 })

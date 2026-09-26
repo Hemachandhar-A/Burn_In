@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as lotDetailApi from '../api/lotDetail'
 import { ApiError } from '../api/errors'
@@ -13,6 +13,16 @@ const routed = () => (
     <Route path="/lots/:lotId" element={<LotDashboardScreen />} />
     <Route path="/" element={<LotDashboardScreen />} />
   </Routes>
+)
+
+/** Jumps between two lot dashboards without unmounting anything outside the `<Routes>`, the same
+ * way clicking a nav link or a browser back/forward does - `routed()` alone can't exercise this,
+ * since `renderWithApi` mounts it fresh for every test. */
+const routedWithNav = (other: string) => (
+  <>
+    {routed()}
+    <Link to={other}>go</Link>
+  </>
 )
 
 const SUMMARY = (overrides: Partial<TEMP_LotSummaryResponse> = {}): TEMP_LotSummaryResponse => ({
@@ -215,5 +225,47 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
     const server = fakeServer({})
     renderWithApi(routed(), { fetch: server.fetch, path: '/' })
     expect(screen.getByText('No lot selected.')).toBeInTheDocument()
+  })
+
+  test('navigating to a different lot clears a previously generated DPA work order', async () => {
+    vi.spyOn(lotDetailApi, 'getLotSummary').mockImplementation(async (lotId) =>
+      SUMMARY({ disposition: { ...SUMMARY().disposition, lot_id: lotId } }),
+    )
+    vi.spyOn(lotDetailApi, 'generateDpaWorkOrder').mockResolvedValue({
+      recommendations: [{ component_id: 'DUT-042', reason: 'Highest-severity part in this lot.' }],
+    })
+    const server = fakeServer({})
+    renderWithApi(routedWithNav('/lots/LOT-OTHER'), {
+      fetch: server.fetch,
+      path: '/lots/LOT-2024-8841',
+    })
+    await screen.findByText('AD590-JH')
+
+    fireEvent.click(screen.getByRole('button', { name: /generate dpa work order/i }))
+    await screen.findByText('DPA Work Order')
+
+    fireEvent.click(screen.getByRole('link', { name: 'go' }))
+    await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('LOT-OTHER'))
+    expect(screen.queryByText('DPA Work Order')).toBeNull()
+  })
+
+  test('navigating to a different lot clears a stale Generate Report error from the previous one', async () => {
+    vi.spyOn(lotDetailApi, 'getLotSummary').mockImplementation(async (lotId) =>
+      SUMMARY({ disposition: { ...SUMMARY().disposition, lot_id: lotId } }),
+    )
+    vi.spyOn(lotDetailApi, 'downloadReport').mockRejectedValue(new ApiError(404, ['no report yet']))
+    const server = fakeServer({})
+    renderWithApi(routedWithNav('/lots/LOT-OTHER'), {
+      fetch: server.fetch,
+      path: '/lots/LOT-2024-8841',
+    })
+    await screen.findByText('AD590-JH')
+
+    fireEvent.click(screen.getByRole('button', { name: /generate report/i }))
+    expect(await screen.findByText('Report generation failed')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: 'go' }))
+    await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('LOT-OTHER'))
+    expect(screen.queryByText('Report generation failed')).toBeNull()
   })
 })
