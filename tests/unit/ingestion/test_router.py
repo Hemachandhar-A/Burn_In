@@ -253,9 +253,31 @@ def test_post_lots_checkpoints_reuses_the_same_project_row_and_adds_another_run(
     assert runs[1].diff_vs_prior is not None
 
 
-def test_post_lots_demo_does_not_require_a_project_row():
-    # /lots/demo is unchanged by P2.5 - out of scope per Part 10's session wording.
+def test_post_lots_demo_creates_a_project_row():
+    # Was test_post_lots_demo_does_not_require_a_project_row, which pinned /lots/demo as unchanged by P2.5
+    # ("out of scope per Part 10's session wording") - a scope note, not a design choice. The demo route now
+    # runs the same pipeline-and-persist sequence as POST /lots, so it gets a Project row (Lead, 2026-09-27).
     response = client.post("/lots/demo", data={"account_id": "a.sharma"})
     assert response.status_code == 200
     lot_id = response.json()["lot_id"]
-    assert _repository().query_project(lot_id) is None
+    assert _repository().query_project(lot_id) is not None
+
+
+# --- P2-flagged findings, fixed by the Lead while P2 was offline (CONTRACT_CHANGES.md 2026-09-27) ---
+
+
+def test_demo_lot_runs_the_pipeline_and_persists_a_real_analysis_run():
+    response = client.post("/lots/demo", data={"account_id": "a.sharma"})
+    assert response.status_code == 200
+    lot_id = response.json()["lot_id"]
+
+    from storage import repository
+
+    project = repository.query_project(lot_id)
+    assert project is not None and project.part_number == "DEMO-PN"
+    run = repository.query_latest_project_data(lot_id)
+    assert run is not None
+    stored = json.loads(run.results_json)
+    assert stored["per_component"] and stored["lot_disposition"]["verdict"]  # a real AnalysisResults, persisted
+    assert json.loads(run.raw_data)["lot_id"] == lot_id
+    assert "analysis_run" in {e.event_type for e in repository.query_events(lot_id)}

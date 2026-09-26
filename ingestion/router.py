@@ -208,6 +208,7 @@ async def load_demo_lot(account_id: str = Form(...)) -> LotUploadResponse:
     lot_id = f"demo-{uuid.uuid4().hex[:8]}"
     generated = generate_lot(lot_id=lot_id, part_number="DEMO-PN", seed=42, account_id=account_id)
     store.put(lot_id, generated.dataset)
+    _run_pipeline_and_persist(generated.dataset, account_id)  # same sequence as POST /lots (P2.5)
     return LotUploadResponse(
         lot_id=generated.dataset.lot_id, part_number=generated.dataset.part_number,
         status=generated.dataset.status, reading_count=len(generated.dataset.readings),
