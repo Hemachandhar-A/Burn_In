@@ -210,3 +210,9 @@ Entry format:
 - Status: OPEN
 
 ---
+
+## 2026-09-26 P4 - Reading.value (and checkpoint_hour) accept NaN/inf; a "NaN" CSV cell reaches FeatureFrame unchanged
+- Missing/wrong: `Reading.value: float` and `Reading.checkpoint_hour: float` use Pydantic's default `allow_inf_nan=True`, and `ingestion/parsing.py` converts cells with a bare `float()`. A wide-format cell containing `NaN` (or `inf`) is therefore a valid `Reading`, survives `features.compute`, and arrives as e.g. `FeatureFrame.value_96h = nan` / `delta_96h = nan` - reproduced end to end from `parse_wide_lot_csv`. The pinned wide-format layout only defines a *blank* cell as "no reading"; a literal `NaN` is neither blank nor a number.
+- Why it matters: found in P4's pre-merge hardening pass. Before this pass, Module B returned such a part as a normal forecast with `predicted_168h`/`interval_*`/`drift_rate` all NaN and `exceeds_safety_slope=False` (because `NaN > slope` is False) - a silent "not flagged". Module B now defends itself (`module_b.model.usable_input`: non-finite 96h = absent 96h, non-finite 0h/24h = `forecast_unavailable`), but Module A (robust z, MCD, IF, ECOD), features' lot medians/sigma, and the report all still see the NaN, and ingestion's quality check never flags it because a reading technically exists.
+- Proposed fix: reject non-finite values at the boundary, once, rather than in every consumer - either `value: float = Field(allow_inf_nan=False)` (same for `checkpoint_hour`) on `Reading`, or P2's parser treating a non-finite cell exactly like a blank one (skipped, so `check_missing_checkpoints` flags it) - mirrored in IMPLEMENTATION_PLAN.md Part 5.2's wide-format note. The second keeps an upload with one bad cell usable; the first rejects the upload. Lead's call which.
+- Status: OPEN
