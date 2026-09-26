@@ -5,7 +5,7 @@ exists. Every value here is fake. Replaced by the real predictor in P4.1-P4.3; t
 `predict` signature is what stays.
 """
 
-from contracts import FeatureFrame, ModuleBResult, ScreeningConfig
+from contracts import ModuleBInput, ModuleBResult, ScreeningConfig
 
 # One row per branch P5 has to handle: an ordinary forecast, an early-reject forecast,
 # and a parameter outside the trained three (context.md 5.9) - every forecast field None.
@@ -49,8 +49,11 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
 )
 
 
-def predict(frames: list[FeatureFrame], config: ScreeningConfig | None = None) -> list[ModuleBResult]:
-    """Stub: one result per frame, cycling through STUB_RESULTS, keyed to the frame's component_id."""
+def predict(frames: list[ModuleBInput], config: ScreeningConfig | None = None) -> list[ModuleBResult]:
+    """Stub: one result per frame, cycling through STUB_RESULTS, keyed to the frame's component_id.
+
+    Callers convert each FeatureFrame with contracts.to_module_b_input first - 168h never reaches here.
+    """
     return [
         STUB_RESULTS[i % len(STUB_RESULTS)].model_copy(update={"component_id": frame.component_id})
         for i, frame in enumerate(frames)
