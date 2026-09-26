@@ -76,7 +76,9 @@ def power_law(frame: ModuleBInput, exponent: float) -> float:
     return frame.value_0h + (v_last - frame.value_0h) * _horizon_ratio(frame) ** exponent
 
 
-def _is_healthy(frame: ModuleBInput) -> bool:
+def is_healthy(frame: ModuleBInput) -> bool:
+    """Inside the lot's robust core at every checkpoint the frame has - shared by the exponent fit here and
+    the safety slope (module_b.calibration), so "healthy" means one thing across Module B."""
     return all(abs(z) <= HEALTHY_ROBUST_Z_MAX for z in frame.robust_z.values())
 
 
@@ -90,7 +92,7 @@ def fit_lot_exponent(frames: list[ModuleBInput]) -> float:
     if len({(f.lot_id, f.parameter) for f in frames}) > 1:
         raise ValueError("fit_lot_exponent takes frames from exactly one (lot_id, parameter)")
 
-    usable = [f for f in frames if f.value_96h is not None and _is_healthy(f)]
+    usable = [f for f in frames if f.value_96h is not None and is_healthy(f)]
     if not usable:
         return DEFAULT_POWER_LAW_EXPONENT
 
