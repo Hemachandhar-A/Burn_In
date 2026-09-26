@@ -1,9 +1,8 @@
-"""P4.0 stub tests: the canned ModuleBResult output P5 builds against before Module B is real."""
+"""P4.0 stub fixture tests: canned, contract-valid ModuleBResult rows covering every branch P5 must handle.
+module_b.predict is real since P4.3 (test_module_b_predictor.py); the fixture stays for fast P5 tests."""
 
-import inspect
-
-from contracts import FeatureFrame, ModuleBInput, ModuleBResult, ScreeningConfig, to_module_b_input
-from module_b import STUB_RESULTS, predict
+from contracts import ModuleBResult
+from module_b import STUB_RESULTS
 
 FORECAST_FIELDS = (
     "predicted_168h",
@@ -15,31 +14,6 @@ FORECAST_FIELDS = (
     "exceeds_safety_slope",
     "safety_slope",
 )
-
-
-def _frame(component_id: str) -> ModuleBInput:
-    # A Complete-lot frame (168h present), converted the one sanctioned way - Module B never sees 168h.
-    return to_module_b_input(
-        FeatureFrame(
-            component_id=component_id,
-            lot_id="LOT-STUB",
-            part_number="PN-STUB",
-            parameter="iddq",
-            value_0h=10.0,
-            value_24h=11.0,
-            value_96h=11.5,
-            value_168h=12.0,
-            delta_24h=1.0,
-            delta_96h=1.5,
-            delta_168h=2.0,
-            lot_median_0h=10.0,
-            lot_median_24h=11.0,
-            robust_z={"0h": 0.0, "24h": 0.0, "96h": 0.0, "168h": 0.0},
-            lot_size=77,
-            used_pooled_fallback=False,
-            elapsed_hours={"0h": 0.0, "24h": 24.0, "96h": 96.0, "168h": 168.0},
-        )
-    )
 
 
 def test_stub_results_validate_against_frozen_contract():
@@ -67,29 +41,6 @@ def test_stub_intervals_are_ordered():
     for result in STUB_RESULTS:
         if not result.forecast_unavailable:
             assert result.interval_lower <= result.predicted_168h <= result.interval_upper
-
-
-def test_predict_returns_one_result_per_frame_with_its_component_id():
-    frames = [_frame(f"C{i:03d}") for i in range(5)]
-    results = predict(frames, ScreeningConfig())
-    assert [r.component_id for r in results] == [f.component_id for f in frames]
-    assert all(isinstance(r, ModuleBResult) for r in results)
-
-
-def test_predict_is_deterministic_and_does_not_mutate_the_fixture():
-    frames = [_frame("C900"), _frame("C901"), _frame("C902")]
-    before = [r.model_copy() for r in STUB_RESULTS]
-    assert predict(frames) == predict(frames)
-    assert list(STUB_RESULTS) == before
-
-
-def test_predict_on_empty_input_returns_empty():
-    assert predict([]) == []
-
-
-def test_predict_takes_the_canonical_module_b_input():
-    # The canonical contract type is the only input shape - no local TEMP_ wrapper (CONTRACT_CHANGES 2026-09-26).
-    assert inspect.signature(predict).parameters["frames"].annotation == list[ModuleBInput]
 
 
 def test_stub_records_the_threshold_used_and_its_flag_agrees_with_it():
