@@ -7,15 +7,19 @@ Candidates (context.md 6.1), all over the same four part-level detector percenti
     meta_model        - a small supervised model (scikit-learn LogisticRegression) on the synthetic labels,
                         legitimate only because the harness holds ground truth a real deployment would not
 
-Protocol: leave-one-family-out over the held-out generator families (E5 step 6 - "the winner on held-out
-families"). For each fold, every strategy is fit - weights / model and its REVIEW threshold at the locked 10:1
-cost - on the other families only, then scored on the held-out family at that threshold. The winner has the
-lowest mean held-out cost; an exact tie goes to the earlier strategy in STRATEGIES, so `max` (the stated
-default hypothesis) is only displaced by a strategy that actually beats it. The shipped thresholds are then
-re-tuned for the winner on every family pooled.
+Protocol: leave-one-family-out over the held-out generator families (E5 step 6). For each fold, every
+strategy is fit - weights / model and its threshold at the locked 10:1 cost - on the other families only, then
+scored on the held-out family at that threshold. The empirical winner has the lowest mean held-out cost.
+
+Shipped: `max`, by Lead decision, not the empirical winner (CONTRACT_CHANGES.md, 2026-09-27 P1 bake-off
+entry; context.md Part 8.1). meta_model won on held-out cost but its fitted ECOD coefficient is negative - a
+stronger ECOD signal lowers the combined severity, contradicting context.md 6.1's no-suppression principle;
+weighted_average leaves E12's explainability gate ("which detector alone drove the score") undefined. The
+comparison stays in the report as PPT evidence. Both shipped thresholds come from the same 10:1 optimization
+(context.md 6.2), re-tuned for `max` on every family pooled.
 
 Everything is seeded (the held-out sets, module_a's own random_state, LogisticRegression's lbfgs is
-deterministic), so the same seed reproduces the same winner and thresholds - pinned by test_p17_bakeoff.
+deterministic), so the same seed reproduces the same comparison and thresholds - pinned by test_p17_bakeoff.
 
 Run `python -m harness.bakeoff` to regenerate config/harness_thresholds.yaml and harness/results/
 p17_evaluation.json (the Module A/B scoring and bake-off numbers P1.8's PPT tables are built from).
@@ -41,6 +45,7 @@ from harness.held_out import generate_held_out_sets
 
 STRATEGIES: tuple[str, ...] = typing.get_args(HarnessThresholds.model_fields["combination_strategy"].annotation)
 HARNESS_SEED = 2026  # the one seed the shipped thresholds are derived from
+SHIPPED_STRATEGY = "max"  # Lead decision over the empirical winner - see the module docstring
 WEIGHT_GRID_STEP = 0.1
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 THRESHOLDS_PATH = _REPO_ROOT / "config" / "harness_thresholds.yaml"
@@ -50,8 +55,7 @@ _DETECTORS = list(scoring.DETECTORS)
 
 @dataclass(frozen=True)
 class FittedStrategy:
-    """A fitted candidate, fully described by `params` - so the same scores can be rebuilt from the
-    TEMP_combination_params written beside the thresholds, without the scikit-learn object."""
+    """A fitted candidate, fully described by `params` (recorded in the evaluation report)."""
     name: str
     params: Mapping = field(default_factory=dict)
 
@@ -74,7 +78,7 @@ def _weight_grid(step: float = WEIGHT_GRID_STEP) -> list[tuple[float, ...]]:
 
 
 def fit_strategy(name: str, train: pd.DataFrame,
-                 fn_fp_cost_ratio: float = scoring.REVIEW_FN_FP_COST_RATIO) -> FittedStrategy:
+                 fn_fp_cost_ratio: float = scoring.FN_FP_COST_RATIO) -> FittedStrategy:
     """Fit one candidate on `train` (part-level detector percentiles + is_defective)."""
     if name == "max":
         return FittedStrategy("max")
@@ -97,7 +101,7 @@ def fit_strategy(name: str, train: pd.DataFrame,
 
 
 def leave_one_family_out(table: pd.DataFrame,
-                         fn_fp_cost_ratio: float = scoring.REVIEW_FN_FP_COST_RATIO) -> pd.DataFrame:
+                         fn_fp_cost_ratio: float = scoring.FN_FP_COST_RATIO) -> pd.DataFrame:
     families = sorted(table["family"].unique())
     if len(families) < 2:
         raise ValueError(f"leave-one-family-out needs at least two families, got {families}")
@@ -115,38 +119,33 @@ def leave_one_family_out(table: pd.DataFrame,
 
 
 def choose_winner(folds: pd.DataFrame) -> str:
+    """The empirical winner: lowest mean held-out cost. Reported as evidence - not what ships (SHIPPED_STRATEGY)."""
     mean_cost = folds.groupby("strategy")["cost"].mean()
     ordered = [s for s in STRATEGIES if s in mean_cost.index]
     return min(ordered, key=lambda s: (mean_cost[s], ordered.index(s)))
 
 
-def derive_thresholds(table: pd.DataFrame, strategy: str) -> HarnessThresholds:
-    """REVIEW at the locked 10:1 cost, REJECT at 1:1 (scoring.REJECT_FN_FP_COST_RATIO), both for `strategy`
-    fit on the whole table. REJECT is never looser than REVIEW."""
-    fitted = fit_strategy(strategy, table)
+def derive_thresholds(table: pd.DataFrame, strategy: str,
+                      fn_fp_cost_ratio: float = scoring.FN_FP_COST_RATIO) -> HarnessThresholds:
+    """REVIEW and REJECT from the same cost-sensitive optimization at the locked FN:FP ratio (context.md 6.2),
+    for `strategy` fit on the whole table. The search is deterministic, so on one score and one ratio the two
+    thresholds coincide - see the CONTRACT_CHANGES.md 2026-09-27 P1 bake-off entry."""
+    fitted = fit_strategy(strategy, table, fn_fp_cost_ratio)
     scores, y = fitted.score(table), table["is_defective"]
-    review = scoring.tune_threshold(scores, y, scoring.REVIEW_FN_FP_COST_RATIO)
-    reject = max(review, scoring.tune_threshold(scores, y, scoring.REJECT_FN_FP_COST_RATIO))
+    review = scoring.tune_threshold(scores, y, fn_fp_cost_ratio)
+    reject = scoring.tune_threshold(scores, y, fn_fp_cost_ratio)
     return HarnessThresholds(module_a_review_threshold=review, module_a_reject_threshold=reject,
                              combination_strategy=strategy)
 
 
-TEMP_PARAMS_KEY = "TEMP_combination_params"
-
-
 def write_harness_thresholds(thresholds: HarnessThresholds, path: Path = THRESHOLDS_PATH,
-                             provenance: Iterable[str] = (), temp_params: Mapping | None = None) -> None:
-    """HarnessThresholds' fields as YAML keys (P3.3 loads it with HarnessThresholds(**yaml)); how the numbers
-    were produced goes in comments. The one extra key, TEMP_combination_params, carries the winner's fitted
-    parameters, which HarnessThresholds has no field for (CONTRACT_CHANGES.md, 2026-09-27 P1 - bake-off
-    winner); HarnessThresholds ignores unknown keys, so the contracted load is unaffected."""
+                             provenance: Iterable[str] = ()) -> None:
+    """Exactly HarnessThresholds' fields as YAML keys (P3.3 loads it with HarnessThresholds(**yaml)); how the
+    numbers were produced goes in comments, never in extra keys."""
     header = ["Harness-derived (E5 step 6, session P1.7) - never hand-edit; regenerate with",
               "`python -m harness.bakeoff`. Read by module_a in P3.3 as contracts.HarnessThresholds (Part 5.1).",
               *provenance]
-    data = thresholds.model_dump()
-    if temp_params:
-        data[TEMP_PARAMS_KEY] = _jsonable(temp_params)
-    body = yaml.safe_dump(data, sort_keys=False)
+    body = yaml.safe_dump(thresholds.model_dump(), sort_keys=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(f"# {line}\n" for line in header) + body, encoding="utf-8")
 
@@ -155,44 +154,32 @@ def load_harness_thresholds(path: Path = THRESHOLDS_PATH) -> HarnessThresholds:
     return HarnessThresholds(**yaml.safe_load(Path(path).read_text(encoding="utf-8")))
 
 
-def load_fitted_strategy(path: Path = THRESHOLDS_PATH) -> FittedStrategy:
-    """The winning combination, rebuilt from the thresholds file (strategy + TEMP_combination_params)."""
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    return FittedStrategy(HarnessThresholds(**raw).combination_strategy, raw.get(TEMP_PARAMS_KEY) or {})
-
-
 def module_a_tables(sets: Mapping) -> pd.DataFrame:
     return pd.concat([scoring.module_a_table(s) for s in sets.values()], ignore_index=True)
 
 
 def run_bakeoff(*, seed: int = HARNESS_SEED, families: Sequence[str] = HELD_OUT_FAMILY_NAMES,
                 score_module_b: bool = False, **held_out_kwargs) -> dict:
-    """The whole of E5 steps 4-6 on freshly generated held-out sets. Returns a JSON-able report."""
+    """The whole of E5 steps 4-6 on freshly generated held-out sets. Returns a JSON-able report: the full
+    three-way comparison (kept as PPT evidence) and the thresholds for SHIPPED_STRATEGY."""
     sets = generate_held_out_sets(seed=seed, families=families, **held_out_kwargs)
     table = module_a_tables(sets)
     folds = leave_one_family_out(table)
-    winner = choose_winner(folds)
-    thresholds = derive_thresholds(table, winner)
-    fitted = fit_strategy(winner, table)
-    scores = fitted.score(table)
+    thresholds = derive_thresholds(table, SHIPPED_STRATEGY)
+    scores = fit_strategy(SHIPPED_STRATEGY, table).score(table)
     report = {
         "seed": seed,
         "families": list(sets),
         "held_out_sets": {name: {"lots": len(s.lots), "parts": s.n_parts, "defective": s.n_defective,
                                  "archetype_counts": dict(s.archetype_counts)} for name, s in sets.items()},
-        "cost_ratios": {"review": scoring.REVIEW_FN_FP_COST_RATIO, "reject": scoring.REJECT_FN_FP_COST_RATIO},
+        "fn_fp_cost_ratio": scoring.FN_FP_COST_RATIO,
         "folds": folds.to_dict("records"),
         "mean_held_out_cost": folds.groupby("strategy")["cost"].mean().reindex(STRATEGIES).to_dict(),
-        "winner": winner,
-        "winner_params": _jsonable(fitted.params),
-        "thresholds": thresholds.model_dump(),
-        # every candidate's pooled thresholds, so a Lead decision against the winner has its numbers ready
-        "thresholds_by_strategy": {name: derive_thresholds(table, name).model_dump() for name in STRATEGIES},
+        "empirical_winner": choose_winner(folds),
         "params_by_strategy": {name: _jsonable(fit_strategy(name, table).params) for name in STRATEGIES},
-        "module_a": {
-            "review": scoring.evaluate_module_a(table, scores, thresholds.module_a_review_threshold),
-            "reject": scoring.evaluate_module_a(table, scores, thresholds.module_a_reject_threshold),
-        },
+        "shipped_strategy": SHIPPED_STRATEGY,
+        "thresholds": thresholds.model_dump(),
+        "module_a": scoring.evaluate_module_a(table, scores, thresholds.module_a_review_threshold),
     }
     if score_module_b:
         b = pd.concat([scoring.module_b_table(s) for s in sets.values()], ignore_index=True)
@@ -218,21 +205,19 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
     report = run_bakeoff(seed=args.seed, score_module_b=True)
     th = HarnessThresholds(**report["thresholds"])
-    means = ", ".join(f"{k} {v:.4f}" for k, v in report["mean_held_out_cost"].items())
-    alt = "; ".join(f"{k}: review {v['module_a_review_threshold']:.4f} / reject {v['module_a_reject_threshold']:.4f}"
-                    for k, v in report["thresholds_by_strategy"].items())
-    write_harness_thresholds(th, args.thresholds, temp_params=report["winner_params"], provenance=[
+    # The YAML names only the shipped strategy; the full comparison lives in the results JSON.
+    write_harness_thresholds(th, args.thresholds, provenance=[
         f"seed {report['seed']}; held-out families: {', '.join(report['families'])}",
-        f"leave-one-family-out mean cost per part (FN:FP = {scoring.REVIEW_FN_FP_COST_RATIO:g}:1): {means}",
-        (f"REVIEW tuned at FN:FP {scoring.REVIEW_FN_FP_COST_RATIO:g}:1, REJECT at "
-        f"{scoring.REJECT_FN_FP_COST_RATIO:g}:1 (disclosed judgment call - harness/scoring.py)"),
-        "Inputs: each detector's worst-parameter within-lot percentile, 0-1 (E2 steps 5, 8); the thresholds",
-        "are on the winning strategy's score scale (meta_model: a probability, 0-1).",
-        f"All candidates' pooled thresholds (harness/results/p17_evaluation.json): {alt}",
+        (f"REVIEW and REJECT both from the locked FN:FP {scoring.FN_FP_COST_RATIO:g}:1 cost optimization "
+         "(context.md 6.2, 7.12)."),
+        "Scale: module_a's max-combined within-lot detector percentile, 0-1 (E2 steps 5, 8).",
+        "Strategy: Lead decision - CONTRACT_CHANGES.md 2026-09-27 P1 bake-off entry; comparison in",
+        "harness/results/p17_evaluation.json.",
     ])
     args.results.parent.mkdir(parents=True, exist_ok=True)
     args.results.write_text(json.dumps(_jsonable(report), indent=2, allow_nan=False), encoding="utf-8")
-    print(f"winner: {report['winner']}  ({means})")
+    means = ", ".join(f"{k} {v:.4f}" for k, v in report["mean_held_out_cost"].items())
+    print(f"empirical winner: {report['empirical_winner']}  ({means}); shipped: {SHIPPED_STRATEGY}")
     print(f"thresholds: {th.model_dump()}")
 
 

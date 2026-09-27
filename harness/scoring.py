@@ -7,9 +7,7 @@ are part-level: a part's severity is its worst parameter's (E2 step 8, context.m
 against one locked cost function, FN:FP = ScreeningConfig.fn_fp_cost_ratio (10:1, context.md 7.12); F2 and
 recall at fixed flag rates are reported for monitoring only, never tuned on.
 
-The REJECT threshold uses FN:FP = 1:1 (REJECT_FN_FP_COST_RATIO). context.md 6.2 says both thresholds are cost-
-tuned but names only the one ratio; a REJECT routes a part to dual sign-off, so its cut is the one where a
-flag must be right at least as often as it is wrong. A disclosed harness judgment call, not evidence-derived.
+Both REVIEW and REJECT come from this same optimization at the same locked ratio (context.md 6.2).
 
 `TEMP_detector_percentiles` is a TEMP_ stand-in for a contract gap (CONTRACT_CHANGES.md, 2026-09-27 P1):
 ModuleAResult carries each detector's raw score but not the percentile-normalised, max-combined severity that
@@ -42,8 +40,7 @@ from module_b.calibration import DEFAULT_CONFIDENCE_LEVEL, horizon_of
 from module_b.model import view_at_24h
 
 DETECTORS = ("robust_z", "mcd", "isolation_forest", "ecod")
-REVIEW_FN_FP_COST_RATIO = ScreeningConfig().fn_fp_cost_ratio  # context.md 7.12 - the locked cost function
-REJECT_FN_FP_COST_RATIO = 1.0  # disclosed judgment call - see the module docstring
+FN_FP_COST_RATIO = ScreeningConfig().fn_fp_cost_ratio  # context.md 7.12 - the locked cost function
 FLAG_RATES = (0.01, 0.02, 0.05, 0.10, 0.20)
 BASELINES = ("persistence", "linear", "power_law")
 _PART_KEY = ["lot_id", "component_id"]
@@ -94,7 +91,7 @@ def tune_threshold(scores, y_true, fn_fp_cost_ratio: float) -> float:
     return float(lowest_flagged if below is None else (lowest_flagged + below) / 2)
 
 
-def classification_metrics(y_true, flagged, fn_fp_cost_ratio: float = REVIEW_FN_FP_COST_RATIO) -> dict:
+def classification_metrics(y_true, flagged, fn_fp_cost_ratio: float = FN_FP_COST_RATIO) -> dict:
     y = np.asarray(y_true).astype(bool)
     flagged = np.asarray(flagged).astype(bool)
     return {

@@ -1,18 +1,10 @@
 # Harness-derived (E5 step 6, session P1.7) - never hand-edit; regenerate with
 # `python -m harness.bakeoff`. Read by module_a in P3.3 as contracts.HarnessThresholds (Part 5.1).
 # seed 2026; held-out families: baseline, wider_drift_exponent, higher_defect_prevalence, different_noise_regime, altered_correlation
-# leave-one-family-out mean cost per part (FN:FP = 10:1): max 0.3442, weighted_average 0.1905, meta_model 0.1458
-# REVIEW tuned at FN:FP 10:1, REJECT at 1:1 (disclosed judgment call - harness/scoring.py)
-# Inputs: each detector's worst-parameter within-lot percentile, 0-1 (E2 steps 5, 8); the thresholds
-# are on the winning strategy's score scale (meta_model: a probability, 0-1).
-# All candidates' pooled thresholds (harness/results/p17_evaluation.json): max: review 0.9643 / reject 0.9989; weighted_average: review 0.8764 / reject 0.9699; meta_model: review 0.2048 / reject 0.3549
-module_a_review_threshold: 0.20482045672419658
-module_a_reject_threshold: 0.3549311912939541
-combination_strategy: meta_model
-TEMP_combination_params:
-  coefficients:
-    robust_z: 7.299148690876104
-    mcd: 12.056041384562104
-    isolation_forest: 0.7090196681582687
-    ecod: -7.68891185895758
-  intercept: -12.811784414691695
+# REVIEW and REJECT both from the locked FN:FP 10:1 cost optimization (context.md 6.2, 7.12).
+# Scale: module_a's max-combined within-lot detector percentile, 0-1 (E2 steps 5, 8).
+# Strategy: Lead decision - CONTRACT_CHANGES.md 2026-09-27 P1 bake-off entry; comparison in
+# harness/results/p17_evaluation.json.
+module_a_review_threshold: 0.9642857142857142
+module_a_reject_threshold: 0.9642857142857142
+combination_strategy: max

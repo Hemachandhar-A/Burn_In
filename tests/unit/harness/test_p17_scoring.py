@@ -32,7 +32,7 @@ def test_expected_cost_weights_a_miss_by_the_locked_ratio():
 
 
 def test_default_cost_ratio_is_the_screening_config_default_not_a_new_number():
-    assert scoring.REVIEW_FN_FP_COST_RATIO == ScreeningConfig().fn_fp_cost_ratio == 10.0
+    assert scoring.FN_FP_COST_RATIO == ScreeningConfig().fn_fp_cost_ratio == 10.0
 
 
 def test_tune_threshold_minimises_cost_and_places_the_cut_between_scores():

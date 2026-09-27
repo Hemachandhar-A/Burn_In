@@ -97,14 +97,24 @@ def test_winner_is_lowest_mean_held_out_cost_with_ties_going_to_the_default():
     assert bakeoff.choose_winner(tied) == "max"
 
 
-def test_derived_thresholds_order_review_below_reject():
+def test_both_thresholds_come_from_the_same_locked_10_to_1_optimization():
+    """context.md 6.2: REVIEW and REJECT from the one cost-sensitive optimization, not two ratios."""
     table = _table()
     th = bakeoff.derive_thresholds(table, "max")
     assert isinstance(th, HarnessThresholds)
     assert th.combination_strategy == "max"
-    assert th.module_a_review_threshold <= th.module_a_reject_threshold
     scores = table[list(scoring.DETECTORS)].max(axis=1)
-    assert th.module_a_review_threshold == scoring.tune_threshold(scores, table["is_defective"], 10.0)
+    expected = scoring.tune_threshold(scores, table["is_defective"], 10.0)
+    assert th.module_a_review_threshold == th.module_a_reject_threshold == expected
+
+
+def test_there_is_one_cost_ratio_and_it_is_the_screening_config_default():
+    assert scoring.FN_FP_COST_RATIO == 10.0
+    assert not hasattr(scoring, "REJECT_FN_FP_COST_RATIO")
+
+
+def test_the_shipped_strategy_is_max_by_lead_decision():
+    assert bakeoff.SHIPPED_STRATEGY == "max"
 
 
 def test_thresholds_yaml_round_trips_with_exactly_the_contracted_keys(tmp_path):
@@ -118,19 +128,6 @@ def test_thresholds_yaml_round_trips_with_exactly_the_contracted_keys(tmp_path):
     assert "# seed: 1" in path.read_text(encoding="utf-8")
 
 
-def test_winner_params_ride_along_under_a_temp_key_without_breaking_the_contracted_load(tmp_path):
-    table = _table(informative=("mcd", "ecod"))
-    fitted = bakeoff.fit_strategy("meta_model", table)
-    th = bakeoff.derive_thresholds(table, "meta_model")
-    path = tmp_path / "harness_thresholds.yaml"
-    bakeoff.write_harness_thresholds(th, path, temp_params=fitted.params)
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert set(raw) == set(HarnessThresholds.model_fields) | {"TEMP_combination_params"}
-    assert HarnessThresholds(**raw) == th
-    rebuilt = bakeoff.load_fitted_strategy(path)
-    np.testing.assert_allclose(rebuilt.score(table), fitted.score(table))
-
-
 def test_meta_model_score_equals_scikit_learn_predict_proba():
     from sklearn.linear_model import LogisticRegression
     table = _table(informative=("mcd",))
@@ -139,39 +136,53 @@ def test_meta_model_score_equals_scikit_learn_predict_proba():
                                LogisticRegression(max_iter=1000).fit(X, y).predict_proba(X)[:, 1])
 
 
-def test_small_real_bakeoff_is_reproducible():
+def test_small_real_bakeoff_is_reproducible_and_ships_max_whatever_wins():
     kwargs = {"seed": 5, "families": ("baseline", "higher_defect_prevalence"), "min_per_archetype": 2, "min_lots": 3}
     a = bakeoff.run_bakeoff(**kwargs)
     b = bakeoff.run_bakeoff(**kwargs)
-    assert a["winner"] == b["winner"]
+    assert a["empirical_winner"] == b["empirical_winner"]
     assert a["thresholds"] == b["thresholds"]
+    assert a["thresholds"]["combination_strategy"] == "max"
     pd.testing.assert_frame_equal(pd.DataFrame(a["folds"]), pd.DataFrame(b["folds"]))
 
 
 # --- the committed artifact P3.3 reads ----------------------------------------------------------------------
 
+COMMITTED_PATH = REPO_ROOT / "config" / "harness_thresholds.yaml"
+
+
 @pytest.fixture(scope="module")
 def committed():
-    return bakeoff.load_harness_thresholds(REPO_ROOT / "config" / "harness_thresholds.yaml")
+    return bakeoff.load_harness_thresholds(COMMITTED_PATH)
 
 
 def test_committed_thresholds_file_is_in_the_contracted_shape(committed):
     assert isinstance(committed, HarnessThresholds)
+    assert committed.combination_strategy == "max"
     assert 0.0 < committed.module_a_review_threshold <= committed.module_a_reject_threshold <= 1.0
+    raw = yaml.safe_load(COMMITTED_PATH.read_text(encoding="utf-8"))
+    assert set(raw) == set(HarnessThresholds.model_fields)  # no TEMP_ key: max has no parameters
 
 
-def test_committed_thresholds_flag_the_golden_part(committed):
-    """AGENTS.md rule 5: once P3.3 applies these thresholds, the worked example must still be flagged."""
+def test_committed_thresholds_file_names_no_rejected_strategy():
+    text = COMMITTED_PATH.read_text(encoding="utf-8")
+    assert "meta_model" not in text and "weighted_average" not in text and "TEMP_" not in text
+
+
+def test_committed_thresholds_flag_the_golden_part_at_reject(committed):
+    """AGENTS.md rule 5: once P3.3 applies these thresholds, the worked example must be flagged. Under max with
+    both thresholds from the 10:1 run it clears REJECT too (score 1.0 - top of its lot on the z-score)."""
     from module_a.detect import detect
     parts = scoring.part_detector_scores(detect(golden_feature_frames()))
     golden = parts[parts["component_id"] == GOLDEN_COMPONENT_ID]
-    fitted = bakeoff.load_fitted_strategy(REPO_ROOT / "config" / "harness_thresholds.yaml")
-    assert fitted.name == committed.combination_strategy
-    assert fitted.score(golden)[0] >= committed.module_a_review_threshold
+    score = bakeoff.fit_strategy("max", golden).score(golden)[0]
+    assert score >= committed.module_a_review_threshold
+    assert score >= committed.module_a_reject_threshold
 
 
 def test_committed_thresholds_match_the_committed_evaluation_report(committed):
     import json
     report = json.loads((REPO_ROOT / "harness" / "results" / "p17_evaluation.json").read_text(encoding="utf-8"))
     assert HarnessThresholds(**report["thresholds"]) == committed
-    assert report["winner"] == committed.combination_strategy == bakeoff.choose_winner(pd.DataFrame(report["folds"]))
+    assert report["shipped_strategy"] == committed.combination_strategy == "max"
+    assert report["empirical_winner"] == bakeoff.choose_winner(pd.DataFrame(report["folds"]))
