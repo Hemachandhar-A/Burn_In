@@ -46,3 +46,20 @@ Entry format:
   asking P2 to build against an unmerged branch.
 
 ---
+
+---
+
+## 2026-09-27 P1 - PPT differentiation slide: harness numbers do not support "Module A beats the industry baselines"
+- Blocked on: a Lead decision on how the differentiation-vs-industry slide is framed, and whether Module A's scoring should change before G8. G8 requires every PPT claim to trace to a harness number. The E5 framing ("demonstrably better than industry practice") is not what P1.8's numbers show.
+- What the numbers show (`harness/results/p18/`, seed 2026, the same 9,779 held-out parts / 521 defective as P1.7):
+  - Module A at REVIEW has 84.1% recall at 24.3% flagged, which beats static limits (4.0%), static PAT (44.7%) and DPAT (59.1%) on recall.
+  - But fixed delta limits reach 100% recall at 24.0% flagged, with a lower cost per part (0.186 vs Module A's 0.283 at 10:1).
+  - DPAT has a lower cost (0.219) at 97.2% precision.
+  - Given the same flag count as each baseline, Module A has lower recall than every one of them. At DPAT's budget it gets 30.7% vs 59.1%.
+  - The golden worked example is missed by static and delta limits but caught by both DPAT and Module A.
+- Likely causes (diagnosis only, in `harness/results/p18/FINDINGS.md`):
+  - (1) Module A's severity is a within-lot percentile rank (E2 step 5), so it cannot express magnitude, and every lot's top ~20% score near 1.0.
+  - (2) Fixed-delta allowances were set from the generator's own healthy drift (P1.5, disclosed), and every defect archetype is a drift trajectory, so that baseline is favoured by construction.
+  - (3) IF/ECOD see only 0h/24h (the existing OPEN CONTRACT_CHANGES entry).
+- What was tried: nothing changed outside `harness/`. Module A's scoring is P3's (and E2/context.md 6.1's), and the slide is the Lead's. The tables are generated and committed as-is, with no re-tuning of the baselines to make Module A look better. FINDINGS.md lists what the slide can honestly claim today.
+- Status: OPEN - Lead decision.
