@@ -158,6 +158,7 @@ def test_disposition_reject_dual_signoff_timing_flag(auth_headers, auth_headers2
     def mock_log_event(*args, **kwargs):
         events_logged.append(kwargs)
     monkeypatch.setattr("identity.router.log_event", mock_log_event)
+    monkeypatch.setattr("capa.logic.evaluate_capa_trigger", lambda p: None)
     
     def mock_save_disposition(*args, **kwargs):
         return DispositionSignoff(
@@ -297,6 +298,7 @@ def test_disposition_reject_dual_signoff_no_timing_flag(auth_headers, auth_heade
     def mock_log_event(*args, **kwargs):
         events_logged.append(kwargs)
     monkeypatch.setattr("identity.router.log_event", mock_log_event)
+    monkeypatch.setattr("capa.logic.evaluate_capa_trigger", lambda p: None)
     
     def mock_save_disposition(*args, **kwargs):
         return DispositionSignoff(

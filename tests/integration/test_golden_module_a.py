@@ -19,6 +19,23 @@ and test_p16_edge_cases.py, so a failure here is about the pipeline, not about t
 added, never edited by anyone else - add a new file.
 """
 import pytest
+import importlib
+
+@pytest.fixture(autouse=True)
+def init_test_db(monkeypatch, tmp_path):
+    from storage import database, repository
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    
+    monkeypatch.setattr(database, "engine", engine)
+    monkeypatch.setattr(database, "SessionLocal", SessionLocal)
+    monkeypatch.setattr(repository, "SessionLocal", SessionLocal)
+    
+    repository.init_db()
+    yield
 
 from harness.golden import (
     GOLDEN_COMPONENT_ID,
