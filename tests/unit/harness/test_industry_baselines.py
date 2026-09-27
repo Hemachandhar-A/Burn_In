@@ -35,12 +35,21 @@ from harness.industry_baselines import (
 SCORE_COLUMNS = ["component_id", "parameter", "score", "flagged", "worst_checkpoint", "evaluable"]
 
 
+def _reading(**fields) -> Reading:
+    """Reading rejects NaN/inf at construction since 5363f4a (CONTRACT_CHANGES.md, 2026-09-27 Lead). A
+    non-finite value can then only arrive by bypassing validation (model_construct), which is what these
+    tests simulate: the baselines' own non-finite handling stays a second line of defence."""
+    if all(math.isfinite(fields[k]) for k in ("value", "checkpoint_hour")):
+        return Reading(**fields)
+    return Reading.model_construct(**fields)
+
+
 def _lot(rows, lot_id="L1", part_number="PN-1", status="COMPLETE"):
     """rows: (component_id, parameter, checkpoint_hour, value)."""
     return LotDataset(
         lot_id=lot_id, part_number=part_number, status=status, account_id="acct-test",
-        readings=[Reading(component_id=c, lot_id=lot_id, part_number=part_number, manufacturer="M",
-                          date_code="2601", parameter=p, checkpoint_hour=h, value=v, unit="uA")
+        readings=[_reading(component_id=c, lot_id=lot_id, part_number=part_number, manufacturer="M",
+                           date_code="2601", parameter=p, checkpoint_hour=h, value=v, unit="uA")
                   for c, p, h, v in rows],
     )
 

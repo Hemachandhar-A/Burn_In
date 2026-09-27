@@ -116,7 +116,7 @@ def recall_at_flag_rates(scores, y_true, rates: Iterable[float] = FLAG_RATES) ->
     order = np.argsort(-scores, kind="stable")
     rows = []
     for rate in rates:
-        k = int(round(rate * y.size))
+        k = round(rate * y.size)
         flagged = np.zeros(y.size, dtype=bool)
         flagged[order[:k]] = True
         m = classification_metrics(y, flagged)
@@ -137,7 +137,7 @@ def TEMP_detector_percentiles(results: Sequence[ModuleAResult]) -> pd.DataFrame:
         "ecod": r.ecod_score,
     } for r in results]
     frame = pd.DataFrame(rows, columns=["lot_id", "component_id", "parameter", "direction", *DETECTORS])
-    for lot_id, idx in frame.groupby("lot_id", sort=False).groups.items():
+    for idx in frame.groupby("lot_id", sort=False).groups.values():
         n = len(idx)
         for det in DETECTORS:
             raw = frame.loc[idx, det].to_numpy(dtype=float)
@@ -239,7 +239,7 @@ def summarize_module_b(table: pd.DataFrame) -> pd.DataFrame:
     for (family, parameter, horizon), g in table.groupby(["family", "parameter", "horizon"], sort=True):
         ok = g[~g["forecast_unavailable"].astype(bool)]
         row = {"family": family, "parameter": parameter, "horizon": horizon,
-               "n": int(len(g)), "n_forecast": int(len(ok)), "n_unavailable": int(len(g) - len(ok))}
+               "n": len(g), "n_forecast": len(ok), "n_unavailable": int(len(g) - len(ok))}
         if len(ok):
             actual = ok["actual_168h"].to_numpy(float)
             row["mae_model"] = float(np.mean(np.abs(ok["predicted_168h"].to_numpy(float) - actual)))

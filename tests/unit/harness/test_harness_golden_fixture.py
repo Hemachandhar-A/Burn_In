@@ -17,6 +17,7 @@ from harness.golden import (
     FEATURE_CHECKPOINTS,
     GOLDEN_COMPONENT_ID,
     GOLDEN_DATASHEET_LIMIT_UA,
+    GOLDEN_LOT_ID,
     GOLDEN_LOT_MEDIAN_UA,
     GOLDEN_LOT_SIZE,
     GOLDEN_PARAMETER,
@@ -229,7 +230,8 @@ def test_the_golden_part_stays_flag_worthy_as_the_lot_widens_by_168h():
 # --- flag definition and the TEMP_ Module A adapter -----------------------------------------------
 
 def _result(component_id=GOLDEN_COMPONENT_ID, parameter=GOLDEN_PARAMETER, tier="REJECT", **kw):
-    fields = {"component_id": component_id, "parameter": parameter, "robust_z": 30.0, "mcd_distance": None,
+    fields = {"component_id": component_id, "lot_id": GOLDEN_LOT_ID, "parameter": parameter, "robust_z": 30.0,
+              "mcd_distance": None,
               "isolation_forest_score": None, "ecod_score": 0.99, "explainable_tags": {"robust_z": True},
               "direction": "above_median", "severity_tier": tier, "severity_cap_reason": None}
     fields.update(kw)
@@ -258,6 +260,8 @@ def _fake_module(monkeypatch, detect):
     if detect is not None:
         module.detect = detect
     monkeypatch.setitem(sys.modules, "module_a", module)
+    # module_a/detect.py is real on disk now; shadow it so the fake package really lacks its entry point
+    monkeypatch.setitem(sys.modules, "module_a.detect", None)
 
 
 def test_adapter_reports_unavailable_when_module_a_does_not_exist(monkeypatch):

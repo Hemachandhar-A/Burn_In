@@ -61,7 +61,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _result(component_id=GOLDEN_COMPONENT_ID, parameter=GOLDEN_PARAMETER, tier="REJECT", **kw):
-    fields = {"component_id": component_id, "parameter": parameter, "robust_z": 30.0, "mcd_distance": None,
+    fields = {"component_id": component_id, "lot_id": GOLDEN_LOT_ID, "parameter": parameter, "robust_z": 30.0,
+              "mcd_distance": None,
               "isolation_forest_score": None, "ecod_score": 0.99, "explainable_tags": {"robust_z": True},
               "direction": "above_median", "severity_tier": tier, "severity_cap_reason": None}
     fields.update(kw)
@@ -252,6 +253,7 @@ def test_detect_may_return_a_tuple(monkeypatch):
 def test_detect_may_return_same_shaped_objects(monkeypatch):
     class TEMP_LocalResult(BaseModel):  # a P3-side TEMP_ model with the contracted fields
         component_id: str
+        lot_id: str
         parameter: str
         robust_z: float
         mcd_distance: float | None
@@ -274,6 +276,7 @@ def test_detect_may_return_same_shaped_objects(monkeypatch):
         direction: str = "above_median"
         severity_tier: str = "PASS"
         severity_cap_reason: str | None = None
+        lot_id: str = GOLDEN_LOT_ID
 
         def __post_init__(self):
             self.explainable_tags = self.explainable_tags or {}
@@ -326,6 +329,8 @@ def test_compatible_detect_signatures_are_accepted(monkeypatch, make):
 
 def test_a_package_without_its_entry_point_fails_instead_of_skipping(monkeypatch):
     _fake(monkeypatch, "module_a")
+    # module_a/detect.py is real on disk now; shadow it so the fake package really lacks its entry point
+    monkeypatch.setitem(sys.modules, "module_a.detect", None)
     with pytest.raises(GoldenEntryPointMissing, match="detect"):
         TEMP_detect_module_a(golden_feature_frames())
     assert not issubclass(GoldenEntryPointMissing, GoldenTestUnavailable)
