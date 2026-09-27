@@ -227,6 +227,8 @@ class ModuleAResult(BaseModel):
     direction: Literal["above_median", "below_median"]   # feeds the direction-awareness cap — context.md 4.2
     severity_tier: Literal["PASS", "REVIEW", "REJECT"]
     severity_cap_reason: str | None     # populated if capped — context.md 5.16, 6.2
+    combined_severity: float            # E2 step 5's max-combined percentile (0–1) — flagged missing twice (P1 P1.7, P5 P5.2), CONTRACT_CHANGES.md
+    explainable_corroboration: bool     # True iff an explainable-tagged detector (robust_z/mcd) reached or tied combined_severity — a property of the whole detector set, not a single "worst detector"; E12 step 2's gate keys off this
 
 class ModuleBResult(BaseModel):
     component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot

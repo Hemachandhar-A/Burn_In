@@ -166,6 +166,16 @@ class ModuleAResult(BaseModel):
     direction: Literal["above_median", "below_median"]  # direction-awareness cap - context.md 4.2
     severity_tier: Literal["PASS", "REVIEW", "REJECT"]
     severity_cap_reason: str | None  # populated if capped - context.md 5.16, 6.2
+    # E2 step 5's max-combined percentile (0-1) - the same value severity_tier and the direction-awareness
+    # cap were computed against. Flagged twice (P1 during P1.7, P5 during P5.2) as missing from this
+    # contract - see CONTRACT_CHANGES.md.
+    combined_severity: float
+    # True iff at least one explainable-tagged detector (robust_z or mcd, per explainable_tags) reached or
+    # tied combined_severity; False iff combined_severity was reached solely by unexplainable-tagged
+    # detectors (isolation_forest and/or ecod). This is a property of the whole detector set, not a single
+    # "worst detector" name - it handles ties and multi-detector cases a single name cannot. Fusion's E12
+    # step 2 explainability gate keys off this field, not a hardcoded detector name.
+    explainable_corroboration: bool
 
 
 class ModuleBResult(BaseModel):

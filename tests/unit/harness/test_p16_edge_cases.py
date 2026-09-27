@@ -64,7 +64,8 @@ def _result(component_id=GOLDEN_COMPONENT_ID, parameter=GOLDEN_PARAMETER, tier="
     fields = {"component_id": component_id, "lot_id": GOLDEN_LOT_ID, "parameter": parameter, "robust_z": 30.0,
               "mcd_distance": None,
               "isolation_forest_score": None, "ecod_score": 0.99, "explainable_tags": {"robust_z": True},
-              "direction": "above_median", "severity_tier": tier, "severity_cap_reason": None}
+              "direction": "above_median", "severity_tier": tier, "severity_cap_reason": None,
+              "combined_severity": 1.0, "explainable_corroboration": True}
     fields.update(kw)
     return ModuleAResult(**fields)
 
@@ -263,6 +264,8 @@ def test_detect_may_return_same_shaped_objects(monkeypatch):
         direction: str
         severity_tier: str
         severity_cap_reason: str | None
+        combined_severity: float
+        explainable_corroboration: bool
 
     @dataclass
     class Plain:
@@ -276,6 +279,8 @@ def test_detect_may_return_same_shaped_objects(monkeypatch):
         direction: str = "above_median"
         severity_tier: str = "PASS"
         severity_cap_reason: str | None = None
+        combined_severity: float = 0.0
+        explainable_corroboration: bool = True
         lot_id: str = GOLDEN_LOT_ID
 
         def __post_init__(self):

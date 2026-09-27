@@ -316,6 +316,12 @@ def _detect_single_lot(
         else:
             severity_tier_value = "PASS"
 
+        # explainable_corroboration: True iff an explainable-tagged detector (robust_z, always tagged;
+        # mcd, only when it actually ran) reached or tied the combined max on its own - never a single
+        # "worst detector" name, since ties and multi-detector cases need the whole set, not a winner.
+        explainable_max = max(z_pct[i], mcd_pct[i] if mcd_tag else -1.0)
+        explainable_corroboration = explainable_max >= raw_combined
+
         results.append(ModuleAResult(
             component_id=frame.component_id,
             lot_id=frame.lot_id,
@@ -333,6 +339,8 @@ def _detect_single_lot(
             direction=direction,
             severity_tier=severity_tier_value,
             severity_cap_reason=severity_cap_reason,
+            combined_severity=float(raw_combined),
+            explainable_corroboration=bool(explainable_corroboration),
         ))
 
     return results

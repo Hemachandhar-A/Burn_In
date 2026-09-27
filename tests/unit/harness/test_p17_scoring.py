@@ -20,6 +20,7 @@ def _result(cid, param, *, lot="L1", z=0.0, mcd=None, iso=None, ecod=0.0, direct
         isolation_forest_score=iso, ecod_score=ecod,
         explainable_tags={"robust_z": True, "mcd": mcd is not None, "isolation_forest": False, "ecod": False},
         direction=direction, severity_tier="PASS", severity_cap_reason=None,
+        combined_severity=1.0, explainable_corroboration=True,
     )
 
 
