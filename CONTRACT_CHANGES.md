@@ -346,3 +346,9 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-27 P5 - Disposition timing flag requires a valid event_type in storage
+- Missing/wrong: P5.5 requires implementing "a non-blocking timing flag in the audit log if two sign-offs on the same part occur < 2 minutes apart". However, _EVENT_TYPES in storage/repository.py is restricted to {"ingest", "checkpoint_add", "analysis_run", "config_change"}. There is no disposition event type.
+- Why it matters: To log the timing flag in the audit log via log_event(), we need a valid event_type. We cannot add disposition to _EVENT_TYPES without modifying storage/repository.py (which P5 doesn't own).
+- Proposed fix: Add disposition to _EVENT_TYPES in storage/repository.py. Until resolved, P5.5 temporarily uses config_change to log the disposition timing flag.
+- Status: OPEN
