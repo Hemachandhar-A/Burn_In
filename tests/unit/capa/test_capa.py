@@ -92,3 +92,66 @@ def test_audit_log_export_produces_valid_csv_matching_schema(client):
     assert "test_proj" in rows[-1]
     assert "account1" in rows[-1]
     assert "config_change" in rows[-1]
+
+def test_capa_trigger_does_not_fire_below_threshold(client):
+    token1 = create_access_token("account1", "Quality Engineer")
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    
+    client.post("/parts/comp3/disposition?project_id=test_proj&analysis_run_id=run-1", 
+                json={"verdict": "REJECT", "rationale": "r3"}, headers=headers1)
+    
+    resp = client.get("/capa", headers=headers1)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 0
+
+def test_capa_trigger_does_not_fire_duplicates(client):
+    token1 = create_access_token("account1", "Quality Engineer")
+    token2 = create_access_token("account2", "Reliability Engineer")
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    headers2 = {"Authorization": f"Bearer {token2}"}
+    
+    # Add 3 rejects
+    for i in range(1, 4):
+        client.post(f"/parts/comp_{i}/disposition?project_id=test_proj&analysis_run_id=run-1", 
+                    json={"verdict": "REJECT", "rationale": f"r{i}"}, headers=headers1)
+                    
+    resp = client.get("/capa", headers=headers1)
+    assert len(resp.json()) == 1
+    
+    # Add 4th reject
+    client.post("/parts/comp_4/disposition?project_id=test_proj&analysis_run_id=run-1", 
+                json={"verdict": "REJECT", "rationale": "r4"}, headers=headers1)
+                
+    resp2 = client.get("/capa", headers=headers1)
+    # Should still be exactly 1 CAPA open for this project
+    assert len(resp2.json()) == 1
+
+def test_resolve_capa_not_found(client):
+    token = create_access_token("account1", "Quality Engineer")
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    resp = client.post("/capa/invalid-id/resolve", json={"rationale": "Fixed"}, headers=headers)
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "CAPA not found"
+
+def test_resolve_capa_already_resolved(client):
+    token1 = create_access_token("account1", "Quality Engineer")
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    
+    # Create 3 rejects to trigger CAPA
+    for i in range(1, 4):
+        client.post(f"/parts/comp_{i}_dup/disposition?project_id=test_proj&analysis_run_id=run-1", 
+                    json={"verdict": "REJECT", "rationale": f"r{i}"}, headers=headers1)
+                    
+    capas = client.get("/capa", headers=headers1).json()
+    assert len(capas) > 0
+    capa_id = capas[0]["id"]
+    
+    # Resolve first time
+    resp1 = client.post(f"/capa/{capa_id}/resolve", json={"rationale": "Fixed"}, headers=headers1)
+    assert resp1.status_code == 200
+    
+    # Resolve second time
+    resp2 = client.post(f"/capa/{capa_id}/resolve", json={"rationale": "Double fix"}, headers=headers1)
+    assert resp2.status_code == 400
+    assert resp2.json()["detail"] == "CAPA already resolved"
