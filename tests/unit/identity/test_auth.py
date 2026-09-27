@@ -79,3 +79,41 @@ def test_jwt_missing_subject():
         get_current_account(creds)
     assert exc.value.status_code == 401
     assert "Token missing subject" in exc.value.detail
+
+
+def test_jwt_invalid_signature():
+    now = datetime.now(UTC)
+    payload = {
+        "sub": "a.sharma",
+        "role": "Quality Engineer",
+        "iat": now,
+        "exp": now + timedelta(minutes=60),
+    }
+    # Sign with wrong secret
+    token = jwt.encode(payload, "WRONG_SECRET", algorithm=JWT_ALGORITHM)
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc:
+        get_current_account(creds)
+    assert exc.value.status_code == 401
+    assert "Invalid token" in exc.value.detail
+
+
+def test_jwt_account_not_found(monkeypatch):
+    # Mock query_account to simulate account deleted or missing
+    monkeypatch.setattr("identity.auth.query_account", lambda acc_id: None)
+
+    token = create_access_token("deleted.user", "Quality Engineer")
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc:
+        get_current_account(creds)
+    assert exc.value.status_code == 401
+    assert "Account not found" in exc.value.detail
+
+
+def test_verify_pin_invalid_hash_format():
+    # Attempting to verify a plain pin against a completely invalid hash string
+    plain = "1234"
+    invalid_hash = "not-a-valid-argon2-hash-format"
+    assert verify_pin(plain, invalid_hash) is False

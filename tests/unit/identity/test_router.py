@@ -47,3 +47,21 @@ def test_login_invalid_pin(dummy_accounts):
     response = client.post("/auth/login", json={"account_id": "r.mehta", "pin": "wrong"})
     assert response.status_code == 401
     assert "Invalid account ID or PIN" in response.json()["detail"]
+
+def test_login_missing_fields(dummy_accounts):
+    # Missing PIN
+    response = client.post("/auth/login", json={"account_id": "a.sharma"})
+    assert response.status_code == 422
+
+    # Missing account_id
+    response = client.post("/auth/login", json={"pin": "1234"})
+    assert response.status_code == 422
+
+def test_login_malformed_json(dummy_accounts):
+    # Send bad JSON string instead of object
+    response = client.post(
+        "/auth/login", 
+        data='{"account_id": "a.sharma", "pin": 1234', 
+        headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 422

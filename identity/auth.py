@@ -4,7 +4,7 @@ from typing import Annotated
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import VerifyMismatchError, InvalidHashError, VerificationError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -23,7 +23,7 @@ hasher = PasswordHasher()
 def verify_pin(plain_pin: str, hashed_pin: str) -> bool:
     try:
         return hasher.verify(hashed_pin, plain_pin)
-    except VerifyMismatchError:
+    except (VerifyMismatchError, InvalidHashError, VerificationError):
         return False
 
 
