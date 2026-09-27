@@ -1,4 +1,4 @@
-"""module_a/detect.py — real implementation through P3.2 + lot_id patch + multi-lot fix.
+"""module_a/detect.py — complete implementation through P3.3.
 
 Sessions completed:
   P3.0      Stub — correctly-shaped fixed fake data
@@ -11,6 +11,9 @@ Sessions completed:
             every per-lot result. Confirmed with real numbers: MCD 213.92 (batched) vs 145.39
             (alone) for the same component. Fix: public detect() routes to _detect_single_lot()
             per lot and concatenates results preserving input order.
+  P3.3      E2 steps 7-8: real severity_tier assignment (PASS/REVIEW/REJECT) from
+            config/harness_thresholds.yaml (HarnessThresholds). Direction-awareness cap now
+            uses the real REJECT threshold, not the provisional 0.80.
 
 Contract:
   Input:  list[FeatureFrame]                 — from features.compute() (P2). May span multiple
@@ -50,10 +53,16 @@ Step 6 — Direction-awareness cap:
   WARNING: do NOT remove this cap. See E2 pitfall note.
 
 Step 7 — Explainable tags: robust_z=True, mcd=True/False, isolation_forest=False, ecod=False.
+  Correct since P3.2 — unchanged.
 
-Severity tier (TEMP — real harness thresholds wired in P3.3):
-  PASS for all parts. The cap logic is active and severity_cap_reason is populated
-  when the cap fires, so P3.3 only needs to wire the thresholds, not add cap logic.
+Step 8 — Severity tier assignment (P3.3):
+  Thresholds loaded from config/harness_thresholds.yaml via contracts.HarnessThresholds.
+  Scale: module_a's max-combined within-lot detector percentile (0–1), E2 steps 5, 8.
+    combined >= reject_threshold  → REJECT (but below_median cap converts this to REVIEW)
+    combined >= review_threshold  → REVIEW
+    else                          → PASS
+  Direction-awareness cap (step 6) fires when combined >= reject_threshold AND below_median:
+    severity_tier is set to REVIEW (not REJECT), severity_cap_reason is populated.
 
 AGENTS.md rules:
   R1  — output matches contracts.py exactly
@@ -70,7 +79,10 @@ from sklearn.covariance import MinCovDet
 from sklearn.ensemble import IsolationForest
 from pyod.models.ecod import ECOD
 
-from contracts import FeatureFrame, ModuleAResult
+import pathlib
+import yaml
+
+from contracts import FeatureFrame, HarnessThresholds, ModuleAResult
 from features.compute import build_mcd_matrix
 
 # ---------------------------------------------------------------------------
@@ -80,10 +92,25 @@ from features.compute import build_mcd_matrix
 _MCD_LOT_SIZE_FLOOR: int = 30
 _RANDOM_STATE: int = 42
 
-# Provisional cap threshold for direction-awareness (step 6).
-# A combined percentile >= this is considered "would have been REVIEW/REJECT territory"
-# and triggers the below_median cap. Real harness thresholds replace this in P3.3.
-_CAP_PERCENTILE_THRESHOLD: float = 0.80
+_THRESHOLDS_PATH = pathlib.Path(__file__).parent.parent / "config" / "harness_thresholds.yaml"
+
+
+def _load_thresholds() -> HarnessThresholds:
+    """Load harness thresholds from config/harness_thresholds.yaml.
+
+    Called once at module import time. Raises FileNotFoundError if the file is
+    missing (P1.7 has not yet run) — this is intentional: P3.3 requires P1.7.
+    """
+    with open(_THRESHOLDS_PATH, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    return HarnessThresholds(**data)
+
+
+_THRESHOLDS: HarnessThresholds = _load_thresholds()
+
+# For export in tests — the cap now uses the real REJECT threshold.
+# Below-median components that would reach REJECT are capped to REVIEW.
+_CAP_PERCENTILE_THRESHOLD: float = _THRESHOLDS.module_a_reject_threshold
 
 
 # ---------------------------------------------------------------------------
@@ -271,10 +298,23 @@ def _detect_single_lot(
         # Step 4: ECOD score
         ecod_score = ecod_scores_by_cid_param.get((frame.component_id, frame.parameter), 0.0)
 
-        # Step 6: direction-awareness cap (WARNING: do NOT remove — E2 pitfall note)
+        # Step 8 + Step 6: severity tier assignment with direction-awareness cap.
+        # The cap fires when below_median AND combined would reach REJECT.
+        # WARNING: do NOT remove the cap — E2 pitfall note.
+        raw_combined = combined[i]
         severity_cap_reason: str | None = None
-        if direction == "below_median" and combined[i] >= _CAP_PERCENTILE_THRESHOLD:
-            severity_cap_reason = "below_median_direction_cap"
+
+        if raw_combined >= _THRESHOLDS.module_a_reject_threshold:
+            if direction == "below_median":
+                # Cap: below_median cannot reach REJECT — downgrade to REVIEW.
+                severity_tier_value = "REVIEW"
+                severity_cap_reason = "below_median_direction_cap"
+            else:
+                severity_tier_value = "REJECT"
+        elif raw_combined >= _THRESHOLDS.module_a_review_threshold:
+            severity_tier_value = "REVIEW"
+        else:
+            severity_tier_value = "PASS"
 
         results.append(ModuleAResult(
             component_id=frame.component_id,
@@ -291,7 +331,7 @@ def _detect_single_lot(
                 "ecod": False,              # E2 step 7: ECOD not explainable
             },
             direction=direction,
-            severity_tier="PASS",   # TEMP — real thresholds wired in P3.3
+            severity_tier=severity_tier_value,
             severity_cap_reason=severity_cap_reason,
         ))
 

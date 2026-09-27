@@ -333,16 +333,37 @@ class TestDirectionAwarenessCap:
         )
 
     def test_moderate_below_median_not_capped_when_tier_is_pass(self):
-        """Deferred to P3.3 — requires real harness thresholds to be meaningful.
+        """A mild below-median deviation that is genuinely PASS must not have
+        severity_cap_reason set — the cap only fires when below_median AND combined
+        would have reached REJECT.
 
-        The correct semantic: severity_cap_reason is only populated when the raw combined
-        score would have yielded REJECT without the cap. In P3.2 all tiers are PASS
-        (provisional) so the cap fires based on a provisional 0.80 percentile threshold,
-        not the real REJECT boundary. This test validates the full semantic in P3.3
-        once harness thresholds are wired, at which point severity_tier is real and
-        a component that would genuinely be PASS never has a cap reason set.
+        Un-skipped in P3.3 now that real thresholds are wired. With the real REJECT
+        threshold (0.9643), a component with modest z values in a 51-frame lot ranks
+        well below REJECT territory and must be PASS with no cap reason.
         """
-        pytest.skip("Requires real harness thresholds from P3.3 — not yet wired")
+        from module_a.detect import detect
+
+        frames = _lot_of(50)
+        # A mildly-below-median frame: direction=below_median, but well below REJECT.
+        mild_below = _frame(
+            component_id="MILD",
+            lot_size=51,
+            robust_z={"0h": -0.5, "24h": -0.4},  # small negative z — clearly below median
+        )
+        frames.append(mild_below)
+        results = detect(frames)
+
+        mild_result = next(r for r in results if r.component_id == "MILD")
+        assert mild_result.direction == "below_median"
+        # With real thresholds and a modest z, this must be PASS.
+        assert mild_result.severity_tier == "PASS", (
+            f"Mild below_median frame must be PASS (got {mild_result.severity_tier})"
+        )
+        # PASS-tier below_median must not have a cap reason — nothing was suppressed.
+        assert mild_result.severity_cap_reason is None, (
+            "PASS-tier below_median must not have severity_cap_reason set "
+            "(cap only fires when it would have been REJECT)"
+        )
 
     def test_below_median_can_still_be_review(self):
         """Below-median is capped to max REVIEW — REVIEW is still a valid outcome."""
