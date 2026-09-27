@@ -1,10 +1,10 @@
 # Harness-derived (E5 step 6, session P1.7) - never hand-edit; regenerate with
 # `python -m harness.bakeoff`. Read by module_a in P3.3 as contracts.HarnessThresholds (Part 5.1).
 # seed 2026; held-out families: baseline, wider_drift_exponent, higher_defect_prevalence, different_noise_regime, altered_correlation
-# REVIEW and REJECT both from the locked FN:FP 10:1 cost optimization (context.md 6.2, 7.12).
+# REJECT from the locked FN:FP 10:1 cost optimization (context.md 6.2, 7.12); REVIEW from the same search at a disclosed 20:1 (context.md 8.1).
 # Scale: module_a's max-combined within-lot detector percentile, 0-1 (E2 steps 5, 8).
 # Strategy: Lead decision - CONTRACT_CHANGES.md 2026-09-27 P1 bake-off entry; comparison in
 # harness/results/p17_evaluation.json.
-module_a_review_threshold: 0.9642857142857142
+module_a_review_threshold: 0.9556277056277056
 module_a_reject_threshold: 0.9642857142857142
 combination_strategy: max

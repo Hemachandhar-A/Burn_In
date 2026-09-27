@@ -97,20 +97,22 @@ def test_winner_is_lowest_mean_held_out_cost_with_ties_going_to_the_default():
     assert bakeoff.choose_winner(tied) == "max"
 
 
-def test_both_thresholds_come_from_the_same_locked_10_to_1_optimization():
-    """context.md 6.2: REVIEW and REJECT from the one cost-sensitive optimization, not two ratios."""
+def test_reject_at_the_locked_10_to_1_and_review_at_the_disclosed_20_to_1():
+    """One cost ratio yields one cut; REVIEW and REJECT come from the same search at two ratios."""
     table = _table()
     th = bakeoff.derive_thresholds(table, "max")
     assert isinstance(th, HarnessThresholds)
     assert th.combination_strategy == "max"
-    scores = table[list(scoring.DETECTORS)].max(axis=1)
-    expected = scoring.tune_threshold(scores, table["is_defective"], 10.0)
-    assert th.module_a_review_threshold == th.module_a_reject_threshold == expected
+    scores, y = table[list(scoring.DETECTORS)].max(axis=1), table["is_defective"]
+    assert th.module_a_reject_threshold == scoring.tune_threshold(scores, y, 10.0)
+    assert th.module_a_review_threshold == scoring.tune_threshold(scores, y, 20.0)
+    assert th.module_a_review_threshold <= th.module_a_reject_threshold
 
 
-def test_there_is_one_cost_ratio_and_it_is_the_screening_config_default():
-    assert scoring.FN_FP_COST_RATIO == 10.0
-    assert not hasattr(scoring, "REJECT_FN_FP_COST_RATIO")
+def test_cost_ratios_are_the_locked_default_and_the_disclosed_review_ratio():
+    assert scoring.FN_FP_COST_RATIO == 10.0  # REJECT and the bake-off
+    assert scoring.REVIEW_FN_FP_COST_RATIO == 20.0
+    assert not hasattr(scoring, "REJECT_FN_FP_COST_RATIO")  # the unauthorized 1:1 never returns
 
 
 def test_the_shipped_strategy_is_max_by_lead_decision():
@@ -159,7 +161,7 @@ def committed():
 def test_committed_thresholds_file_is_in_the_contracted_shape(committed):
     assert isinstance(committed, HarnessThresholds)
     assert committed.combination_strategy == "max"
-    assert 0.0 < committed.module_a_review_threshold <= committed.module_a_reject_threshold <= 1.0
+    assert 0.0 < committed.module_a_review_threshold < committed.module_a_reject_threshold <= 1.0
     raw = yaml.safe_load(COMMITTED_PATH.read_text(encoding="utf-8"))
     assert set(raw) == set(HarnessThresholds.model_fields)  # no TEMP_ key: max has no parameters
 
@@ -170,12 +172,13 @@ def test_committed_thresholds_file_names_no_rejected_strategy():
 
 
 def test_committed_thresholds_flag_the_golden_part_at_reject(committed):
-    """AGENTS.md rule 5: once P3.3 applies these thresholds, the worked example must be flagged. Under max with
-    both thresholds from the 10:1 run it clears REJECT too (score 1.0 - top of its lot on the z-score)."""
+    """AGENTS.md rule 5: once P3.3 applies these thresholds, the worked example must be flagged. Under max it
+    scores 1.0 (top of its lot on the z-score), so it clears the 20:1 REVIEW and the 10:1 REJECT alike."""
     from module_a.detect import detect
     parts = scoring.part_detector_scores(detect(golden_feature_frames()))
     golden = parts[parts["component_id"] == GOLDEN_COMPONENT_ID]
     score = bakeoff.fit_strategy("max", golden).score(golden)[0]
+    assert score == 1.0
     assert score >= committed.module_a_review_threshold
     assert score >= committed.module_a_reject_threshold
 
