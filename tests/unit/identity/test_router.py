@@ -248,3 +248,120 @@ def test_settings_signoff_distinct_user(auth_headers2, monkeypatch):
     assert response.json()["fn_fp_cost_ratio"] == 15.0
     assert len(events_logged) == 1
     assert events_logged[0]["payload"]["action"] == "signoff"
+
+def test_disposition_hold(auth_headers, monkeypatch):
+    from contracts import DispositionSignoff
+    from datetime import datetime, UTC
+    
+    mock_save = []
+    def mock_save_disposition(*args, **kwargs):
+        mock_save.append(kwargs)
+        return DispositionSignoff(
+            project_id=kwargs["project_id"],
+            component_id=kwargs["component_id"],
+            account_id=kwargs["account_id"],
+            verdict=kwargs["verdict"],
+            rationale=kwargs["rationale"],
+            timestamp=datetime.now(UTC),
+            analysis_run_id=kwargs["analysis_run_id"]
+        )
+    monkeypatch.setattr("identity.router.save_disposition_signoff", mock_save_disposition)
+    monkeypatch.setattr("identity.router.query_disposition_signoffs", lambda **kw: [])
+    
+    response = client.post(
+        "/parts/comp1/disposition",
+        params={"project_id": "proj1", "analysis_run_id": "run1"},
+        json={"verdict": "HOLD", "rationale": "Needs review"},
+        headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert response.json()["verdict"] == "HOLD"
+    assert len(mock_save) == 1
+
+def test_disposition_reject_dual_signoff_no_timing_flag(auth_headers, auth_headers2, monkeypatch):
+    from contracts import DispositionSignoff
+    from datetime import datetime, UTC, timedelta
+    
+    existing = DispositionSignoff(
+        project_id="proj1",
+        component_id="comp1",
+        analysis_run_id="run1",
+        account_id="a.sharma",
+        verdict="REJECT",
+        rationale="Bad part",
+        timestamp=datetime.now(UTC) - timedelta(minutes=5)
+    )
+    monkeypatch.setattr("identity.router.query_disposition_signoffs", lambda **kw: [existing])
+    
+    events_logged = []
+    def mock_log_event(*args, **kwargs):
+        events_logged.append(kwargs)
+    monkeypatch.setattr("identity.router.log_event", mock_log_event)
+    
+    def mock_save_disposition(*args, **kwargs):
+        return DispositionSignoff(
+            project_id=kwargs["project_id"],
+            component_id=kwargs["component_id"],
+            account_id=kwargs["account_id"],
+            verdict=kwargs["verdict"],
+            rationale=kwargs["rationale"],
+            timestamp=datetime.now(UTC),
+            analysis_run_id=kwargs["analysis_run_id"]
+        )
+    monkeypatch.setattr("identity.router.save_disposition_signoff", mock_save_disposition)
+
+    response = client.post(
+        "/parts/comp1/disposition",
+        params={"project_id": "proj1", "analysis_run_id": "run1"},
+        json={"verdict": "REJECT", "rationale": "Confirmed bad part"},
+        headers=auth_headers2
+    )
+    assert response.status_code == 200
+    assert response.json()["account_id"] == "r.mehta"
+    assert len(events_logged) == 0
+
+def test_settings_propose_already_pending(auth_headers, monkeypatch):
+    class DummyEvent:
+        def __init__(self, action="propose", account_id="a.sharma"):
+            self.event_type = "config_change"
+            self.account_id = account_id
+            self.payload = {"action": action, "field": "fn_fp_cost_ratio", "proposed_value": 15.0}
+
+    monkeypatch.setattr("identity.router.query_events", lambda: [DummyEvent()])
+
+    response = client.post(
+        "/settings/propose",
+        json={"field": "fn_fp_cost_ratio", "proposed_value": 20.0},
+        headers=auth_headers
+    )
+    assert response.status_code == 400
+    assert "Change already pending for this field" in response.json()["detail"]
+
+def test_settings_signoff_no_pending(auth_headers2, monkeypatch):
+    monkeypatch.setattr("identity.router.query_events", lambda: [])
+
+    response = client.post(
+        "/settings/signoff",
+        json={"field": "fn_fp_cost_ratio"},
+        headers=auth_headers2
+    )
+    assert response.status_code == 400
+    assert "No pending change for this field" in response.json()["detail"]
+
+def test_settings_get(auth_headers, monkeypatch):
+    class DummyEvent:
+        def __init__(self, action="propose", account_id="a.sharma"):
+            self.event_type = "config_change"
+            self.account_id = account_id
+            self.payload = {"action": action, "field": "fn_fp_cost_ratio", "proposed_value": 15.0}
+
+    monkeypatch.setattr("identity.router.query_events", lambda: [DummyEvent()])
+
+    response = client.get("/settings", headers=auth_headers)
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert data["fn_fp_cost_ratio"] != 15.0 # Should be original value because it's only proposed
+    assert len(data["pending_changes"]) == 1
+    assert data["pending_changes"][0]["field"] == "fn_fp_cost_ratio"
+    assert data["pending_changes"][0]["proposed_value"] == 15.0
