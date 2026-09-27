@@ -315,3 +315,11 @@ Entry format:
 - Status: RESOLVED by Lead on `develop`.
 
 ---
+
+## 2026-09-27 Lead - test_repository.py's DB reload pattern has no teardown - currently order-dependent, not structurally safe
+- Missing/wrong: `tests/unit/storage/test_repository.py`'s `importlib.reload(database)` / `importlib.reload(repository)` pattern rebinds `storage.database`'s engine/`SessionLocal` for the rest of the process, with nothing restoring the prior binding afterward. It is harmless today only because this test file happens to run late in collection order. Found by P5 while investigating a different issue.
+- Why it matters: any future test added earlier in the run, or a suite reorder (parallelization, a different pytest invocation, a new file sorting alphabetically before this one), could silently inherit the wrong database - a real-vs-test DB pointed at each other with no error, just wrong data.
+- Proposed fix: adopt the same monkeypatch-with-teardown pattern `p5-fusion`'s golden test now uses - explicit engine/`SessionLocal` patching via `monkeypatch.setattr`, auto-restored on fixture teardown - instead of a bare `importlib.reload`.
+- Status: OPEN, non-blocking, flagged for P2 whenever convenient.
+
+---
