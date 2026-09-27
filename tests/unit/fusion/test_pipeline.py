@@ -14,15 +14,37 @@ def test_run_full_pipeline_stub():
         manufacturer="MFG",
         date_code="2026",
         parameter="iddq",
-        checkpoint_hour=24.0,
+        checkpoint_hour=0.0,
         value=1.5,
+        unit="uA"
+    )
+    reading_24h = Reading(
+        component_id="COMP-001",
+        lot_id="LOT-123",
+        part_number="PN-ABC",
+        manufacturer="MFG",
+        date_code="2026",
+        parameter="iddq",
+        checkpoint_hour=24.0,
+        value=1.6,
+        unit="uA"
+    )
+    reading_168h = Reading(
+        component_id="COMP-001",
+        lot_id="LOT-123",
+        part_number="PN-ABC",
+        manufacturer="MFG",
+        date_code="2026",
+        parameter="iddq",
+        checkpoint_hour=168.0,
+        value=2.0,
         unit="uA"
     )
     lot = LotDataset(
         lot_id="LOT-123",
         part_number="PN-ABC",
         status="COMPLETE",
-        readings=[reading],
+        readings=[reading, reading_24h, reading_168h],
         account_id="ACC-001"
     )
     config = ScreeningConfig()
@@ -49,11 +71,33 @@ def test_run_full_pipeline_stub_in_progress():
     Verify that an IN_PROGRESS input produces is_forecast=True and 
     forecast-vocabulary verdict.
     """
+    reading = Reading(
+        component_id="COMP-001",
+        lot_id="LOT-456",
+        part_number="PN-DEF",
+        manufacturer="MFG",
+        date_code="2026",
+        parameter="iddq",
+        checkpoint_hour=0.0,
+        value=1.5,
+        unit="uA"
+    )
+    reading_24h = Reading(
+        component_id="COMP-001",
+        lot_id="LOT-456",
+        part_number="PN-DEF",
+        manufacturer="MFG",
+        date_code="2026",
+        parameter="iddq",
+        checkpoint_hour=24.0,
+        value=1.6,
+        unit="uA"
+    )
     lot = LotDataset(
         lot_id="LOT-456",
         part_number="PN-DEF",
         status="IN_PROGRESS",
-        readings=[],
+        readings=[reading, reading_24h],
         account_id="ACC-001"
     )
     config = ScreeningConfig()
@@ -82,7 +126,8 @@ def test_run_full_pipeline_stub_edge_cases():
     config = ScreeningConfig()
     
     result_empty = run_full_pipeline(lot_empty, config)
-    assert result_empty.assessments[0].lot_id == "LOT!@#-$%^&*("
+    assert len(result_empty.assessments) == 0
+    assert result_empty.disposition.lot_id == "LOT!@#-$%^&*("
     assert result_empty.disposition.lot_id == "LOT!@#-$%^&*("
     
     # Edge case 2: Empty lot_id string
@@ -94,5 +139,6 @@ def test_run_full_pipeline_stub_edge_cases():
         account_id="ACC-002"
     )
     result_no_id = run_full_pipeline(lot_no_id, config)
-    assert result_no_id.assessments[0].lot_id == ""
+    assert len(result_no_id.assessments) == 0
+    assert result_no_id.disposition.lot_id == ""
     assert result_no_id.disposition.lot_id == ""
