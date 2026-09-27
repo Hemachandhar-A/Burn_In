@@ -1,11 +1,8 @@
 from typing import Literal
 from contracts import ModuleAResult, ModuleBResult
 
-class TEMP_ModuleAResult(ModuleAResult):
-    worst_detector: str
-
 def compute_part_verdict(
-    module_a: TEMP_ModuleAResult,
+    module_a: ModuleAResult,
     module_b: ModuleBResult | None,
 ) -> tuple[Literal["PASS", "WATCH", "REJECT"], str | None, Literal["PASS", "REVIEW", "REJECT"]]:
     """
@@ -16,7 +13,7 @@ def compute_part_verdict(
     cap_reason = module_a.severity_cap_reason
     
     # 2. Explainability gate on REJECT (E12 step 2)
-    if a_tier == "REJECT" and module_a.worst_detector in ("isolation_forest", "ecod"):
+    if a_tier == "REJECT" and not module_a.explainable_corroboration:
         a_tier = "REVIEW"
         cap_reason = "explainability_gate"
 

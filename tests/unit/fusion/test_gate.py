@@ -1,9 +1,9 @@
 import pytest
-from contracts import ModuleBResult
-from fusion.gate import compute_part_verdict, TEMP_ModuleAResult
+from contracts import ModuleAResult, ModuleBResult
+from fusion.gate import compute_part_verdict
 
 def test_explainability_gate_caps_unexplainable_reject():
-    a_result = TEMP_ModuleAResult(
+    a_result = ModuleAResult(
         component_id="C1",
         lot_id="L1",
         parameter="iddq",
@@ -15,7 +15,8 @@ def test_explainability_gate_caps_unexplainable_reject():
         direction="above_median",
         severity_tier="REJECT",
         severity_cap_reason=None,
-        worst_detector="isolation_forest"
+        combined_severity=1.0,
+        explainable_corroboration=False
     )
     b_result = ModuleBResult(
         component_id="C1",
@@ -37,7 +38,7 @@ def test_explainability_gate_caps_unexplainable_reject():
     assert verdict == "WATCH" # exactly one module past REVIEW -> WATCH
 
 def test_composability_gate_b_reject_overrides_a_cap():
-    a_result = TEMP_ModuleAResult(
+    a_result = ModuleAResult(
         component_id="C1",
         lot_id="L1",
         parameter="iddq",
@@ -49,7 +50,8 @@ def test_composability_gate_b_reject_overrides_a_cap():
         direction="above_median",
         severity_tier="REJECT",
         severity_cap_reason=None,
-        worst_detector="isolation_forest"
+        combined_severity=1.0,
+        explainable_corroboration=False
     )
     b_result = ModuleBResult(
         component_id="C1",
@@ -72,7 +74,7 @@ def test_composability_gate_b_reject_overrides_a_cap():
 
 def test_direction_awareness_cap_preserved():
     # If Module A already capped it, fusion table uses the capped tier
-    a_result = TEMP_ModuleAResult(
+    a_result = ModuleAResult(
         component_id="C1",
         lot_id="L1",
         parameter="iddq",
@@ -84,7 +86,8 @@ def test_direction_awareness_cap_preserved():
         direction="below_median",
         severity_tier="REVIEW",
         severity_cap_reason="below_median_direction_cap",
-        worst_detector="robust_z"
+        combined_severity=1.0,
+        explainable_corroboration=True
     )
     b_result = ModuleBResult(
         component_id="C1",
@@ -106,7 +109,7 @@ def test_direction_awareness_cap_preserved():
     assert verdict == "WATCH"
 
 def test_both_pass():
-    a_result = TEMP_ModuleAResult(
+    a_result = ModuleAResult(
         component_id="C1",
         lot_id="L1",
         parameter="iddq",
@@ -118,7 +121,8 @@ def test_both_pass():
         direction="above_median",
         severity_tier="PASS",
         severity_cap_reason=None,
-        worst_detector="robust_z"
+        combined_severity=0.5,
+        explainable_corroboration=True
     )
     b_result = ModuleBResult(
         component_id="C1",
