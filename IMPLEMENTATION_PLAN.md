@@ -238,6 +238,7 @@ class ModuleBResult(BaseModel):
     physics_disagreement_gap: float | None
     drift_rate: float | None; exceeds_safety_slope: bool | None
     safety_slope: float | None          # calibrated threshold drift_rate was compared against (E3 step 7's "threshold used"); same units as drift_rate; None whenever drift_rate/exceeds_safety_slope are. E4's "exceeds by 38%" is (drift_rate - safety_slope) / safety_slope, computed where the sentence is built (P5's explainability), not stored
+    lower_bound_exceeds_safety_slope: bool | None  # conservative counterpart: the same comparison with interval_lower in place of predicted_168h — STOP_RUN_RECOMMENDED (E12 step 5, context.md 5.18) keys off this, not exceeds_safety_slope; None whenever exceeds_safety_slope/safety_slope are
     forecast_unavailable: bool          # explicit flag — context.md 5.9
 ```
 

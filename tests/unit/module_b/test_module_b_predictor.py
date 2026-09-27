@@ -17,6 +17,7 @@ from module_b.predictor import SYNTHETIC_LOTS, TRAINED_PARAMETERS, synthetic_mod
 FORECAST_FIELDS = (
     "predicted_168h", "interval_lower", "interval_upper", "physics_baseline_prediction",
     "physics_disagreement_gap", "drift_rate", "exceeds_safety_slope", "safety_slope",
+    "lower_bound_exceeds_safety_slope",
 )
 
 

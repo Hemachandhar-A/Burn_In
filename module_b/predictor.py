@@ -22,7 +22,7 @@ from functools import cache
 from contracts import ModuleBInput, ModuleBResult, ScreeningConfig
 from features.compute import compute
 from generator.lot import generate_lot
-from module_b.baselines import physics_baselines
+from module_b.baselines import TARGET_HOURS, physics_baselines
 from module_b.calibration import CalibratedDriftModel, calibrate_drift_models, forecast
 from module_b.model import usable_input
 
@@ -55,6 +55,7 @@ def _unavailable(frame: ModuleBInput) -> ModuleBResult:
         drift_rate=None,
         exceeds_safety_slope=None,
         safety_slope=None,
+        lower_bound_exceeds_safety_slope=None,
         forecast_unavailable=True,
     )
 
@@ -90,6 +91,11 @@ def predict(
             results.append(_unavailable(f))
             continue
         physics = baselines[(u.lot_id, u.component_id, u.parameter)].power_law
+        # Conservative counterpart to exceeds_safety_slope: the identical drift_rate formula
+        # (module_b.calibration.drift_rate), with interval_lower in place of predicted_168h - the
+        # calibrated interval's lower bound, not the point estimate. STOP_RUN_RECOMMENDED (E12 step 5,
+        # context.md 5.18) needs this, not the point-estimate flag.
+        lower_bound_drift_rate = (fc.interval_lower - u.value_0h) / (TARGET_HOURS - u.elapsed_hours["0h"])
         results.append(
             ModuleBResult(
                 component_id=f.component_id,
@@ -103,6 +109,7 @@ def predict(
                 drift_rate=fc.drift_rate,
                 exceeds_safety_slope=fc.exceeds_safety_slope,
                 safety_slope=fc.safety_slope,
+                lower_bound_exceeds_safety_slope=lower_bound_drift_rate > fc.safety_slope,
                 forecast_unavailable=False,
             )
         )

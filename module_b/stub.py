@@ -21,6 +21,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
         drift_rate=0.0143,
         exceeds_safety_slope=False,
         safety_slope=0.0183,
+        lower_bound_exceeds_safety_slope=False,
         forecast_unavailable=False,
     ),
     ModuleBResult(
@@ -35,6 +36,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
         drift_rate=0.2262,
         exceeds_safety_slope=True,
         safety_slope=0.0520,
+        lower_bound_exceeds_safety_slope=True,
         forecast_unavailable=False,
     ),
     ModuleBResult(
@@ -49,6 +51,7 @@ STUB_RESULTS: tuple[ModuleBResult, ...] = (
         drift_rate=None,
         exceeds_safety_slope=None,
         safety_slope=None,
+        lower_bound_exceeds_safety_slope=None,
         forecast_unavailable=True,
     ),
 )

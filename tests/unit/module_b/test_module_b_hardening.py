@@ -26,6 +26,7 @@ REPO = Path(__file__).resolve().parents[3]
 FORECAST_FIELDS = (
     "predicted_168h", "interval_lower", "interval_upper", "physics_baseline_prediction",
     "physics_disagreement_gap", "drift_rate", "exceeds_safety_slope", "safety_slope",
+    "lower_bound_exceeds_safety_slope",
 )
 NAN, INF = float("nan"), float("inf")
 
@@ -209,6 +210,61 @@ def test_physics_gap_is_exactly_zero_when_model_and_physics_agree(monkeypatch, l
     for r in predict(lot, models={}):
         assert r.physics_disagreement_gap == 0.0
         assert math.copysign(1.0, r.physics_disagreement_gap) == 1.0  # not -0.0
+
+
+# --- lower_bound_exceeds_safety_slope: the interval's lower bound, not the point estimate ----
+
+
+def test_lower_bound_exceeds_safety_slope_uses_the_same_formula_with_interval_lower(monkeypatch, lot):
+    """lower_bound_exceeds_safety_slope must be (interval_lower - value_0h) / (168 - t0) > safety_slope -
+    the identical drift_rate formula module_b.calibration.drift_rate uses for the point estimate, with
+    interval_lower substituted for predicted_168h, nothing else different (CONTRACT_CHANGES.md,
+    2026-09-28 Lead entry)."""
+    u = lot[0]
+    t0 = u.elapsed_hours["0h"]
+
+    def fake_forecast(models, inputs):
+        out = []
+        for i in inputs:
+            out.append(DriftForecast(i.component_id, i.parameter, "96h", i.value_0h + 10.0, i.value_0h + 3.0,
+                                     i.value_0h + 20.0, 999.0, 0.05, True))
+        return out
+
+    monkeypatch.setattr(predictor_mod, "forecast", fake_forecast)
+    result = predict([u], models={})[0]
+    expected = (u.value_0h + 3.0 - u.value_0h) / (168.0 - t0) > 0.05
+    assert result.lower_bound_exceeds_safety_slope == expected
+
+
+def test_lower_bound_exceeds_safety_slope_correctly_differs_from_the_point_estimate_on_a_wide_interval(
+    monkeypatch, lot
+):
+    """A wide calibrated interval must be able to disagree with the point estimate: predicted_168h's drift
+    rate exceeds safety_slope (exceeds_safety_slope=True), but interval_lower's own drift rate does not
+    (lower_bound_exceeds_safety_slope=False) - the STOP_RUN_RECOMMENDED gap this field closes (E12 step 5,
+    context.md 5.18). The reverse (lower bound True, point estimate False) cannot happen: interval widening
+    (Part 7.3) guarantees interval_lower <= predicted_168h always, so a smaller value can never alone push
+    the flag past a larger value's own result."""
+    u = lot[0]
+    t0 = u.elapsed_hours["0h"]
+    horizon_hours = 168.0 - t0
+    safety_slope = 0.02
+    # Point estimate: drift_rate = 0.03 > 0.02 -> exceeds_safety_slope True.
+    predicted = u.value_0h + 0.03 * horizon_hours
+    # Lower bound: drift_rate = 0.005 < 0.02 -> lower_bound_exceeds_safety_slope False. A wide interval,
+    # not a narrow one - this is exactly the case a point-estimate-only flag misses.
+    lower = u.value_0h + 0.005 * horizon_hours
+    upper = predicted + 5.0
+
+    def fake_forecast(models, inputs):
+        return [DriftForecast(i.component_id, i.parameter, "96h", predicted, lower, upper, 0.03, safety_slope, True)
+                for i in inputs]
+
+    monkeypatch.setattr(predictor_mod, "forecast", fake_forecast)
+    result = predict([u], models={})[0]
+    assert result.exceeds_safety_slope is True
+    assert result.lower_bound_exceeds_safety_slope is False
+    assert result.exceeds_safety_slope != result.lower_bound_exceeds_safety_slope
 
 
 def test_physics_gap_is_small_nonnegative_and_finite_for_a_flat_part(models, lot):

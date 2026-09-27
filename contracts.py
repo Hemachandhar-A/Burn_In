@@ -190,6 +190,12 @@ class ModuleBResult(BaseModel):
     drift_rate: float | None
     exceeds_safety_slope: bool | None
     safety_slope: float | None  # the calibrated threshold drift_rate was compared against (E3 step 7's "threshold used"); same units as drift_rate; None whenever drift_rate/exceeds_safety_slope are
+    # The conservative counterpart to exceeds_safety_slope: the same drift-rate comparison against
+    # safety_slope, but with interval_lower in place of predicted_168h - the calibrated interval's lower
+    # bound, not the point estimate. STOP_RUN_RECOMMENDED (essential-features.md E12 step 5, context.md
+    # 5.18) keys off this field, not exceeds_safety_slope. Same required-but-nullable pattern, None
+    # whenever exceeds_safety_slope/safety_slope are.
+    lower_bound_exceeds_safety_slope: bool | None
     forecast_unavailable: bool  # explicit flag - context.md 5.9
 
 
