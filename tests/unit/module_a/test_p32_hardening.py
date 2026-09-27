@@ -157,55 +157,66 @@ def _build_lot_with_target_combined(
 
 
 # ---------------------------------------------------------------------------
-# B. 0.80 cap boundary — exactly at and just below _CAP_PERCENTILE_THRESHOLD
+# B. Cap boundary — exactly at and just below _CAP_PERCENTILE_THRESHOLD
 # ---------------------------------------------------------------------------
 
 class TestCapBoundary:
-    """Risk B: The cap uses >= _CAP_PERCENTILE_THRESHOLD (currently 0.80).
+    """Risk B: The cap uses >= _CAP_PERCENTILE_THRESHOLD.
+    After P3.3, _CAP_PERCENTILE_THRESHOLD = REJECT_T = 0.9642857... (not 0.80).
     Boundary conditions on >= comparisons are where off-by-one bugs hide.
-    We confirm: at exactly 0.80 the cap fires; just below it, it doesn't.
+    We confirm: at exactly REJECT_T the cap fires; below it, it doesn't.
 
     Finding: NOT TESTED in P3.2. Added here.
     The boundary is an emergent consequence of rankdata arithmetic, so these
     tests are behavioural (not brittle white-box tests against the constant)."""
 
     def test_cap_fires_when_combined_exactly_at_threshold(self):
-        """A below_median component at exactly 0.80 combined percentile must be capped."""
-        from module_a.detect import detect
+        """A below_median component whose combined percentile equals the real cap
+        threshold (_CAP_PERCENTILE_THRESHOLD = REJECT_T) must be capped.
 
-        # With n=5 frames, rankdata ranks are 1-5, percentiles = 0.2, 0.4, 0.6, 0.8, 1.0.
-        # To get combined = 0.80: target must have rank 4 (= 4/5 = 0.80) in ALL detectors.
-        # Use identical values so all detectors see the same ordering.
-        # 5 frames, strictly increasing z: ranks 1-5, target_idx=3 → rank=4 → pct=0.80.
-        n = 5
-        # Strictly increasing values → strict rank ordering → rank[3] = 4 → pct = 4/5 = 0.80
+        After P3.3 the cap threshold is REJECT_T ≈ 0.9643. For n=14:
+          rank 14/14 = 1.0 > REJECT_T → above threshold ✓ (too high)
+          rank 13/14 ≈ 0.9286 < REJECT_T → below threshold (not at boundary)
+        We need a rank/n >= REJECT_T exactly at some integer k/n.
+        REJECT_T = 0.9642857... = 27/28. So for n=28: k=27 → 27/28 = REJECT_T exactly.
+        """
+        from module_a.detect import detect, _CAP_PERCENTILE_THRESHOLD
+
+        # Use n=28 so that rank 27/28 = REJECT_T exactly.
+        # Target frame: rank 27 (0-indexed i=26, component C026).
+        # All frames below_median (negative z), strictly increasing magnitude.
+        # ECOD: symmetric, both tails score high; middle frames score low.
+        # For the cap test we want combined driven by z_pct only.
+        # Frame i=26 has z_raw rank 27/28 in the lot.
+        n = 28
         frames = [
             _frame(
                 component_id=f"C{i:03d}",
-                value_0h=10.0 + i * 1.0,
-                value_24h=11.0 + i * 1.0,
+                value_0h=10.0 + i * 0.01,
+                value_24h=11.0 + i * 0.01,
                 lot_size=n,
                 robust_z={"0h": -(i + 1) * 1.0, "24h": -(i + 1) * 0.9},
-                lot_median_0h=12.0,
-                lot_median_24h=13.0,
+                lot_median_0h=10.14,
+                lot_median_24h=11.14,
             )
             for i in range(n)
         ]
         results = detect(frames)
 
-        # Find the frame with rank 4 (0-indexed: idx=3, i.e. C003)
-        result_c003 = next(r for r in results if r.component_id == "C003")
-        assert result_c003.direction == "below_median"
-        # At exactly 0.80 combined percentile, cap MUST fire
-        assert result_c003.severity_cap_reason is not None, (
-            "Cap should fire at exactly the threshold (>= comparison)"
+        # C026 has z-rank 27/28 ≈ REJECT_T. ECOD may also rank it high (right side of a
+        # monotone lot is a tail for ECOD), so combined >= REJECT_T.
+        result_c026 = next(r for r in results if r.component_id == "C026")
+        assert result_c026.direction == "below_median"
+        # At combined >= REJECT_T and below_median → cap MUST fire
+        assert result_c026.severity_cap_reason is not None, (
+            f"Cap should fire when combined >= _CAP_PERCENTILE_THRESHOLD ({_CAP_PERCENTILE_THRESHOLD:.6f})"
         )
 
     def test_cap_does_not_fire_just_below_threshold(self):
-        """A below_median component just below 0.80 must NOT be capped."""
+        """A below_median component well below the real cap threshold must NOT be capped."""
         from module_a.detect import detect
 
-        # n=5, rank 3 → pct = 3/5 = 0.60. Well below 0.80 threshold.
+        # n=5, rank 3 → pct = 3/5 = 0.60. Well below REJECT_T (0.9643).
         n = 5
         frames = [
             _frame(
@@ -221,7 +232,7 @@ class TestCapBoundary:
         ]
         results = detect(frames)
 
-        # C002 has rank 3/5 = 0.60 < 0.80 — must not be capped
+        # C002 has rank 3/5 = 0.60 << REJECT_T — must not be capped
         result_c002 = next(r for r in results if r.component_id == "C002")
         assert result_c002.direction == "below_median"
         assert result_c002.severity_cap_reason is None, (
@@ -229,9 +240,10 @@ class TestCapBoundary:
         )
 
     def test_cap_constant_exported(self):
-        """_CAP_PERCENTILE_THRESHOLD is importable and is 0.80.
-        Locks the boundary so P3.3 knows what it's wiring thresholds against."""
-        assert _CAP_PERCENTILE_THRESHOLD == 0.80
+        """_CAP_PERCENTILE_THRESHOLD is importable and equals the real REJECT threshold.
+        After P3.3, this is module_a_reject_threshold from harness_thresholds.yaml."""
+        from module_a.detect import _THRESHOLDS
+        assert _CAP_PERCENTILE_THRESHOLD == _THRESHOLDS.module_a_reject_threshold
 
 
 # ---------------------------------------------------------------------------
