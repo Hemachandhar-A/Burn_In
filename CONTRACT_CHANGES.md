@@ -261,3 +261,12 @@ Entry format:
 - Why it matters: the golden test's features path (`tests/integration/test_golden_module_a.py`) calls it before P2.4 lands; a guessed arity that differs from P2's fails as a confusing TypeError.
 - Proposed fix: pin `features.compute(lot: LotDataset) -> list[FeatureFrame]`, one frame per (component_id, parameter) (E8 step 1), history/config read inside `features/`. Until pinned, the harness calls it only through `harness.golden.TEMP_features_compute`, which checks the call binds before making it and reports a mismatch as this contract gap.
 - Status: OPEN
+
+---
+
+## 2026-09-27 P1 - ModuleAResult has no field for the combined severity score the harness thresholds apply to
+- Missing/wrong: `HarnessThresholds.module_a_review_threshold`/`module_a_reject_threshold` (Part 5.1) are cut points on Module A's percentile-normalised, max-combined severity (E2 steps 5 and 8) - but `ModuleAResult` exposes only each detector's *raw* score (`robust_z`, `mcd_distance`, `isolation_forest_score`, `ecod_score`), not the percentiles or the combined score `module_a/detect.py` computes internally and would compare against the thresholds in P3.3.
+- Why it matters: P1.7's harness has to tune the thresholds on exactly the scale module_a applies them to. Without the field it must re-derive the percentiles from the raw scores, which silently drifts the moment module_a's normalisation changes (e.g. P3.3 changing how absent detectors or the IF sign are handled). Fusion (E12) and the explainability gate would likewise benefit from the one number the tier was decided on.
+- Proposed fix: add `severity_score: float` to `ModuleAResult` (the max-combined percentile, 0-1, before the direction/explainability caps) - and optionally `detector_percentiles: dict[str, float]` keyed like `explainable_tags`, which the bake-off's weighted-average / meta-model strategies need. Mirror in Part 5.3.
+- Meanwhile: `harness.scoring.TEMP_detector_percentiles` re-derives them, mirroring `module_a/detect.py` step 5 exactly (rank/n within the lot over every frame, absent MCD/IF as 0.0, IF sign negated). `tests/unit/harness/test_p17_scoring.py::test_percentile_mirror_matches_module_a_internal_combined_score` pins the mirror against module_a's own combined score (observable through its below-median cap at `_CAP_PERCENTILE_THRESHOLD`), so a drift fails a test rather than skewing thresholds silently.
+- Status: OPEN, non-blocking for P3.3 (the thresholds in `config/harness_thresholds.yaml` are on module_a's current internal scale).
