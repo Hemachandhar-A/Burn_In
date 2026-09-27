@@ -15,6 +15,14 @@ Entry format:
 
 ---
 
+## 2026-09-27 P5 - GET /lots/{lot_id} live-recompute bug and results_json shape ambiguity
+- Missing/wrong: `GET /lots/{lot_id}` in `fusion/router.py` was calling `run_full_pipeline` on every request instead of reading the stored results, violating IMPLEMENTATION_PLAN.md Part 5.7. In fixing this, it was discovered that `project_data.results_json` is genuinely stored in the `per_component` dictionary shape pinned in P2.7 (not as `AnalysisResults` JSON). Because `module_a_rank`, `module_b_rank`, and `worst_parameter` are not present in this pinned dict shape, `RiskAssessment` cannot be fully reconstructed from it.
+- Why it matters: `LotSummaryResponse` requires `RiskAssessment` instances. A live recompute bypasses this by generating fresh results, but reading from storage leaves these three required fields unset.
+- Proposed fix: `fusion/router.py` was updated to read `results_json` instead of live-recomputing, fulfilling Part 5.7. The missing fields were populated with dummy values (`module_a_rank=0.0`, `module_b_rank=0.0`, `worst_parameter="unknown"`) so the endpoint succeeds without breaking the frozen contract. When a richer per-component shape is finalized, `fusion/router.py` can be updated to parse it. The unused `run_full_pipeline` import was removed from the route entirely.
+- Status: OPEN
+
+---
+
 ## 2026-09-25 P4 - FeatureFrame has no `parameter` or `part_number`; `elapsed_hours` order undocumented
 - Missing/wrong: `FeatureFrame` carries a single `value_0h`/`value_24h`/`value_96h`, so each frame must be one (component, parameter) pair - but it has no `parameter` field saying which one, and no `part_number`. Separately, `elapsed_hours: list[float]` doesn't state which reading each entry belongs to.
 - Why it matters: `ModuleBResult.parameter` can't be filled from the input, and E3 trains "one global model per part number," which Module B can't select without `part_number`. Irregular checkpoints (context.md 5.9) mean linear/power-law extrapolation needs the real hour of the "24h" reading, not an assumed 24.0. Module A (`ModuleAResult.parameter`) likely hits the same gap.
