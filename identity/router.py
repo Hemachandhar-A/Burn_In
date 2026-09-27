@@ -83,6 +83,11 @@ def create_disposition(
             rationale=request.rationale
         )
         
+        # Trigger CAPA if threshold crossed
+        if request.verdict == "REJECT":
+            from capa.logic import evaluate_capa_trigger
+            evaluate_capa_trigger(project_id)
+        
         return DispositionRecord(
             project_id=record.project_id,
             component_id=record.component_id,
