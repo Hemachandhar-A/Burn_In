@@ -182,3 +182,50 @@ def test_stop_run_recommended_lower_bound(mock_predict):
     ]
     res_c = run_full_pipeline(lot, config)
     assert res_c.disposition.verdict == "LOT_ON_TRACK"
+
+@patch('fusion.pipeline.module_b_predict')
+@patch('fusion.pipeline.module_a_detect')
+def test_rankings(mock_a, mock_b):
+    from contracts import LotDataset, Reading, ScreeningConfig, ModuleAResult, ModuleBResult
+    from fusion.pipeline import run_full_pipeline
+    
+    # 3 components, 3 parameters = 9 readings (0h and 24h)
+    readings = []
+    for c in ['C1', 'C2', 'C3']:
+        for p in ['iddq', 'leakage', 'prop_delay']:
+            readings.append(Reading(component_id=c, lot_id='LOT1', part_number='PN1', manufacturer='M', date_code='D', parameter=p, checkpoint_hour=0.0, value=1.0, unit='u'))
+            readings.append(Reading(component_id=c, lot_id='LOT1', part_number='PN1', manufacturer='M', date_code='D', parameter=p, checkpoint_hour=24.0, value=2.0, unit='u'))
+            
+    lot = LotDataset(lot_id='LOT1', part_number='PN1', status='COMPLETE', readings=readings, account_id='ACC')
+    config = ScreeningConfig()
+    
+    # Module A: C2 is worst (0.9), C1 is 0.8, C3 is 0.8. Ties broken by ID: C1 > C3?
+    # Wait, 'Rank 1 = most severe. Ties are broken by component_id ascending.'
+    # So C2=1, C1=2, C3=3.
+    mock_a.return_value = [
+        ModuleAResult(component_id='C1', lot_id='LOT1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.8, explainable_corroboration=False),
+        ModuleAResult(component_id='C2', lot_id='LOT1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.9, explainable_corroboration=False),
+        ModuleAResult(component_id='C3', lot_id='LOT1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.8, explainable_corroboration=False),
+    ]
+    
+    # Module B: C3 is worst (drift_rate/safety_slope = 3.0), C1 is 2.0, C2 has None.
+    # C2 should rank 3.
+    mock_b.return_value = [
+        ModuleBResult(component_id='C1', lot_id='LOT1', parameter='iddq', drift_rate=2.0, safety_slope=1.0, exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=False, predicted_168h=0, interval_lower=0, interval_upper=0, physics_baseline_prediction=0, physics_disagreement_gap=0, forecast_unavailable=False),
+        ModuleBResult(component_id='C2', lot_id='LOT1', parameter='iddq', drift_rate=None, safety_slope=None, exceeds_safety_slope=None, lower_bound_exceeds_safety_slope=None, predicted_168h=0, interval_lower=0, interval_upper=0, physics_baseline_prediction=0, physics_disagreement_gap=0, forecast_unavailable=True),
+        ModuleBResult(component_id='C3', lot_id='LOT1', parameter='iddq', drift_rate=6.0, safety_slope=2.0, exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=False, predicted_168h=0, interval_lower=0, interval_upper=0, physics_baseline_prediction=0, physics_disagreement_gap=0, forecast_unavailable=False),
+    ]
+    
+    res = run_full_pipeline(lot, config)
+    
+    # Check Module A
+    a_ranks = {a.component_id: a.module_a_rank for a in res.assessments}
+    assert a_ranks['C2'] == 1.0
+    assert a_ranks['C1'] == 2.0
+    assert a_ranks['C3'] == 3.0
+    
+    # Check Module B
+    b_ranks = {a.component_id: a.module_b_rank for a in res.assessments}
+    assert b_ranks['C3'] == 1.0
+    assert b_ranks['C1'] == 2.0
+    assert b_ranks['C2'] == 3.0

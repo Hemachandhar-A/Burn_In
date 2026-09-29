@@ -20,33 +20,45 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         if cid not in a_by_comp or r.combined_severity > a_by_comp[cid].combined_severity:
             a_by_comp[cid] = r
     
+    # module_b_predict is called
     b_inputs = [to_module_b_input(frame) for frame in frames]
     b_results = module_b_predict(b_inputs) if frames else []
-    b_by_comp = {}
-    for r in b_results:
-        cid = r.component_id
-        if cid not in b_by_comp:
-            b_by_comp[cid] = r
-        else:
-            current = b_by_comp[cid]
-            if r.exceeds_safety_slope and not current.exceeds_safety_slope:
-                b_by_comp[cid] = r
-            elif r.exceeds_safety_slope == current.exceeds_safety_slope:
-                if (r.drift_rate or 0) > (current.drift_rate or 0):
-                    b_by_comp[cid] = r
     
-    # rank components
-    a_scores = [(r.combined_severity, r.component_id) for r in a_results]
-    a_scores.sort(reverse=True)
+    # rank components for Module A: by combined_severity descending, component_id ascending
+    a_scores = [(-r.combined_severity, r.component_id) for r in a_by_comp.values()]
+    a_scores.sort()
     a_rank_map = {cid: float(rank) for rank, (_, cid) in enumerate(a_scores, start=1)}
     
-    # Module B rank: by drift_rate, handling None
-    b_scores = []
+    # rank components for Module B: by drift_rate / safety_slope, handling None
+    # A component with no usable value ranks after every component that has one.
+    # Group Module B results by component to find the max severity parameter per component.
+    b_max_severity = {}
+    b_worst_param = {}
     for r in b_results:
-        score = r.drift_rate if r.drift_rate is not None else -999999.0
-        b_scores.append((score, r.component_id))
-    b_scores.sort(reverse=True)
+        cid = r.component_id
+        if r.drift_rate is not None and r.safety_slope is not None and r.safety_slope > 0:
+            severity = r.drift_rate / r.safety_slope
+            if cid not in b_max_severity or severity > b_max_severity[cid]:
+                b_max_severity[cid] = severity
+                b_worst_param[cid] = r
+                
+    b_scores = []
+    # Identify unique components from b_results
+    b_cids = {r.component_id for r in b_results}
+    for cid in b_cids:
+        severity = b_max_severity.get(cid)
+        if severity is not None:
+            # -severity for descending, cid for ascending tie-break
+            b_scores.append((-severity, cid))
+        else:
+            # Component has no usable value, sort it after usable ones
+            b_scores.append((1e9, cid))
+            
+    b_scores.sort()
     b_rank_map = {cid: float(rank) for rank, (_, cid) in enumerate(b_scores, start=1)}
+    
+    # Update b_by_comp to match the worst parameter used for ranking
+    b_by_comp = b_worst_param
     
     # Identify unique components
     component_ids = set()
@@ -72,7 +84,7 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
             failures += 1
             
         if is_forecast:
-            if b_res and getattr(b_res, 'lower_bound_exceeds_safety_slope', False) is True:
+            if b_res and b_res.lower_bound_exceeds_safety_slope is True:
                 lower_bound_failures += 1
         else:
             if verdict == "REJECT":
@@ -97,6 +109,7 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
             component_id=cid,
             lot_id=lot.lot_id,
             verdict=verdict,
+            # Rank 0.0 is the "not ranked" sentinel. It may only appear with module_a_ran or module_b_ran False.
             module_a_rank=a_rank_map.get(cid, 0.0),
             module_b_rank=b_rank_map.get(cid, 0.0),
             worst_parameter=worst_parameter,
