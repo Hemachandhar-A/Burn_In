@@ -55,6 +55,7 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         
     assessments = []
     failures = 0
+    lower_bound_failures = 0
     total_parts = len(component_ids)
     
     for cid in sorted(component_ids):
@@ -69,6 +70,13 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         
         if verdict == "REJECT" or (b_res and b_res.exceeds_safety_slope):
             failures += 1
+            
+        if is_forecast:
+            if b_res and getattr(b_res, 'lower_bound_exceeds_safety_slope', False) is True:
+                lower_bound_failures += 1
+        else:
+            if verdict == "REJECT":
+                lower_bound_failures += 1
             
         worst_parameter = comp_frames[0].parameter
         if a_res and a_res.severity_tier != "PASS":
@@ -103,16 +111,11 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
     pda_result = (failures / total_parts) if total_parts > 0 else 0.0
     pda_exceeded = pda_result >= config.pda_threshold
     
-    # Forecast PDA: if lower bound exceeds PDA limit?
-    # Wait, the spec says "STOP_RUN_RECOMMENDED fires only when the lower bound of the forecast's calibrated interval already exceeds the PDA limit"
-    # Does this mean lot-level forecast?
-    # "5. Run the same PDA rollup on In-Progress lots, using Module B's early per-part predictions instead of final measured outcomes, producing a distinctly-labeled forecast"
+    lower_bound_pda = (lower_bound_failures / total_parts) if total_parts > 0 else 0.0
+    lower_bound_pda_exceeded = lower_bound_pda >= config.pda_threshold
     
     if is_forecast:
-        # How to calculate forecast lower bound?
-        # Maybe we should use b_res.interval_lower? But PDA is lot-level. 
-        # Wait, if `exceeds_safety_slope` means early reject, it counts towards PDA failures.
-        if pda_exceeded:
+        if lower_bound_pda_exceeded:
             lot_verdict = "STOP_RUN_RECOMMENDED"
         elif failures > 0:
             lot_verdict = "LOT_AT_RISK"

@@ -142,3 +142,43 @@ def test_run_full_pipeline_stub_edge_cases():
     assert len(result_no_id.assessments) == 0
     assert result_no_id.disposition.lot_id == ""
     assert result_no_id.disposition.lot_id == ""
+
+from unittest.mock import patch
+from contracts import ModuleBResult
+
+@patch('fusion.pipeline.module_b_predict')
+def test_stop_run_recommended_lower_bound(mock_predict):
+    from contracts import LotDataset, Reading, ScreeningConfig
+    # We will test 3 conditions: (a) lower bound exceeds, (b) point exceeds but not lower bound, (c) all None
+    lot = LotDataset(
+        lot_id="LOT-FRC",
+        part_number="PN-ABC",
+        status="IN_PROGRESS",
+        readings=[
+            Reading(component_id="C1", lot_id="LOT-FRC", part_number="PN-ABC", manufacturer="M", date_code="D", parameter="p", checkpoint_hour=0.0, value=1.0, unit="uA"),
+            Reading(component_id="C1", lot_id="LOT-FRC", part_number="PN-ABC", manufacturer="M", date_code="D", parameter="p", checkpoint_hour=24.0, value=1.5, unit="uA"),
+        ],
+        account_id="ACC-001"
+    )
+    config = ScreeningConfig(pda_threshold=0.5)
+
+    # (a) lower bound exceeds
+    mock_predict.return_value = [
+        ModuleBResult(component_id="C1", lot_id="LOT-FRC", parameter="p", drift_rate=2.0, exceeds_safety_slope=True, safety_slope=1.0, lower_bound_exceeds_safety_slope=True, predicted_168h=5.0, interval_lower=4.0, interval_upper=6.0, physics_baseline_prediction=1.0, physics_disagreement_gap=0.0, forecast_unavailable=False)
+    ]
+    res_a = run_full_pipeline(lot, config)
+    assert res_a.disposition.verdict == "STOP_RUN_RECOMMENDED"
+
+    # (b) point exceeds but not lower bound -> LOT_AT_RISK
+    mock_predict.return_value = [
+        ModuleBResult(component_id="C1", lot_id="LOT-FRC", parameter="p", drift_rate=2.0, exceeds_safety_slope=True, safety_slope=1.0, lower_bound_exceeds_safety_slope=False, predicted_168h=5.0, interval_lower=4.0, interval_upper=6.0, physics_baseline_prediction=1.0, physics_disagreement_gap=0.0, forecast_unavailable=False)
+    ]
+    res_b = run_full_pipeline(lot, config)
+    assert res_b.disposition.verdict == "LOT_AT_RISK"
+
+    # (c) all None -> LOT_ON_TRACK
+    mock_predict.return_value = [
+        ModuleBResult(component_id="C1", lot_id="LOT-FRC", parameter="p", drift_rate=None, exceeds_safety_slope=None, safety_slope=None, lower_bound_exceeds_safety_slope=None, predicted_168h=None, interval_lower=None, interval_upper=None, physics_baseline_prediction=None, physics_disagreement_gap=None, forecast_unavailable=True)
+    ]
+    res_c = run_full_pipeline(lot, config)
+    assert res_c.disposition.verdict == "LOT_ON_TRACK"
