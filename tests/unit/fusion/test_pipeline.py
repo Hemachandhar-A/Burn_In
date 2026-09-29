@@ -229,3 +229,64 @@ def test_rankings(mock_a, mock_b):
     assert b_ranks['C3'] == 1.0
     assert b_ranks['C1'] == 2.0
     assert b_ranks['C2'] == 3.0
+
+@patch('fusion.pipeline.module_b_predict')
+@patch('fusion.pipeline.module_a_detect')
+def test_lot_level_verdict_mapping(mock_a, mock_b):
+    from contracts import LotDataset, Reading, ScreeningConfig, ModuleAResult, ModuleBResult
+    from fusion.pipeline import run_full_pipeline
+    
+    # helper to create a 2-component lot
+    def build_lot():
+        readings = []
+        for c in ['C1', 'C2']:
+            readings.append(Reading(component_id=c, lot_id='L1', part_number='PN1', manufacturer='M', date_code='D', parameter='iddq', checkpoint_hour=0.0, value=1.0, unit='u'))
+            readings.append(Reading(component_id=c, lot_id='L1', part_number='PN1', manufacturer='M', date_code='D', parameter='iddq', checkpoint_hour=24.0, value=2.0, unit='u'))
+        return LotDataset(lot_id='L1', part_number='PN1', status='COMPLETE', readings=readings, account_id='ACC')
+    
+    config = ScreeningConfig(pda_threshold=0.5) # 1 part failure = 0.5 (REJECT)
+
+    # Case 1: PDA at or over threshold (both parts REJECT) -> REJECT
+    lot1 = build_lot()
+    mock_a.return_value = [
+        ModuleAResult(component_id='C1', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='REJECT', severity_cap_reason=None, combined_severity=0.9, explainable_corroboration=True),
+        ModuleAResult(component_id='C2', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='REJECT', severity_cap_reason=None, combined_severity=0.9, explainable_corroboration=True)
+    ]
+    mock_b.return_value = []
+    r1 = run_full_pipeline(lot1, config)
+    assert r1.disposition.verdict == 'REJECT'
+    assert r1.disposition.pda_result == 1.0
+    
+    # Case 2: PDA below threshold, at least one WATCH part -> HOLD
+    config_low = ScreeningConfig(pda_threshold=1.0) # > 0.5 so PDA not exceeded
+    lot2 = build_lot()
+    mock_a.return_value = [
+        ModuleAResult(component_id='C1', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.1, explainable_corroboration=False),
+        ModuleAResult(component_id='C2', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='REVIEW', severity_cap_reason=None, combined_severity=0.5, explainable_corroboration=True)
+    ]
+    mock_b.return_value = []
+    r2 = run_full_pipeline(lot2, config_low)
+    assert r2.disposition.verdict == 'HOLD'
+    assert r2.disposition.pda_result == 0.0 # WATCH does not count as failure
+    
+    # Case 3: PDA below threshold, none -> ACCEPT
+    lot3 = build_lot()
+    mock_a.return_value = [
+        ModuleAResult(component_id='C1', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.1, explainable_corroboration=False),
+        ModuleAResult(component_id='C2', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.1, explainable_corroboration=False)
+    ]
+    mock_b.return_value = []
+    r3 = run_full_pipeline(lot3, config_low)
+    assert r3.disposition.verdict == 'ACCEPT'
+    assert r3.disposition.pda_result == 0.0
+    
+    # Case 4: PDA below threshold, ONLY REJECT parts -> ACCEPT
+    lot4 = build_lot()
+    mock_a.return_value = [
+        ModuleAResult(component_id='C1', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='PASS', severity_cap_reason=None, combined_severity=0.1, explainable_corroboration=False),
+        ModuleAResult(component_id='C2', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod':False}, direction='above_median', severity_tier='REJECT', severity_cap_reason=None, combined_severity=0.9, explainable_corroboration=True)
+    ]
+    mock_b.return_value = []
+    r4 = run_full_pipeline(lot4, config_low) # PDA is 0.5, threshold is 1.0 => not exceeded
+    assert r4.disposition.verdict == 'ACCEPT'
+    assert r4.disposition.pda_result == 0.5
