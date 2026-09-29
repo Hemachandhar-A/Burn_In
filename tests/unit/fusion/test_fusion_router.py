@@ -1,11 +1,37 @@
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import patch
-from api.main import app
+from fusion.router import router as fusion_router
 from storage import repository
 from datetime import datetime, UTC
 
+app = FastAPI()
+app.include_router(fusion_router)
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_db(tmp_path, monkeypatch):
+    """Each test points fusion/router.py's storage calls at its own temp SQLite file,
+    same pattern as tests/integration/test_golden_module_a.py:25-37 - monkeypatching
+    engine/SessionLocal in place works across every module that imports storage.repository's
+    functions directly (fusion/router.py, capa/, identity/), unlike importlib.reload which only
+    updates names bound at reload time.
+    """
+    from storage import database
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    test_engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
+
+    monkeypatch.setattr(database, "engine", test_engine)
+    monkeypatch.setattr(database, "SessionLocal", TestSessionLocal)
+    monkeypatch.setattr(repository, "SessionLocal", TestSessionLocal)
+
+    repository.init_db()
+
 
 import uuid
 def test_get_lot_summary_no_live_recompute():

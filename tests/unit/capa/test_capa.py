@@ -1,7 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from api.main import app
-from storage.database import Base, engine, SessionLocal
+from storage import repository
 from storage.repository import save_account, save_project, save_analysis_run, log_event
 from identity.auth import create_access_token
 from datetime import datetime, UTC
@@ -9,14 +8,32 @@ import csv
 from io import StringIO
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    
+def setup_db(tmp_path, monkeypatch):
+    """Each test points every storage.repository call at its own temp SQLite file. Monkeypatching
+    engine/SessionLocal in place (same pattern as tests/integration/test_golden_module_a.py:25-37)
+    is required here, not importlib.reload: capa/router.py, capa/logic.py, identity/auth.py and
+    identity/router.py all do `from storage.repository import ...` at module level, and reload only
+    rebinds names in the module that calls it - it would leave those four modules' own bound names
+    stale. Monkeypatching the shared SessionLocal that every one of those already-imported functions
+    reads at call time fixes every call site without touching those modules.
+    """
+    from storage import database
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    test_engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
+
+    monkeypatch.setattr(database, "engine", test_engine)
+    monkeypatch.setattr(database, "SessionLocal", TestSessionLocal)
+    monkeypatch.setattr(repository, "SessionLocal", TestSessionLocal)
+
+    repository.init_db()
+
     # Create test accounts
     save_account("account1", "User 1", "Quality Engineer", "$argon2id$v=19$m=65536,t=3,p=4$D/F5HjX44qVJQc5y1jNqFw$j92rKxR4q3b+Q/1Wc9B/f4D2a1d2e3f4g5h6i7j8k9")
     save_account("account2", "User 2", "Reliability Engineer", "$argon2id$v=19$m=65536,t=3,p=4$D/F5HjX44qVJQc5y1jNqFw$j92rKxR4q3b+Q/1Wc9B/f4D2a1d2e3f4g5h6i7j8k9")
-    
+
     # Create test project
     save_project("test_proj", "lot_001", "PN123", datetime.now(UTC), "account1")
     from contracts import AnalysisResults, LotDisposition
@@ -25,9 +42,8 @@ def setup_db():
         disposition=LotDisposition(lot_id="lot_001", status="COMPLETE", pda_result=0.0, verdict="ACCEPT", is_forecast=False)
     )
     save_analysis_run("test_proj", {}, res)
-    
+
     yield
-    Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def client():
