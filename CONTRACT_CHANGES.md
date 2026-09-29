@@ -360,3 +360,10 @@ Entry format:
 - Why it matters: To log the timing flag in the audit log via log_event(), we need a valid event_type. We cannot add disposition to _EVENT_TYPES without modifying storage/repository.py (which P5 doesn't own).
 - Proposed fix: Add disposition to _EVENT_TYPES in storage/repository.py. Until resolved, P5.5 temporarily uses config_change to log the disposition timing flag.
 - Status: OPEN
+
+---
+
+## 2026-09-27 P5.6 - CAPA endpoints are not in contracts.py
+- Missing/wrong: CAPA endpoints are not in contracts.py.
+- Proposed fix: Created TEMP_CapaRecord and TEMP_ResolveRequest in capa.models, mapped to GET /capa, POST /capa/{id}/resolve, and GET /audit/export.
+- Status: OPEN
