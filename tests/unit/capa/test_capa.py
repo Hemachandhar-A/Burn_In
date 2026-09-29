@@ -19,7 +19,12 @@ def setup_db():
     
     # Create test project
     save_project("test_proj", "lot_001", "PN123", datetime.now(UTC), "account1")
-    save_analysis_run("test_proj", {}, {})
+    from contracts import AnalysisResults, LotDisposition
+    res = AnalysisResults(
+        assessments=[],
+        disposition=LotDisposition(lot_id="lot_001", status="COMPLETE", pda_result=0.0, verdict="ACCEPT", is_forecast=False)
+    )
+    save_analysis_run("test_proj", {}, res)
     
     yield
     Base.metadata.drop_all(bind=engine)

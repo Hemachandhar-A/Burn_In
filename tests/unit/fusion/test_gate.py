@@ -29,6 +29,7 @@ def test_explainability_gate_caps_unexplainable_reject():
         physics_disagreement_gap=None,
         drift_rate=None,
         exceeds_safety_slope=False, # B is PASS
+        lower_bound_exceeds_safety_slope=False,
         safety_slope=None,
         forecast_unavailable=False
     )
@@ -64,6 +65,7 @@ def test_composability_gate_b_reject_overrides_a_cap():
         physics_disagreement_gap=None,
         drift_rate=None,
         exceeds_safety_slope=True, # B is REJECT
+        lower_bound_exceeds_safety_slope=False,
         safety_slope=None,
         forecast_unavailable=False
     )
@@ -100,6 +102,7 @@ def test_direction_awareness_cap_preserved():
         physics_disagreement_gap=None,
         drift_rate=None,
         exceeds_safety_slope=False,
+        lower_bound_exceeds_safety_slope=False,
         safety_slope=None,
         forecast_unavailable=False
     )
@@ -135,6 +138,7 @@ def test_both_pass():
         physics_disagreement_gap=None,
         drift_rate=None,
         exceeds_safety_slope=False,
+        lower_bound_exceeds_safety_slope=False,
         safety_slope=None,
         forecast_unavailable=False
     )
