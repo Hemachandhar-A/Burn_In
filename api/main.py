@@ -8,11 +8,12 @@ session is not a reachable route. The StaticFiles mount for the built frontend i
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fusion.router import router as fusion_router
+from identity.router import router as identity_router
 from ingestion.router import router as ingestion_router
 from report.router import router as report_router
 from storage.repository import init_db
 from storage.router import router as storage_router
-from fusion.router import router as fusion_router
 
 VITE_DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
@@ -37,6 +38,7 @@ app.include_router(ingestion_router)
 app.include_router(storage_router)
 app.include_router(report_router)
 app.include_router(fusion_router)
+app.include_router(identity_router)
 
 
 @app.get("/health", tags=["meta"])
