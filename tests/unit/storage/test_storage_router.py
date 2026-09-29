@@ -6,8 +6,16 @@ import importlib
 from datetime import UTC, datetime
 
 import pytest
+
+from contracts import AnalysisResults, LotDisposition
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+
+_EMPTY_RESULTS = AnalysisResults(
+    assessments=[],
+    disposition=LotDisposition(lot_id="L", status="IN_PROGRESS", pda_result=0.0, verdict="LOT_ON_TRACK", is_forecast=True),
+)
 
 
 @pytest.fixture()
@@ -127,7 +135,7 @@ def test_get_disposition_signoffs_returns_them_in_order(client):
 
     repository.save_project(project_id="proj-3", lot_id="L3", part_number="PN-300", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     repository.save_analysis_run(
-        project_id="proj-3", raw_data={}, results={"per_component": {}}
+        project_id="proj-3", raw_data={}, results=_EMPTY_RESULTS
     )
     run = repository.query_latest_project_data("proj-3")
     repository.save_disposition_signoff(
@@ -152,7 +160,7 @@ def test_get_disposition_signoffs_filters_by_component_id(client):
     from storage import repository
 
     repository.save_project(project_id="proj-4", lot_id="L4", part_number="PN-400", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
-    repository.save_analysis_run(project_id="proj-4", raw_data={}, results={"per_component": {}})
+    repository.save_analysis_run(project_id="proj-4", raw_data={}, results=_EMPTY_RESULTS)
     run = repository.query_latest_project_data("proj-4")
     repository.save_disposition_signoff(
         project_id="proj-4", component_id="C1", analysis_run_id=run.analysis_run_id,
@@ -212,8 +220,8 @@ def test_get_all_disposition_signoffs_spans_multiple_projects(client):
 
     repository.save_project(project_id="proj-5", lot_id="L5", part_number="PN-500", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
     repository.save_project(project_id="proj-6", lot_id="L6", part_number="PN-600", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
-    repository.save_analysis_run(project_id="proj-5", raw_data={}, results={"per_component": {}})
-    repository.save_analysis_run(project_id="proj-6", raw_data={}, results={"per_component": {}})
+    repository.save_analysis_run(project_id="proj-5", raw_data={}, results=_EMPTY_RESULTS)
+    repository.save_analysis_run(project_id="proj-6", raw_data={}, results=_EMPTY_RESULTS)
     run5 = repository.query_latest_project_data("proj-5")
     run6 = repository.query_latest_project_data("proj-6")
     repository.save_disposition_signoff(
@@ -236,7 +244,7 @@ def test_get_all_disposition_signoffs_filters_by_component_id(client):
     from storage import repository
 
     repository.save_project(project_id="proj-7", lot_id="L7", part_number="PN-700", test_date=datetime(2026, 8, 1, tzinfo=UTC), created_by="a.sharma")
-    repository.save_analysis_run(project_id="proj-7", raw_data={}, results={"per_component": {}})
+    repository.save_analysis_run(project_id="proj-7", raw_data={}, results=_EMPTY_RESULTS)
     run7 = repository.query_latest_project_data("proj-7")
     repository.save_disposition_signoff(
         project_id="proj-7", component_id="C1", analysis_run_id=run7.analysis_run_id,

@@ -11,6 +11,8 @@ import importlib
 import io
 import json
 
+from contracts import AnalysisResults
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -225,11 +227,12 @@ def test_post_lots_creates_a_project_row_and_persists_an_analysis_run():
 
     runs = repository.query_project_data("L1")
     assert len(runs) == 1
-    results = json.loads(runs[0].results_json)
+    results = AnalysisResults.model_validate_json(runs[0].results_json)
     # fusion.run_full_pipeline is P5's stub - fixed "COMP-001"/"PASS", not derived from
     # this lot's actual readings; this test only pins that the stub's output round-trips.
-    assert results["per_component"]["COMP-001"]["verdict"] == "PASS"
-    assert results["lot_disposition"]["verdict"] in {"LOT_ON_TRACK", "ACCEPT"}
+    assert results.assessments[0].component_id == "COMP-001"
+    assert results.assessments[0].verdict == "PASS"
+    assert results.disposition.verdict in {"LOT_ON_TRACK", "ACCEPT"}
 
 
 def test_post_lots_logs_an_analysis_run_event():
@@ -277,8 +280,8 @@ def test_demo_lot_runs_the_pipeline_and_persists_a_real_analysis_run():
     assert project is not None and project.part_number == "DEMO-PN"
     run = repository.query_latest_project_data(lot_id)
     assert run is not None
-    stored = json.loads(run.results_json)
-    assert stored["per_component"] and stored["lot_disposition"]["verdict"]  # a real AnalysisResults, persisted
+    stored = AnalysisResults.model_validate_json(run.results_json)  # a real AnalysisResults, persisted
+    assert stored.assessments and stored.disposition.verdict
     assert json.loads(run.raw_data)["lot_id"] == lot_id
     assert "analysis_run" in {e.event_type for e in repository.query_events(lot_id)}
 

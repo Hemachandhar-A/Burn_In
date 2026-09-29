@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from contracts import AnalysisResults, LotDisposition, RiskAssessment
+
 
 @pytest.fixture()
 def repository(tmp_path, monkeypatch):
@@ -47,19 +49,20 @@ def _lot_dataset(lot_id="L1", part_number="PN-100", status="IN_PROGRESS", accoun
 
 def _results(verdicts=None):
     verdicts = verdicts or {"C0": "PASS", "C1": "WATCH", "C2": "REJECT"}
-    return {
-        "per_component": {
-            cid: {
-                "verdict": v, "module_a_ran": True, "module_b_ran": False,
-                "predicted_168h": None, "actual_168h": None,
-                "explanation_sentence": f"{cid} flagged by robust z-score." if v != "PASS" else None,
-            }
+    return AnalysisResults(
+        assessments=[
+            RiskAssessment(
+                component_id=cid, lot_id="L1", verdict=v, module_a_rank=0.5, module_b_rank=0.5,
+                worst_parameter="iddq", module_a_ran=True, module_b_ran=False,
+                predicted_168h=None, actual_168h=None,
+                explanation_sentence=f"{cid} flagged by robust z-score." if v != "PASS" else None,
+            )
             for cid, v in verdicts.items()
-        },
-        "lot_disposition": {
-            "pda_result": 0.02, "verdict": "LOT_ON_TRACK", "is_forecast": True, "status": "IN_PROGRESS",
-        },
-    }
+        ],
+        disposition=LotDisposition(
+            lot_id="L1", status="IN_PROGRESS", pda_result=0.02, verdict="LOT_ON_TRACK", is_forecast=True,
+        ),
+    )
 
 
 def _seed_project(repository, project_id="proj-1", lot_id="L1", part_number="PN-100"):
@@ -163,21 +166,6 @@ def test_pda_result_available_when_lot_disposition_present(repository):
     assert report.pda_result == 0.02
     assert report.overall_disposition == "LOT_ON_TRACK"
     assert report.is_forecast is True
-
-
-def test_pda_not_available_when_lot_disposition_absent(repository):
-    _seed_project(repository)
-    lot = _lot_dataset()
-    results = _results()
-    del results["lot_disposition"]
-    repository.save_analysis_run(project_id="proj-1", raw_data=lot.model_dump(mode="json"), results=results)
-
-    from report import data
-
-    report = data.build_report_data("proj-1")
-    assert report.pda_available is False
-    assert report.pda_result is None
-    assert report.overall_disposition is None
 
 
 # --- delta table (recomputed via features.compute) -----------------------------------

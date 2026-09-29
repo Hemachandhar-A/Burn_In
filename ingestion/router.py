@@ -23,9 +23,9 @@ to "now" if the lot's first upload didn't supply one.
 
 Session P2 follow-up: the `RiskAssessment`/`AnalysisResults` gap logged by P2.6/P2.7/P2.5 was
 resolved on `develop` (`RiskAssessment` now carries `module_a_ran`, `module_b_ran`,
-`predicted_168h`, `actual_168h`, `explanation_sentence` per component). `_analysis_results_to_dict`
-reads all five straight off each `RiskAssessment` instance - no hardcoding or computation here;
-whatever the fusion pipeline (still stub-only) puts on the assessment is what gets persisted.
+`predicted_168h`, `actual_168h`, `explanation_sentence` per component). `AnalysisResults` is
+persisted as-is (`results.model_dump_json()` in the repository) - no reshaping step, so module ranks and
+`worst_parameter` reach `GET /lots/{lot_id}` intact.
 """
 import json
 import uuid
@@ -74,28 +74,6 @@ def _ensure_project(dataset: LotDataset, account_id: str, test_date: str | None)
     )
 
 
-def _analysis_results_to_dict(results: AnalysisResults) -> dict:
-    return {
-        "per_component": {
-            assessment.component_id: {
-                "verdict": assessment.verdict,
-                "module_a_ran": assessment.module_a_ran,
-                "module_b_ran": assessment.module_b_ran,
-                "predicted_168h": assessment.predicted_168h,
-                "actual_168h": assessment.actual_168h,
-                "explanation_sentence": assessment.explanation_sentence,
-            }
-            for assessment in results.assessments
-        },
-        "lot_disposition": {
-            "pda_result": results.disposition.pda_result,
-            "verdict": results.disposition.verdict,
-            "is_forecast": results.disposition.is_forecast,
-            "status": results.disposition.status,
-        },
-    }
-
-
 def _run_pipeline_and_persist(
     dataset: LotDataset, account_id: str, test_date: str | None = None
 ) -> None:
@@ -104,7 +82,7 @@ def _run_pipeline_and_persist(
     repository.save_analysis_run(
         project_id=dataset.lot_id,
         raw_data=dataset.model_dump(mode="json"),
-        results=_analysis_results_to_dict(results),
+        results=results,
     )
     repository.log_event(
         project_id=dataset.lot_id, account_id=account_id, event_type="analysis_run",
