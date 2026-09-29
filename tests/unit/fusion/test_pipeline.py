@@ -290,3 +290,126 @@ def test_lot_level_verdict_mapping(mock_a, mock_b):
     r4 = run_full_pipeline(lot4, config_low) # PDA is 0.5, threshold is 1.0 => not exceeded
     assert r4.disposition.verdict == 'ACCEPT'
     assert r4.disposition.pda_result == 0.5
+
+@patch('fusion.pipeline.module_b_predict')
+@patch('fusion.pipeline.module_a_detect')
+def test_multi_parameter_rank_with_real_per_component_dedup(mock_a, mock_b):
+    """Item B: test_rankings only ever gives each component a single (fake) parameter result,
+    so it never exercises the per-component dedup across multiple real parameters - the exact
+    gap that let the old dict-collision ranking bug (ranking by frame/parameter count, not by
+    component) through undetected. This test gives every one of 4 components a result for all
+    3 parameters, for both modules, and picks the worst per component deliberately so the worst
+    parameter is not always the one that happens to sort last alphabetically.
+    """
+    from contracts import LotDataset, Reading, ScreeningConfig, ModuleAResult, ModuleBResult
+    from fusion.pipeline import run_full_pipeline
+
+    components = ['C1', 'C2', 'C3', 'C4']
+    parameters = ['iddq', 'leakage', 'prop_delay']
+
+    readings = []
+    for c in components:
+        for p in parameters:
+            readings.append(Reading(component_id=c, lot_id='LOT-MP', part_number='PN1', manufacturer='M', date_code='D', parameter=p, checkpoint_hour=0.0, value=1.0, unit='u'))
+            readings.append(Reading(component_id=c, lot_id='LOT-MP', part_number='PN1', manufacturer='M', date_code='D', parameter=p, checkpoint_hour=24.0, value=2.0, unit='u'))
+    lot = LotDataset(lot_id='LOT-MP', part_number='PN1', status='COMPLETE', readings=readings, account_id='ACC')
+    config = ScreeningConfig()
+
+    def a_result(cid, param, severity, tier):
+        return ModuleAResult(
+            component_id=cid, lot_id='LOT-MP', parameter=param,
+            robust_z=0, mcd_distance=0, isolation_forest_score=0, ecod_score=0,
+            explainable_tags={'ecod': False}, direction='above_median',
+            severity_tier=tier, severity_cap_reason=None,
+            combined_severity=severity, explainable_corroboration=True,
+        )
+
+    # Module A combined_severity per (component, parameter). Worst (max) per component marked WORST;
+    # its severity_tier is REVIEW (not PASS) so fusion/pipeline.py's worst_parameter override fires.
+    # C1's worst is "leakage" and C3's worst is "iddq" - neither is "prop_delay", the alphabetically
+    # last parameter - so the worst parameter is not always the one that sorts last.
+    # combined_severity table:
+    #   C1: iddq=0.3, leakage=0.85 (WORST), prop_delay=0.5
+    #   C2: iddq=0.2, leakage=0.3,          prop_delay=0.85 (WORST)  <- ties C1 at 0.85
+    #   C3: iddq=0.95 (WORST), leakage=0.1, prop_delay=0.4
+    #   C4: iddq=0.05, leakage=0.1,         prop_delay=0.15 (WORST)
+    mock_a.return_value = [
+        a_result('C1', 'iddq', 0.3, 'PASS'),
+        a_result('C1', 'leakage', 0.85, 'REVIEW'),
+        a_result('C1', 'prop_delay', 0.5, 'PASS'),
+        a_result('C2', 'iddq', 0.2, 'PASS'),
+        a_result('C2', 'leakage', 0.3, 'PASS'),
+        a_result('C2', 'prop_delay', 0.85, 'REVIEW'),
+        a_result('C3', 'iddq', 0.95, 'REVIEW'),
+        a_result('C3', 'leakage', 0.1, 'PASS'),
+        a_result('C3', 'prop_delay', 0.4, 'PASS'),
+        a_result('C4', 'iddq', 0.05, 'PASS'),
+        a_result('C4', 'leakage', 0.1, 'PASS'),
+        a_result('C4', 'prop_delay', 0.15, 'REVIEW'),
+    ]
+
+    def b_result(cid, param, drift_rate, safety_slope):
+        return ModuleBResult(
+            component_id=cid, lot_id='LOT-MP', parameter=param,
+            drift_rate=drift_rate, safety_slope=safety_slope,
+            exceeds_safety_slope=False, lower_bound_exceeds_safety_slope=False,
+            predicted_168h=0, interval_lower=0, interval_upper=0,
+            physics_baseline_prediction=0, physics_disagreement_gap=0,
+            forecast_unavailable=False,
+        )
+
+    # Module B drift_rate/safety_slope per (component, parameter). Worst (max drift_rate/safety_slope
+    # ratio) per component marked WORST below. Chosen so ranking by ratio gives the OPPOSITE order to
+    # ranking by raw drift_rate alone - this is exactly the distinction fusion/pipeline.py:39-43 makes
+    # (severity = drift_rate / safety_slope, not drift_rate on its own):
+    #   ratio order (desc):       C4(10.0) > C2(8.0) > C3(6.0) > C1(1.0)
+    #   raw drift_rate order (desc, using each component's own worst-by-ratio row): C1(20.0) > C2(16.0) > C3(12.0) > C4(2.0)
+    mock_b.return_value = [
+        b_result('C1', 'iddq', 20.0, 20.0),        # ratio 1.0  (WORST for C1)
+        b_result('C1', 'leakage', 2.0, 4.0),       # ratio 0.5
+        b_result('C1', 'prop_delay', 1.0, 4.0),    # ratio 0.25
+        b_result('C2', 'iddq', 1.0, 2.0),          # ratio 0.5
+        b_result('C2', 'leakage', 16.0, 2.0),      # ratio 8.0  (WORST for C2)
+        b_result('C2', 'prop_delay', 1.0, 5.0),    # ratio 0.2
+        b_result('C3', 'iddq', 1.0, 2.0),          # ratio 0.5
+        b_result('C3', 'leakage', 1.0, 2.0),       # ratio 0.5
+        b_result('C3', 'prop_delay', 12.0, 2.0),   # ratio 6.0  (WORST for C3)
+        b_result('C4', 'iddq', 2.0, 0.2),          # ratio 10.0 (WORST for C4)
+        b_result('C4', 'leakage', 1.0, 2.0),       # ratio 0.5
+        b_result('C4', 'prop_delay', 1.0, 2.0),    # ratio 0.5
+    ]
+
+    res = run_full_pipeline(lot, config)
+    by_id = {a.component_id: a for a in res.assessments}
+
+    # Exactly one assessment per component.
+    assert set(by_id.keys()) == set(components)
+
+    a_ranks = {cid: a.module_a_rank for cid, a in by_id.items()}
+    b_ranks = {cid: a.module_b_rank for cid, a in by_id.items()}
+
+    # Ranks unique, all in 1..N, max rank == N, for both modules.
+    for ranks in (a_ranks, b_ranks):
+        values = list(ranks.values())
+        assert len(set(values)) == len(components), f"ranks not unique: {ranks}"
+        assert all(1.0 <= r <= len(components) for r in values), f"rank out of 1..{len(components)}: {ranks}"
+        assert max(values) == float(len(components))
+
+    # Explicit expected Module A order (combined_severity desc, ties broken by component_id asc).
+    # C3=0.95 highest; C1 and C2 tie at 0.85 -> C1 (< C2) ranks first; C4=0.15 lowest.
+    expected_module_a_order = ['C3', 'C1', 'C2', 'C4']
+    actual_module_a_order = sorted(components, key=lambda cid: a_ranks[cid])
+    assert actual_module_a_order == expected_module_a_order
+
+    # Explicit expected Module B order (drift_rate/safety_slope ratio desc). No tie here.
+    expected_module_b_order = ['C4', 'C2', 'C3', 'C1']
+    actual_module_b_order = sorted(components, key=lambda cid: b_ranks[cid])
+    assert actual_module_b_order == expected_module_b_order
+
+    # The displayed worst_parameter is the parameter that produced the Module A rank (its
+    # severity_tier is REVIEW, not PASS, so fusion/pipeline.py's override always fires here).
+    expected_worst_parameter = {'C1': 'leakage', 'C2': 'prop_delay', 'C3': 'iddq', 'C4': 'prop_delay'}
+    for cid, expected_param in expected_worst_parameter.items():
+        assert by_id[cid].worst_parameter == expected_param, (
+            f"{cid}: expected worst_parameter {expected_param!r}, got {by_id[cid].worst_parameter!r}"
+        )
