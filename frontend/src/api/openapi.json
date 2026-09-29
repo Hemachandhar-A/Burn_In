@@ -154,6 +154,29 @@
         "title": "DispositionRecord",
         "type": "object"
       },
+      "DispositionRequest": {
+        "properties": {
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ACCEPT",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "rationale"
+        ],
+        "title": "DispositionRequest",
+        "type": "object"
+      },
       "EventResponse": {
         "properties": {
           "account_id": {
@@ -213,6 +236,89 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LoginRequest": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "pin": {
+            "title": "Pin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "pin"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "LotDisposition": {
+        "properties": {
+          "is_forecast": {
+            "title": "Is Forecast",
+            "type": "boolean"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "pda_result": {
+            "title": "Pda Result",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "IN_PROGRESS",
+              "COMPLETE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "LOT_ON_TRACK",
+              "LOT_AT_RISK",
+              "STOP_RUN_RECOMMENDED",
+              "ACCEPT",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lot_id",
+          "status",
+          "pda_result",
+          "verdict",
+          "is_forecast"
+        ],
+        "title": "LotDisposition",
+        "type": "object"
+      },
+      "LotSummaryResponse": {
+        "properties": {
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/RiskAssessment"
+            },
+            "title": "Assessments",
+            "type": "array"
+          },
+          "disposition": {
+            "$ref": "#/components/schemas/LotDisposition"
+          }
+        },
+        "required": [
+          "assessments",
+          "disposition"
+        ],
+        "title": "LotSummaryResponse",
+        "type": "object"
+      },
       "LotUploadResponse": {
         "properties": {
           "insufficient_data_components": {
@@ -253,6 +359,46 @@
         "title": "LotUploadResponse",
         "type": "object"
       },
+      "PendingSettingChange": {
+        "properties": {
+          "field": {
+            "enum": [
+              "fn_fp_cost_ratio",
+              "pda_threshold",
+              "confirmed_outcome_fn_ceiling"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "proposed_by": {
+            "title": "Proposed By",
+            "type": "string"
+          },
+          "proposed_value": {
+            "title": "Proposed Value",
+            "type": "number"
+          },
+          "signed_off_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed Off By"
+          }
+        },
+        "required": [
+          "field",
+          "proposed_value",
+          "proposed_by",
+          "signed_off_by"
+        ],
+        "title": "PendingSettingChange",
+        "type": "object"
+      },
       "ProjectSummary": {
         "properties": {
           "created_at": {
@@ -285,6 +431,196 @@
           "created_by"
         ],
         "title": "ProjectSummary",
+        "type": "object"
+      },
+      "RiskAssessment": {
+        "properties": {
+          "actual_168h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual 168H"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "explanation_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Sentence"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "module_a_ran": {
+            "title": "Module A Ran",
+            "type": "boolean"
+          },
+          "module_a_rank": {
+            "title": "Module A Rank",
+            "type": "number"
+          },
+          "module_b_ran": {
+            "title": "Module B Ran",
+            "type": "boolean"
+          },
+          "module_b_rank": {
+            "title": "Module B Rank",
+            "type": "number"
+          },
+          "predicted_168h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted 168H"
+          },
+          "verdict": {
+            "enum": [
+              "PASS",
+              "WATCH",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "worst_parameter": {
+            "title": "Worst Parameter",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "lot_id",
+          "verdict",
+          "module_a_rank",
+          "module_b_rank",
+          "worst_parameter",
+          "module_a_ran",
+          "module_b_ran",
+          "predicted_168h",
+          "actual_168h",
+          "explanation_sentence"
+        ],
+        "title": "RiskAssessment",
+        "type": "object"
+      },
+      "SettingsProposalRequest": {
+        "properties": {
+          "field": {
+            "enum": [
+              "fn_fp_cost_ratio",
+              "pda_threshold",
+              "confirmed_outcome_fn_ceiling"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "proposed_value": {
+            "title": "Proposed Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "field",
+          "proposed_value"
+        ],
+        "title": "SettingsProposalRequest",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "confirmed_outcome_fn_ceiling": {
+            "title": "Confirmed Outcome Fn Ceiling",
+            "type": "number"
+          },
+          "fn_fp_cost_ratio": {
+            "title": "Fn Fp Cost Ratio",
+            "type": "number"
+          },
+          "pda_threshold": {
+            "title": "Pda Threshold",
+            "type": "number"
+          },
+          "pending_changes": {
+            "items": {
+              "$ref": "#/components/schemas/PendingSettingChange"
+            },
+            "title": "Pending Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fn_fp_cost_ratio",
+          "pda_threshold",
+          "confirmed_outcome_fn_ceiling",
+          "pending_changes"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "SettingsSignoffRequest": {
+        "properties": {
+          "field": {
+            "enum": [
+              "fn_fp_cost_ratio",
+              "pda_threshold",
+              "confirmed_outcome_fn_ceiling"
+            ],
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "SettingsSignoffRequest",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "account_id",
+          "role"
+        ],
+        "title": "TokenResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -327,6 +663,12 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -335,6 +677,49 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
     "/disposition-signoffs": {
       "get": {
         "description": "Global feed across every project - History screen (E6 screen 6). Same resolution\nas get_all_events above.",
@@ -523,6 +908,48 @@
         ]
       }
     },
+    "/lots/{lot_id}": {
+      "get": {
+        "operationId": "get_lot_summary_lots__lot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Lot Summary",
+        "tags": [
+          "fusion"
+        ]
+      }
+    },
     "/lots/{lot_id}/checkpoints": {
       "post": {
         "operationId": "upload_checkpoint_lots__lot_id__checkpoints_post",
@@ -660,6 +1087,83 @@
         "summary": "Generate Report",
         "tags": [
           "report"
+        ]
+      }
+    },
+    "/parts/{component_id}/disposition": {
+      "post": {
+        "operationId": "create_disposition_parts__component_id__disposition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "component_id",
+            "required": true,
+            "schema": {
+              "title": "Component Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "analysis_run_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Disposition",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
         ]
       }
     },
@@ -835,6 +1339,130 @@
         "summary": "Get Project Events",
         "tags": [
           "storage"
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "operationId": "get_settings_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/settings/propose": {
+      "post": {
+        "operationId": "propose_setting_settings_propose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingSettingChange"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose Setting",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/settings/signoff": {
+      "post": {
+        "operationId": "signoff_setting_settings_signoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsSignoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Signoff Setting",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
         ]
       }
     }
