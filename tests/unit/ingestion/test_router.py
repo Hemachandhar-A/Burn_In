@@ -215,8 +215,19 @@ def _repository():
     return repository
 
 
+VALID_IN_PROGRESS_CSV = (
+    "component_id,parameter,checkpoint_hour,value,unit\n"
+    "c1,iddq,0,1.2,uA\n"
+    "c1,iddq,24,1.25,uA\n"
+    "c2,iddq,0,1.1,uA\n"
+    "c2,iddq,24,1.15,uA\n"
+)
+
+
 def test_post_lots_creates_a_project_row_and_persists_an_analysis_run():
-    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    response = client.post("/lots", files=_csv_file(VALID_IN_PROGRESS_CSV), data=METADATA)
+    assert response.status_code == 200
+    assert response.json()["status"] == "IN_PROGRESS"
     repository = _repository()
 
     project = repository.query_project("L1")
@@ -228,11 +239,11 @@ def test_post_lots_creates_a_project_row_and_persists_an_analysis_run():
     runs = repository.query_project_data("L1")
     assert len(runs) == 1
     results = AnalysisResults.model_validate_json(runs[0].results_json)
-    # fusion.run_full_pipeline is P5's stub - fixed "COMP-001"/"PASS", not derived from
-    # this lot's actual readings; this test only pins that the stub's output round-trips.
-    assert results.assessments[0].component_id == "COMP-001"
-    assert results.assessments[0].verdict == "PASS"
-    assert results.disposition.verdict in {"LOT_ON_TRACK", "ACCEPT"}
+    # Real fusion.run_full_pipeline output now, not P5's old fixed-stub round trip - only the
+    # shape is pinned here, never a specific verdict.
+    assert sorted(a.component_id for a in results.assessments) == ["c1", "c2"]
+    assert all(a.verdict in {"PASS", "WATCH", "REJECT"} for a in results.assessments)
+    assert results.disposition.verdict in {"LOT_ON_TRACK", "LOT_AT_RISK", "STOP_RUN_RECOMMENDED"}
 
 
 def test_post_lots_logs_an_analysis_run_event():
