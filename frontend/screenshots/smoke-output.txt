@@ -1,42 +1,42 @@
-login as a.sharma ... ok (0.21s)
+login as a.sharma ... ok (0.12s)
   account_id=a.sharma role=Quality Engineer
-  CPU before loadDemoLot: 25.7% / 23.3% / 21.7%
-loadDemoLot ... ok (8.22s)
-  lot_id=demo-deefc869 status=COMPLETE
-getLotSummary ... ok (0.04s)
-  assessments=77 explanation_summary="19 of 77 parts flagged, spread across leakage (9), prop_delay (6), iddq (4), 11 crossing REVIEW only."
+  CPU before loadDemoLot: 10.6% / 12.6% / 14.4%
+loadDemoLot ... ok (3.89s)
+  lot_id=demo-33550d84 status=COMPLETE
+getLotSummary ... ok (0.02s)
+  assessments=77 explanation_summary="16 of 77 parts flagged, spread across leakage (7), iddq (6), prop_delay (3), 7 crossing REVIEW only."
 listEvents ... ok (0.01s)
   events=2
 getSettings ... ok (0.01s)
   fn_fp_cost_ratio=10 pda_threshold=0.05 confirmed_outcome_fn_ceiling=0.05
-  highest-severity flagged component: demo-deefc869-0049 (REJECT)
-getPartDetail (Complete lot, flagged part) ... ok (0.03s)
+  highest-severity flagged component: demo-33550d84-0008 (REJECT)
+getPartDetail (Complete lot, flagged part) ... ok (0.02s)
   explanation: zscore_table=3 mcd_contributions=3 ecod_dimensions=2 shap_contributions=8
-  ids: component_id=demo-deefc869-0049 lot_id=demo-deefc869 project_id=demo-deefc869 analysis_run_id=run-fc5467bfbbb8 verdict=REJECT trajectory=4 checkpoints
-submitDisposition (demo-deefc869-0049, REJECT) as a.sharma ... ok (0.03s)
+  ids: component_id=demo-33550d84-0008 lot_id=demo-33550d84 project_id=demo-33550d84 analysis_run_id=run-656d57788d9f verdict=REJECT trajectory=4 checkpoints
+submitDisposition (demo-33550d84-0008, REJECT) as a.sharma ... ok (0.02s)
 same account again returns the 400 path ...   400 message: "Dual sign-off requires two distinct account IDs, not two role labels"
 ok (0.01s)
-login as r.mehta ... ok (0.13s)
-submitDisposition (demo-deefc869-0049, REJECT) as r.mehta ... ok (0.03s)
-getPartDetail after both sign-offs ... ok (0.02s)
-  history: a.sharma/REJECT/run run-fc5467bfbbb8, r.mehta/REJECT/run run-fc5467bfbbb8
+login as r.mehta ... ok (0.08s)
+submitDisposition (demo-33550d84-0008, REJECT) as r.mehta ... ok (0.02s)
+getPartDetail after both sign-offs ... ok (0.01s)
+  history: a.sharma/REJECT/run run-656d57788d9f, r.mehta/REJECT/run run-656d57788d9f
 getWorklist (before confirmed outcome) ... ok (0.01s)
-  pending=2, contains demo-deefc869-0049
-  CPU before uploadLot: 19.1% / 21.0% / 24.9%
-uploadLot (small in-progress lot) ... ok (4.82s)
-  lot_id=smoke-inprogress-1790765192740 status=IN_PROGRESS
-getPartDetail('c1') on the in-progress lot ... ok (0.02s)
+  pending=2, contains demo-33550d84-0008
+  CPU before uploadLot: 14.6% / 11.5% / 11.5%
+uploadLot (small in-progress lot) ... ok (2.20s)
+  lot_id=smoke-inprogress-1790766095541 status=IN_PROGRESS
+getPartDetail('c1') on the in-progress lot ... ok (0.01s)
   module_a=null module_b.parameter=iddq
-generateDpaWorkOrder (Complete lot) ... ok (0.02s)
-  recommendations=demo-deefc869-0000 (Highest combined severity in the lot (1.00).); demo-deefc869-0017 (Highest-uncertainty part near the WATCH/REJECT boundary (Module B interval width 3.32).); demo-deefc869-0001 (Unflagged control part (PASS verdict, combined severity 0.77) for comparison.)
-generateDpaWorkOrder on an in-progress lot returns the 409 path ...   409 message: "lot 'smoke-inprogress-1790765192740' is still IN_PROGRESS - a DPA work order requires a COMPLETE lot"
-ok (0.01s)
-submitConfirmedOutcome (demo-deefc869-0049, Confirmed Defective) ... ok (0.03s)
-submitConfirmedOutcome (demo-deefc869-0000, Confirmed Good) ... ok (0.03s)
-getCorrectiveStatus ... ok (0.02s)
+generateDpaWorkOrder (Complete lot) ... ok (0.01s)
+  recommendations=demo-33550d84-0001 (Highest combined severity in the lot (1.00).); demo-33550d84-0048 (Highest-uncertainty part near the WATCH/REJECT boundary (Module B interval width 1.99).); demo-33550d84-0000 (Unflagged control part (PASS verdict, combined severity 0.50) for comparison.)
+generateDpaWorkOrder on an in-progress lot returns the 409 path ...   409 message: "lot 'smoke-inprogress-1790766095541' is still IN_PROGRESS - a DPA work order requires a COMPLETE lot"
+ok (0.00s)
+submitConfirmedOutcome (demo-33550d84-0008, Confirmed Defective) ... ok (0.02s)
+submitConfirmedOutcome (demo-33550d84-0001, Confirmed Good) ... ok (0.02s)
+getCorrectiveStatus ... ok (0.01s)
   status=INSUFFICIENT_DATA count=2 fn_rate=0 fp_rate=1
-getWorklist (after confirmed outcome) ... ok (0.01s)
-  pending=0, no longer contains demo-deefc869-0049
-wrong-PIN login returns the 401 path ... ok (0.13s)
+getWorklist (after confirmed outcome) ... ok (0.00s)
+  pending=0, no longer contains demo-33550d84-0008
+wrong-PIN login returns the 401 path ... ok (0.07s)
 
 All smoke checks passed.

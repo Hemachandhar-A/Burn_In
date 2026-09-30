@@ -1,5 +1,5 @@
 /**
- * Screenshot capture for Block 5C Part 4. Starts `vite dev` on its own port (not the app's
+ * Screenshot capture for Block 5C Part 4, extended in Block 5D Part 4 (14 screenshots, console-error log, hard-refresh check). Starts `vite dev` on its own port (not the app's
  * normal dev port, so it doesn't collide with a real dev session), pointed at this worktree's own
  * backend (default http://localhost:8001; override with VITE_API_BASE_URL), drives it with a real
  * Chromium via Playwright, and writes 1440x900 PNGs into frontend/screenshots/.
@@ -13,13 +13,14 @@
  */
 import { chromium } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { login } from '../src/api/auth'
 import { createApiClient } from '../src/api/client'
 import { getLotSummary } from '../src/api/lotDetail'
 import { listProjects } from '../src/api/lots'
+import { getPartDetail } from '../src/api/parts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FRONTEND_ROOT = path.resolve(__dirname, '..')
@@ -69,7 +70,18 @@ async function main() {
   const demoSummary = await getLotSummary(apiClient, demoProject.lot_id)
   const flagged = demoSummary.assessments.filter((a) => a.verdict !== 'PASS')
   const flaggedComponent = flagged.reduce((best, a) => (a.module_a_rank > best.module_a_rank ? a : best))
-  console.log(`Complete lot: ${demoProject.lot_id} (flagged part: ${flaggedComponent.component_id})`)
+  // A flagged part with no sign-offs yet, so screenshots 06/10/11 show the same part before, after
+  // the first and after the second sign-off (smoke_live.ts already dispositioned the top one).
+  const byRank = [...flagged].sort((a, b) => b.module_a_rank - a.module_a_rank)
+  let freshComponent = flaggedComponent
+  for (const candidate of byRank) {
+    const detail = await getPartDetail(apiClient, candidate.component_id, demoProject.lot_id)
+    if (detail.disposition_history.length === 0) {
+      freshComponent = candidate
+      break
+    }
+  }
+  console.log(`Complete lot: ${demoProject.lot_id} (flagged part: ${freshComponent.component_id})`)
   console.log(`In-progress lot: ${inProgressProject.lot_id}`)
 
   console.log(`Starting vite dev on port ${VITE_PORT}...`)
@@ -92,6 +104,30 @@ async function main() {
     const browser = await chromium.launch()
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 
+    // Every console error / uncaught page error of every screen, tagged with the screen it came from.
+    let currentScreen = 'startup'
+    const consoleErrors: string[] = []
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') consoleErrors.push(`[${currentScreen}] console.error: ${msg.text()}`)
+    })
+    page.on('pageerror', (err) => consoleErrors.push(`[${currentScreen}] pageerror: ${err.message}`))
+
+    async function signIn(accountId: string, displayName: string, pin: string) {
+      await page.goto(`${APP_URL}/#/login`)
+      await page.waitForSelector('text=Sign In')
+      await page.getByLabel(displayName).check()
+      await page.getByLabel('PIN').fill(pin)
+      await page.getByRole('button', { name: /^sign in$/i }).click()
+      await page.waitForURL((url) => !url.hash.includes('/login'))
+      console.log(`  signed in as ${accountId}`)
+    }
+
+    async function signOut() {
+      await page.getByRole('button', { name: 'Account menu' }).click()
+      await page.getByRole('button', { name: 'Sign out' }).click()
+      await page.waitForSelector('text=Sign In')
+    }
+
     async function shot(name: string) {
       await page.waitForTimeout(400) // let charts/animations settle
       await page.screenshot({ path: path.join(SCREENSHOT_DIR, `${name}.png`) })
@@ -99,25 +135,44 @@ async function main() {
     }
 
     // 01: Login
+    currentScreen = '01-login'
     await page.goto(`${APP_URL}/#/login`)
     await page.waitForSelector('text=Sign In')
     await shot('01-login')
 
-    // Sign in as a.sharma (already the default-selected account).
-    await page.getByLabel('PIN').fill('1234')
-    await page.getByRole('button', { name: /^sign in$/i }).click()
-    await page.waitForURL(/#\/ingest/)
+    await signIn('a.sharma', 'A. Sharma', '1234')
+
+    // Hard refresh: the token lives in memory only (rule 13), so a reload must land on Login.
+    currentScreen = 'hard-refresh'
+    await page.reload()
+    await page.waitForSelector('text=Sign In')
+    const afterReload = page.url()
+    const tokenPersisted = await page.evaluate(
+      () =>
+        JSON.stringify({ ...localStorage }).toLowerCase().includes('token') ||
+        JSON.stringify({ ...sessionStorage }).toLowerCase().includes('token') ||
+        document.cookie.toLowerCase().includes('token'),
+    )
+    if (!/#\/login/.test(afterReload) || tokenPersisted) {
+      throw new Error(`hard refresh check FAILED: url=${afterReload} tokenPersisted=${tokenPersisted}`)
+    }
+    console.log(`Hard refresh check: PASS - reload landed on ${afterReload}, no token in storage/cookies`)
+
+    await signIn('a.sharma', 'A. Sharma', '1234')
 
     // 02: Ingest
+    currentScreen = '02 Ingest'
     await page.waitForLoadState('networkidle')
     await shot('02-ingest')
 
     // 03: Project Browser
+    currentScreen = '03 Project Browser'
     await page.goto(`${APP_URL}/#/projects`)
     await page.waitForLoadState('networkidle')
     await shot('03-project-browser')
 
     // 04: Lot Dashboard, Complete lot, with a DPA work order generated
+    currentScreen = '04 Lot Dashboard'
     await page.goto(`${APP_URL}/#/lots/${encodeURIComponent(demoProject.lot_id)}`)
     await page.waitForSelector('text=/PDA:/')
     const dpaButton = page.getByRole('button', { name: /generate dpa work order/i })
@@ -128,32 +183,88 @@ async function main() {
     await shot('04-lot-dashboard-complete')
 
     // 05: Lot Dashboard, in-progress lot
+    currentScreen = '05 Lot Dashboard'
     await page.goto(`${APP_URL}/#/lots/${encodeURIComponent(inProgressProject.lot_id)}`)
     await page.waitForSelector('text=/PDA:/')
     await shot('05-lot-dashboard-in-progress')
 
     // 06: Part Detail, flagged part on the Complete lot
-    await page.goto(`${APP_URL}/#/parts/${encodeURIComponent(flaggedComponent.component_id)}`)
+    currentScreen = '06 Part Detail'
+    await page.goto(`${APP_URL}/#/parts/${encodeURIComponent(freshComponent.component_id)}`)
     await page.waitForSelector('h1.screen-title')
     await shot('06-part-detail-flagged-complete')
 
     // 07: Part Detail, a part on the in-progress lot (module_a null)
+    currentScreen = '07 Part Detail'
     await page.goto(`${APP_URL}/#/parts/c1`)
     await page.waitForSelector('h1.screen-title')
     await shot('07-part-detail-in-progress')
 
     // 08: History
+    currentScreen = '08 History'
     await page.goto(`${APP_URL}/#/history`)
     await page.waitForLoadState('networkidle')
     await shot('08-history')
 
     // 09: Settings, with worklist and corrective status loaded
+    currentScreen = '09 Settings'
     await page.goto(`${APP_URL}/#/settings`)
     await page.waitForSelector('text=Corrective Feedback Status')
     await page.waitForSelector('text=Worklist')
     await shot('09-settings')
 
+    // 10-11: the fresh flagged part, first sign-off as a.sharma, second as r.mehta.
+    currentScreen = '10-11 the fresh flagged part'
+    const freshPath = `${APP_URL}/#/parts/${encodeURIComponent(freshComponent.component_id)}`
+    await page.goto(freshPath)
+    await page.waitForSelector('h1.screen-title')
+    await page.getByLabel(/Technical Disposition Rationale/).fill('Leakage drift confirmed at 24h.')
+    await page.getByRole('button', { name: 'Reject', exact: true }).click()
+    await page.waitForSelector('text=/1 sign-off.s. recorded by distinct accounts/')
+    await shot('10-part-detail-after-first-signoff')
+
+    await signOut()
+    await signIn('r.mehta', 'R. Mehta', '5678')
+    await page.goto(freshPath)
+    await page.waitForSelector('h1.screen-title')
+    await page.getByLabel(/Technical Disposition Rationale/).fill('Concur: reject.')
+    await page.getByRole('button', { name: 'Reject', exact: true }).click()
+    await page.waitForSelector('text=/2 sign-off.s. recorded by distinct accounts/')
+    await shot('11-part-detail-after-second-signoff')
+
+    // 12: History with the timing_flag row (two sign-offs < 2 minutes apart).
+    currentScreen = '12 History with the timing_flag row (two sign-of'
+    await page.goto(`${APP_URL}/#/history`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForSelector('text=/Sign-offs occurred/')
+    await shot('12-history-with-timing-flag')
+
+    // 13-14: error states - abort the screen's own API request and screenshot the visible message.
+    currentScreen = '13-14 error states'
+    currentScreen = '13-lot-dashboard-error-state (request aborted on purpose)'
+    const lotPattern = `**/lots/${encodeURIComponent(demoProject.lot_id)}`
+    await page.route(lotPattern, (route) => route.abort())
+    await page.goto(`${APP_URL}/#/lots/${encodeURIComponent(demoProject.lot_id)}`)
+    await page.waitForSelector('[role=alert]', { timeout: 45000 })
+    await shot('13-lot-dashboard-error-state')
+    await page.unroute(lotPattern)
+
+    currentScreen = '14-part-detail-error-state (request aborted on purpose)'
+    const partPattern = `**/parts/${encodeURIComponent(freshComponent.component_id)}*`
+    await page.route(partPattern, (route) => route.abort())
+    await page.goto(freshPath)
+    await page.waitForSelector('[role=alert]', { timeout: 45000 })
+    await shot('14-part-detail-error-state')
+    await page.unroute(partPattern)
+
     await browser.close()
+    await writeFile(
+      path.join(SCREENSHOT_DIR, 'console-errors.txt'),
+      consoleErrors.length > 0
+        ? consoleErrors.join('\n') + '\n'
+        : 'No console errors or uncaught page errors on any screen.\n',
+    )
+    console.log(`Console errors recorded: ${consoleErrors.length}`)
     console.log('\nAll screenshots captured.')
   } finally {
     // `vite.kill()` alone only kills the shell wrapper on Windows (spawned with shell: true),

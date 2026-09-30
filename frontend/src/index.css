@@ -1175,7 +1175,7 @@ a.nav-item.active {
 }
 
 .part-detail-lot {
-  margin-top: -8px;
+  margin-top: 8px;
   font-size: 13px;
   color: var(--muted);
 }

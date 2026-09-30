@@ -29,6 +29,14 @@ type ShapContributionRow = components['schemas']['ShapContributionRow']
  */
 const Plot = (RawPlot as unknown as { default?: typeof RawPlot }).default ?? RawPlot
 
+/** A number through formatNumber, with an explicit sign for signed quantities; a value formatNumber
+ * rejects (NaN/Infinity) is a dash, never the raw number. */
+function fmt(value: number | null | undefined, signed = false): string {
+  const text = formatNumber(value)
+  if (text === null) return '—'
+  return signed && value !== null && value !== undefined && value >= 0 ? `+${text}` : text
+}
+
 function formatTimestamp(iso: string): string {
   return formatUtc(iso).slice(0, 16)
 }
@@ -115,14 +123,14 @@ function McdCard({ dSquared, rows }: { dSquared: number | null; rows: MCDContrib
             Minimum Covariance Determinant (Mahalanobis distance share)
           </p>
         </div>
-        <span className="chip mono">D² = {dSquared ?? '—'}</span>
+        <span className="chip mono">D² = {fmt(dSquared)}</span>
       </header>
       <div className="contribution-list">
         {rows.map((row) => (
           <ContributionBar
             key={row.parameter}
             label={row.parameter}
-            valueText={row.contribution.toFixed(2)}
+            valueText={fmt(row.contribution)}
             pct={total > 0 ? (Math.max(0, row.contribution) / total) * 100 : 0}
           />
         ))}
@@ -141,14 +149,14 @@ function EcodCard({ oScore, rows }: { oScore: number | null; rows: EcodDimension
           <h2 className="card-title">ECOD Dimension Score</h2>
           <p className="card-subtitle">Empirical Cumulative Distribution Outlier Detection</p>
         </div>
-        <span className="chip mono">O_score = {oScore ?? '—'}</span>
+        <span className="chip mono">O_score = {fmt(oScore)}</span>
       </header>
       <div className="contribution-list">
         {rows.map((row) => (
           <ContributionBar
             key={row.dimension}
             label={row.dimension}
-            valueText={`score = ${row.score.toFixed(3)}`}
+            valueText={`score = ${fmt(row.score)}`}
             pct={(row.score / max) * 100}
           />
         ))}
@@ -176,7 +184,7 @@ function ShapCard({ rows }: { rows: ShapContributionRow[] }) {
             key={row.feature}
             label={row.feature}
             sublabel={row.value === null ? 'not available yet' : (formatNumber(row.value) ?? String(row.value))}
-            valueText={`${row.shap_value >= 0 ? '+' : ''}${row.shap_value.toFixed(3)}`}
+            valueText={fmt(row.shap_value, true)}
             pct={(Math.abs(row.shap_value) / max) * 100}
           />
         ))}
@@ -215,8 +223,7 @@ function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
               <td className="mono numeric">{formatNumber(row.value) ?? row.value}</td>
               <td className="mono numeric muted">{formatNumber(row.lot_median) ?? row.lot_median}</td>
               <td className="mono numeric">
-                {row.z >= 0 ? '+' : ''}
-                {row.z.toFixed(2)} σ
+                {fmt(row.z, true)} σ
               </td>
             </tr>
           ))}
@@ -275,7 +282,7 @@ function TrajectoryChart({
       x: measured.map((p) => p.hour),
       y: measured.map((p) => p.value),
       text: measured.map((p) => label(p.value)),
-      textposition: 'top center',
+      textposition: 'top left',
       line: { color: '#0f172a', width: 1.5 },
       marker: { color: '#0f172a', size: 8 },
     })
@@ -302,7 +309,7 @@ function TrajectoryChart({
       x: [168],
       y: [predicted],
       text: [label(predicted)],
-      textposition: 'top right',
+      textposition: 'middle right',
       marker: { color: '#b45309', size: 10, symbol: 'square' },
       error_y:
         forecast.interval_lower !== null && forecast.interval_upper !== null
@@ -347,6 +354,7 @@ function TrajectoryChart({
         legend: { orientation: 'h', y: 1.15 },
         xaxis: {
           title: { text: 'Hours' },
+          range: [-16, hours[hours.length - 1] + 30],
           tickvals: hours,
           ticktext: hours.map((h) => `${h}h`),
         },
@@ -379,9 +387,9 @@ function SignoffHistory({ history }: { history: DispositionRecord[] }) {
           <li key={i}>
             <VerdictBadge verdict={h.verdict} /> by{' '}
             <span className="mono">{h.account_id}</span> ({displayNameFor(h.account_id)}) on{' '}
-            <span className="mono">{formatUtc(h.timestamp)}</span> UTC � run{' '}
+            <span className="mono">{formatUtc(h.timestamp)}</span> UTC · run{' '}
             <span className="mono">{h.analysis_run_id}</span>
-            {h.rationale && <span className="muted"> � {h.rationale}</span>}
+            {h.rationale && <span className="muted"> — {h.rationale}</span>}
           </li>
         ))}
       </ul>
@@ -586,7 +594,7 @@ function PartDetailForComponent({
               {parameter && <p className="card-subtitle">Parameter: {parameter}</p>}
             </div>
           </header>
-          {measured.length === 0 ? (
+          {measured.length === 0 && !forecastOf(data) ? (
             !data.module_b ? (
               <ModuleUnavailable module="B" />
             ) : data.unavailable_forecast_note ? (

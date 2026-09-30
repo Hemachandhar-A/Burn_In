@@ -131,7 +131,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(screen.getByText('High confidence')).toBeInTheDocument()
     // Z-score table.
     expect(screen.getByText('24h Z-Score Table')).toBeInTheDocument()
-    expect(screen.getByText('+4.20 σ')).toBeInTheDocument()
+    expect(screen.getByText('+4.2 σ')).toBeInTheDocument()
     // MCD / ECOD.
     expect(screen.getByText('D² = 28.4')).toBeInTheDocument()
     expect(screen.getByText('O_score = 0.942')).toBeInTheDocument()
@@ -187,7 +187,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(screen.getByText('Model vs. Physics Disagreement')).toBeInTheDocument()
     expect(screen.getByText(/not available yet/)).toBeInTheDocument()
     const shapCard = screen.getByRole('region', { name: 'SHAP feature contribution' })
-    expect(within(shapCard).getByText('+0.400')).toBeInTheDocument()
+    expect(within(shapCard).getByText('+0.4')).toBeInTheDocument()
   })
 
   test('module_b null hides its sections the same way; the trajectory chart keeps the measured points only', async () => {
@@ -251,6 +251,35 @@ describe('Part Detail screen (E6 screen 4)', () => {
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
     expect(traces().map((x) => x.name)).toEqual(['Measured', 'Lot Median'])
     expect(traces()[0].x).toEqual([0, 24])
+  })
+
+  test('MCD/ECOD scores and contributions are rounded, never raw floats', async () => {
+    setup(
+      '/parts/DUT-042',
+      DETAIL({
+        module_a: { ...MODULE_A, mcd_distance: 1.3653685606420976, ecod_score: 1.9260380749033121 },
+        explanation: {
+          ...EXPLANATION,
+          mcd_contributions: [{ parameter: 'Leakage Current', contribution: 0.93456789123 }],
+          ecod_dimensions: [{ dimension: 'value_0h', score: 0.76012345678 }],
+        },
+      }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.getByText('D² = 1.3654')).toBeInTheDocument()
+    expect(screen.getByText('O_score = 1.926')).toBeInTheDocument()
+    expect(screen.getByText('0.9346')).toBeInTheDocument()
+    expect(screen.getByText('score = 0.7601')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/\d\.\d{5,}/)
+  })
+
+  test('a part with a forecast but no stored trajectory still draws the forecast point', async () => {
+    setup(
+      '/parts/DUT-042',
+      DETAIL({ module_a: null, explanation: { ...EXPLANATION, trajectory: [], zscore_table: [] } }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(traces().map((t) => t.name)).toEqual(['Module B Forecast (168h)'])
   })
 
   test('the chart never shows NaN, undefined or null labels', async () => {

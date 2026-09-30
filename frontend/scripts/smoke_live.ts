@@ -24,7 +24,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8001'
 
 let token: string | null = null
-const client = createApiClient({ baseUrl: BASE_URL, getToken: () => token })
+/**
+ * Node's fetch reuses a keep-alive socket that uvicorn (5s keep-alive) may have just closed after a
+ * slow call such as loadDemoLot, which fails a GET with "fetch failed" before it reaches the
+ * server. One retry, GET only (idempotent), for that race - never for a write.
+ */
+async function retryingFetch(request: Request): Promise<Response> {
+  const retry = request.method === 'GET' ? request.clone() : null
+  try {
+    return await fetch(request)
+  } catch (error) {
+    if (!retry) throw error
+    return fetch(retry)
+  }
+}
+
+const client = createApiClient({ baseUrl: BASE_URL, getToken: () => token, fetch: retryingFetch })
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`FAIL: ${message}`)
