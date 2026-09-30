@@ -5,6 +5,7 @@ P5.7's session entry) - it aggregates explain/, identity/, capa/ (via storage's 
 functions, never their routers) and P5's own stored AnalysisResults, and never re-runs
 fusion.run_full_pipeline (Part 4c pins this with a monkeypatch-raises test)."""
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
@@ -20,6 +21,7 @@ from storage.repository import (
 )
 
 router = APIRouter(tags=["fusion"])
+logger = logging.getLogger(__name__)
 
 @router.get("/lots/{lot_id}", response_model=LotSummaryResponse)
 def get_lot_summary(lot_id: str) -> LotSummaryResponse:
@@ -46,7 +48,11 @@ def _matching_runs(component_id: str, lot_id: str | None):
         for row in query_project_data(project.project_id):
             try:
                 results = AnalysisResults.model_validate_json(row.results_json)
-            except ValidationError:
+            except ValidationError as exc:
+                logger.warning(
+                    "skipping stored analysis run %s (project %s) - failed AnalysisResults validation: %s",
+                    row.analysis_run_id, project.project_id, exc,
+                )
                 continue
             if any(a.component_id == component_id for a in results.assessments):
                 matches.append((project, row, results))

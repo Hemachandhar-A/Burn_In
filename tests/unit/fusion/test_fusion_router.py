@@ -289,6 +289,41 @@ def test_get_part_detail_requires_auth():
     assert resp.status_code in (401, 403)
 
 
+def test_matching_runs_logs_a_warning_on_a_row_that_fails_validation(caplog):
+    """B6c: a stored row that fails AnalysisResults validation is still skipped, not a 500 - but
+    it must now be logged, not silently dropped (deliberately invalid row: no "disposition" key,
+    a required field)."""
+    import logging
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-invalid-row-{uid}"
+    account_id = _seed_account(uid)
+    repository.save_project(lot_id, lot_id, "PN-1", datetime.now(UTC), account_id)
+
+    invalid_results_json = json.dumps({"assessments": []})  # missing required "disposition"
+    from contracts import ProjectData
+    from storage.repository import SessionLocal
+
+    with SessionLocal() as session:
+        session.add(ProjectData(
+            analysis_run_id=f"run-invalid-{uid}",
+            project_id=lot_id,
+            raw_data=json.dumps({}),
+            results_json=invalid_results_json,
+            diff_vs_prior=None,
+            created_at=datetime.now(UTC),
+        ))
+        session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="fusion.router"):
+        resp = client.get(f"/parts/anything-{uid}", headers=_auth_headers(account_id))
+    assert resp.status_code == 404
+    assert any(
+        f"run-invalid-{uid}" in record.getMessage() and lot_id in record.getMessage()
+        for record in caplog.records
+    )
+
+
 def test_get_part_detail_ambiguous_component_resolves_to_most_recent_or_named_lot():
     from contracts import AnalysisResults, LotDisposition, RiskAssessment
 
