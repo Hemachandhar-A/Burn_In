@@ -7,7 +7,9 @@ are read, never recomputed. `ZScoreRow` carries no physical unit (contracts.Feat
 either - a disclosed simplification, not a guess at one), so the sentence's "median = X, value = Y"
 clause is unitless by construction.
 """
-from contracts import ModuleBResult
+from collections import Counter
+
+from contracts import ModuleBResult, RiskAssessment
 from explain.models import ShapExplanation, ZScoreRow
 
 # E4 step 6's confidence qualifier needs a numeric threshold for its second, independent signal
@@ -86,3 +88,42 @@ def confidence_qualifier(module_b: ModuleBResult | None) -> str | None:
         physics_agrees = module_b.physics_disagreement_gap <= half_width * _PHYSICS_DISAGREEMENT_HALF_WIDTH_MULTIPLIER
 
     return _HIGH_CONFIDENCE if (interval_agrees and physics_agrees) else _BORDERLINE
+
+
+def _missing_components_sentence(insufficient_data_components: list[str]) -> str | None:
+    if not insufficient_data_components:
+        return None
+    n = len(insufficient_data_components)
+    names = ", ".join(sorted(insufficient_data_components))
+    noun = "component" if n == 1 else "components"
+    verb_have = "has" if n == 1 else "have"
+    verb_be = "was" if n == 1 else "were"
+    return f"{n} {noun} {verb_have} insufficient data and {verb_be} not analysed: {names}."
+
+
+def explanation_summary(
+    assessments: list[RiskAssessment], insufficient_data_components: list[str]
+) -> str:
+    """E4 step 7's lot-level rollup, a template over `assessments`/`insufficient_data_components` -
+    both already computed by fusion (Part 1a), nothing new derived here. "Flagged" matches the
+    project's own vocabulary (AGENTS.md rule 10): verdict WATCH or REJECT, never PASS. Ties in the
+    most-common worst_parameter are broken alphabetically, for determinism (rule 9)."""
+    total = len(assessments)
+    if total == 0:
+        base = "No parts analysed."
+    else:
+        flagged = [a for a in assessments if a.verdict != "PASS"]
+        if not flagged:
+            base = f"0 of {total} parts flagged."
+        else:
+            n_watch = sum(1 for a in flagged if a.verdict == "WATCH")
+            counts = Counter(a.worst_parameter for a in flagged)
+            top_count = max(counts.values())
+            top_parameter = min(p for p, c in counts.items() if c == top_count)
+            base = f"{len(flagged)} of {total} parts flagged, concentrated in {top_parameter}"
+            if n_watch:
+                base += f", {n_watch} crossing REVIEW only"
+            base += "."
+
+    missing = _missing_components_sentence(insufficient_data_components)
+    return f"{base} {missing}" if missing else base

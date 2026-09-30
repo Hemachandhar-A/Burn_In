@@ -1,8 +1,8 @@
 """Block 3B Part 3: E4 steps 5-10's text/notes, pure functions over already-computed values
 (AGENTS.md rule 1 - nothing here re-derives a detector's own math). Fixed inputs only, no randomness
 (rule 9)."""
-from contracts import ModuleBResult
-from explain.text import confidence_qualifier, explanation_sentence
+from contracts import ModuleBResult, RiskAssessment
+from explain.text import confidence_qualifier, explanation_sentence, explanation_summary
 
 
 def test_explanation_sentence_golden_part_module_a_and_b():
@@ -163,3 +163,47 @@ def test_confidence_qualifier_high_confidence_exactly_at_physics_boundary():
     module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=True,
                           interval_lower=45.0, interval_upper=55.0, physics_disagreement_gap=5.0)
     assert confidence_qualifier(module_b) == "high confidence"
+
+
+# --- Part 3c: explanation_summary (E4 step 7) -----------------------------------------------------
+
+def _assessment(cid, verdict, worst_parameter, lot_id="L1"):
+    return RiskAssessment(
+        component_id=cid, lot_id=lot_id, verdict=verdict, module_a_rank=1.0, module_b_rank=1.0,
+        worst_parameter=worst_parameter, module_a_ran=True, module_b_ran=True,
+        predicted_168h=None, actual_168h=None, explanation_sentence=None,
+    )
+
+
+def test_explanation_summary_on_the_golden_lot():
+    """Real numbers from the golden pipeline (harness.golden.run_golden_pipeline): 77 parts, 5
+    flagged (2 WATCH, 3 REJECT), worst_parameter tied 2-2 between iddq and prop_delay (leakage=1) -
+    alphabetical tie-break picks iddq."""
+    from harness.golden import run_golden_pipeline
+
+    result = run_golden_pipeline()
+    summary = explanation_summary(result.assessments, result.insufficient_data_components)
+    assert summary == "5 of 77 parts flagged, concentrated in iddq, 2 crossing REVIEW only."
+
+
+def test_explanation_summary_no_flags():
+    assessments = [_assessment("C1", "PASS", "iddq"), _assessment("C2", "PASS", "leakage")]
+    assert explanation_summary(assessments, []) == "0 of 2 parts flagged."
+
+
+def test_explanation_summary_zero_assessments():
+    assert explanation_summary([], []) == "No parts analysed."
+
+
+def test_explanation_summary_appends_missing_components_sentence():
+    assessments = [_assessment("C1", "REJECT", "leakage")]
+    summary = explanation_summary(assessments, ["C9", "C7"])
+    assert summary == (
+        "1 of 1 parts flagged, concentrated in leakage. "
+        "2 components have insufficient data and were not analysed: C7, C9."
+    )
+
+
+def test_explanation_summary_missing_components_singular_wording():
+    summary = explanation_summary([], ["C7"])
+    assert summary == "No parts analysed. 1 component has insufficient data and was not analysed: C7."
