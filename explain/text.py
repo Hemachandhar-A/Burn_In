@@ -106,8 +106,11 @@ def explanation_summary(
 ) -> str:
     """E4 step 7's lot-level rollup, a template over `assessments`/`insufficient_data_components` -
     both already computed by fusion (Part 1a), nothing new derived here. "Flagged" matches the
-    project's own vocabulary (AGENTS.md rule 10): verdict WATCH or REJECT, never PASS. Ties in the
-    most-common worst_parameter are broken alphabetically, for determinism (rule 9)."""
+    project's own vocabulary (AGENTS.md rule 10): verdict WATCH or REJECT, never PASS.
+
+    "concentrated in X" is only used when X holds more than half of the flagged parts - otherwise
+    the breakdown is spread across every worst_parameter that appears, ordered by count descending
+    then parameter name ascending, for determinism (rule 9)."""
     total = len(assessments)
     if total == 0:
         base = "No parts analysed."
@@ -119,8 +122,14 @@ def explanation_summary(
             n_watch = sum(1 for a in flagged if a.verdict == "WATCH")
             counts = Counter(a.worst_parameter for a in flagged)
             top_count = max(counts.values())
-            top_parameter = min(p for p, c in counts.items() if c == top_count)
-            base = f"{len(flagged)} of {total} parts flagged, concentrated in {top_parameter}"
+            if top_count > len(flagged) / 2:
+                top_parameter = min(p for p, c in counts.items() if c == top_count)
+                base = f"{len(flagged)} of {total} parts flagged, concentrated in {top_parameter}"
+            else:
+                breakdown = ", ".join(
+                    f"{p} ({c})" for p, c in sorted(counts.items(), key=lambda pc: (-pc[1], pc[0]))
+                )
+                base = f"{len(flagged)} of {total} parts flagged, spread across {breakdown}"
             if n_watch:
                 base += f", {n_watch} crossing REVIEW only"
             base += "."

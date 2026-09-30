@@ -180,13 +180,40 @@ def _assessment(cid, verdict, worst_parameter, lot_id="L1"):
 
 def test_explanation_summary_on_the_golden_lot():
     """Real numbers from the golden pipeline (harness.golden.run_golden_pipeline): 77 parts, 5
-    flagged (2 WATCH, 3 REJECT), worst_parameter tied 2-2 between iddq and prop_delay (leakage=1) -
-    alphabetical tie-break picks iddq."""
+    flagged (2 WATCH, 3 REJECT), worst_parameter counts iddq=2, prop_delay=2, leakage=1 - no
+    parameter holds more than half of the 5 flagged parts, so B2's breakdown wording applies:
+    spread across every parameter, ordered by count descending then name ascending."""
     from harness.golden import run_golden_pipeline
 
     result = run_golden_pipeline()
     summary = explanation_summary(result.assessments, result.insufficient_data_components)
-    assert summary == "5 of 77 parts flagged, concentrated in iddq, 2 crossing REVIEW only."
+    assert summary == (
+        "5 of 77 parts flagged, spread across iddq (2), prop_delay (2), leakage (1), "
+        "2 crossing REVIEW only."
+    )
+
+
+def test_explanation_summary_concentrated_when_one_parameter_holds_more_than_half():
+    """B2: "concentrated in X" only when X holds MORE THAN HALF of the flagged parts - here iddq
+    is 3 of 4 flagged (>50%), so it stays the "concentrated" wording, not a breakdown."""
+    assessments = [
+        _assessment("C1", "REJECT", "iddq"), _assessment("C2", "REJECT", "iddq"),
+        _assessment("C3", "WATCH", "iddq"), _assessment("C4", "REJECT", "leakage"),
+    ]
+    summary = explanation_summary(assessments, [])
+    assert summary == "4 of 4 parts flagged, concentrated in iddq, 1 crossing REVIEW only."
+
+
+def test_explanation_summary_spread_wording_orders_by_count_desc_then_name_asc():
+    """B2: an exact 50/50 split (2 of 4 flagged each) is NOT more than half, so it uses the spread
+    wording - ties broken by parameter name ascending, per-parameter counts ordered by count
+    descending then name ascending."""
+    assessments = [
+        _assessment("C1", "REJECT", "prop_delay"), _assessment("C2", "REJECT", "prop_delay"),
+        _assessment("C3", "WATCH", "iddq"), _assessment("C4", "WATCH", "iddq"),
+    ]
+    summary = explanation_summary(assessments, [])
+    assert summary == "4 of 4 parts flagged, spread across iddq (2), prop_delay (2), 2 crossing REVIEW only."
 
 
 def test_explanation_summary_no_flags():
