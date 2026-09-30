@@ -368,6 +368,13 @@ class AnalysisResults(BaseModel):
     # empty one. Defaults so a pre-Block-3B stored row still parses.
     part_explanations: dict[str, PartExplanation] = {}
     explanation_summary: str = ""  # E4 step 7's lot-level rollup template
+    # Block 3B Part 4 (additive, CONTRACT_CHANGES.md 2026-09-30): GET /parts/{component_id} needs
+    # PartDetailResponse.module_a/module_b, but RiskAssessment (the only per-component shape
+    # AnalysisResults stored before this) never carried the full ModuleAResult/ModuleBResult - only
+    # a fused summary. Keyed by component_id, one entry per analysed component for whichever
+    # parameter is that component's worst_parameter - never re-run the pipeline to reconstruct one.
+    module_a_results: dict[str, ModuleAResult] = {}
+    module_b_results: dict[str, ModuleBResult] = {}
 
 
 class LoginRequest(BaseModel):

@@ -629,3 +629,31 @@ def test_severity_cap_note_populated_when_direction_cap_fires():
     explanation = result.part_explanations['OUTLIER']
     assert explanation.severity_cap_note is not None
     assert 'below the lot median' in explanation.severity_cap_note
+
+
+def test_module_a_b_results_populated_for_every_analysed_component_including_pass():
+    """Part 4: PartDetailResponse needs module_a/module_b even for a PASS part - both dicts must
+    carry an entry per analysed component on a COMPLETE lot, keyed to that component's own
+    worst_parameter."""
+    from harness.golden import run_golden_pipeline
+    result = run_golden_pipeline()
+    all_ids = {a.component_id for a in result.assessments}
+    assert set(result.module_a_results.keys()) == all_ids
+    assert set(result.module_b_results.keys()) == all_ids
+    for a in result.assessments:
+        assert result.module_a_results[a.component_id].parameter == a.worst_parameter
+
+
+def test_module_a_results_empty_on_in_progress_lot_module_b_still_populated():
+    """A documented gap (CONTRACT_CHANGES.md 2026-09-30): Module A never runs on an IN_PROGRESS
+    lot, so module_a_results has no entries at all; Module B always attempts a result whenever a
+    component has a frame, so module_b_results is still populated."""
+    readings = [
+        _reading('C1', 'LOT-INPROG2', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C1', 'LOT-INPROG2', 'PN1', 'iddq', 24.0, 1.2),
+    ]
+    lot = LotDataset(lot_id='LOT-INPROG2', part_number='PN1', status='IN_PROGRESS',
+                      readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+    assert result.module_a_results == {}
+    assert set(result.module_b_results.keys()) == {'C1'}

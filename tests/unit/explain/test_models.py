@@ -44,8 +44,8 @@ def _lot_disposition(lot_id="L1"):
 
 
 def test_old_analysis_results_json_without_new_fields_parses():
-    """A results_json row stored before Block 3B (no part_explanations/explanation_summary keys)
-    must still parse - both are additive with defaults."""
+    """A results_json row stored before Block 3B (no part_explanations/explanation_summary/
+    module_a_results/module_b_results keys) must still parse - all additive with defaults."""
     old_shape = {
         "assessments": [_risk_assessment().model_dump(mode="json")],
         "disposition": _lot_disposition().model_dump(mode="json"),
@@ -54,6 +54,21 @@ def test_old_analysis_results_json_without_new_fields_parses():
     assert parsed.part_explanations == {}
     assert parsed.explanation_summary == ""
     assert parsed.insufficient_data_components == []
+    assert parsed.module_a_results == {}
+    assert parsed.module_b_results == {}
+
+
+def test_analysis_results_with_module_a_b_results_round_trips():
+    results = AnalysisResults(
+        assessments=[_risk_assessment()],
+        disposition=_lot_disposition(),
+        module_a_results={"C1": _module_a_result()},
+        module_b_results={"C1": _module_b_result()},
+    )
+    round_tripped = AnalysisResults.model_validate_json(results.model_dump_json())
+    assert round_tripped == results
+    assert round_tripped.module_a_results["C1"].parameter == "leakage"
+    assert round_tripped.module_b_results["C1"].predicted_168h == 50.0
 
 
 def test_analysis_results_with_part_explanations_round_trips():

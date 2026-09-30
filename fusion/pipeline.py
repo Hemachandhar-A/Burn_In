@@ -152,6 +152,20 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         )
         assessments.append(assessment)
 
+    # Part 4 (Block 3B, CONTRACT_CHANGES.md 2026-09-30): GET /parts/{component_id} needs the full
+    # ModuleAResult/ModuleBResult for every analysed component (not just non-PASS ones), stored
+    # rather than re-run - one entry per component, for that component's own worst_parameter. Module
+    # A is absent entirely on an in-progress lot (a_results_by_key is empty), a documented gap.
+    module_a_results: dict[str, object] = {}
+    module_b_results: dict[str, object] = {}
+    for assessment in assessments:
+        a_for_detail = a_results_by_key.get((assessment.component_id, assessment.worst_parameter))
+        if a_for_detail is not None:
+            module_a_results[assessment.component_id] = a_for_detail
+        b_for_detail = b_results_by_key.get((assessment.component_id, assessment.worst_parameter))
+        if b_for_detail is not None:
+            module_b_results[assessment.component_id] = b_for_detail
+
     # Part 3g (Block 3B): E4's explanation mechanisms, one PartExplanation per non-PASS assessment.
     # PASS parts get no entry (not an empty one) - explain/text.py's functions all already return
     # None/[] for a module that did not compute something, so nothing here fabricates data.
@@ -274,4 +288,6 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         insufficient_data_components=insufficient_data_components,
         part_explanations=part_explanations,
         explanation_summary=explanation_summary,
+        module_a_results=module_a_results,
+        module_b_results=module_b_results,
     )
