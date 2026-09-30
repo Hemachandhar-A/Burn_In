@@ -5,17 +5,19 @@ from fastapi.responses import PlainTextResponse
 from typing import List
 
 from contracts import (
-    Account, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest, CorrectiveStatusResponse, DispositionRecord,
-    ScreeningConfig, WorklistResponse,
+    Account, AnalysisResults, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest, CorrectiveStatusResponse,
+    DispositionRecord, DPAWorkOrderResponse, ScreeningConfig, WorklistResponse,
 )
 from identity.auth import get_current_account
 from identity.router import get_current_settings_state
 from capa.models import TEMP_CapaRecord, TEMP_ResolveRequest
 from capa.logic import (
     compute_corrective_status, find_dispositions_awaiting_confirmed_outcome,
-    find_latest_run_for_component, get_all_capas,
+    find_latest_run_for_component, get_all_capas, select_dpa_work_order,
 )
-from storage.repository import log_event, query_events, save_confirmed_outcome
+from storage.repository import (
+    log_event, query_events, query_latest_project_data, query_projects, save_confirmed_outcome,
+)
 
 router = APIRouter(tags=["CAPA", "Audit"])
 
@@ -93,6 +95,32 @@ def get_worklist(account: Account = Depends(get_current_account)) -> WorklistRes
         for s in find_dispositions_awaiting_confirmed_outcome()
     ]
     return WorklistResponse(pending=pending)
+
+
+@planned_router.post("/lots/{lot_id}/dpa-work-order", response_model=DPAWorkOrderResponse)
+def create_dpa_work_order(
+    lot_id: str, account: Account = Depends(get_current_account)
+) -> DPAWorkOrderResponse:
+    """E13 step 5: up to 3 recommended parts for destructive physical analysis, on a COMPLETE lot
+    only (a lot still IN_PROGRESS has no final verdict tier to select against - 409, not a guess)."""
+    matches = [p for p in query_projects() if p.lot_id == lot_id]
+    if not matches:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"no project found for lot '{lot_id}'")
+    project = matches[0]
+
+    latest = query_latest_project_data(project.project_id)
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"no analysis run found for lot '{lot_id}'")
+
+    results = AnalysisResults.model_validate_json(latest.results_json)
+    if results.disposition.status != "COMPLETE":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"lot '{lot_id}' is still IN_PROGRESS - a DPA work order requires a COMPLETE lot",
+        )
+
+    return DPAWorkOrderResponse(recommendations=select_dpa_work_order(results))
 
 @router.get("/capa", response_model=List[TEMP_CapaRecord])
 def list_capas(account: Account = Depends(get_current_account)):

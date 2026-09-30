@@ -6,7 +6,8 @@ from typing import Literal, NamedTuple
 from pydantic import ValidationError
 
 from contracts import (
-    AnalysisResults, ConfirmedOutcome, CorrectiveStatusResponse, DispositionSignoff, Project, ProjectData,
+    AnalysisResults, ConfirmedOutcome, CorrectiveStatusResponse, DispositionSignoff, DPARecommendation,
+    ModuleAResult, ModuleBResult, Project, ProjectData,
 )
 from capa.models import TEMP_CapaRecord
 from storage.repository import (
@@ -233,6 +234,102 @@ def find_dispositions_awaiting_confirmed_outcome() -> list[DispositionSignoff]:
     signoffs = query_disposition_signoffs()
     confirmed_keys = {(o.project_id, o.component_id) for o in query_confirmed_outcomes()}
     return [s for s in signoffs if (s.project_id, s.component_id) not in confirmed_keys]
+
+
+# ---------------------------------------------------------------------------
+# E13 step 5 / context.md 5.19 (Block 4a Part 5, Lead ruling D70.5) - DPA-sample recommendation.
+# Pure function over an already-computed AnalysisResults - no re-running module_a/module_b, no I/O.
+# Selection rule (a simple, explainable proxy, not a trained metric - none exists at this layer):
+#   (i)   highest combined severity (Module A's own max-combined percentile, E2 step 5) among
+#         flagged parts - confirms a suspected mechanism.
+#   (ii)  highest Module B calibrated-interval width (interval_upper - interval_lower, "most
+#         information gained per part destroyed", context.md 5.19) among WATCH-tier parts - WATCH is
+#         the actual boundary tier by definition (context.md 6.2: "crossed REVIEW only" sits exactly
+#         between PASS and REJECT). No numeric "distance to REJECT" is computed anywhere upstream
+#         (module_a_rank/module_b_rank are per-run percentile ranks, not a trained boundary-distance
+#         metric), so WATCH-tier membership itself is the boundary proxy. Falls back to REJECT-tier
+#         parts only if no WATCH-tier part has a usable interval (both bounds present) - documented
+#         here rather than silently returning fewer than the rule intends.
+#   (iii) one control part: the unflagged (PASS-tier) part with the lowest component_id, not already
+#         chosen - deterministic, no randomness (real DPA practice samples at random; this
+#         recommendation is deliberately not random, so repeated calls agree).
+# No part is recommended twice; ties at every step break on component_id ascending.
+# ---------------------------------------------------------------------------
+
+DPA_MAX_RECOMMENDATIONS = 3
+DPA_FLAGGED_TIERS = ("WATCH", "REJECT")  # non-PASS: parts a DPA teardown would actually investigate
+DPA_BOUNDARY_TIERS_PRIMARY = ("WATCH",)  # the boundary tier itself (context.md 6.2)
+DPA_BOUNDARY_TIERS_FALLBACK = ("WATCH", "REJECT")  # used only if no WATCH-tier candidate qualifies
+
+
+def _module_b_interval_width(module_b_results: dict[str, ModuleBResult], component_id: str) -> float | None:
+    result = module_b_results.get(component_id)
+    if result is None or result.interval_lower is None or result.interval_upper is None:
+        return None
+    return result.interval_upper - result.interval_lower
+
+
+def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
+    assessments = {a.component_id: a for a in results.assessments}
+    a_results: dict[str, ModuleAResult] = results.module_a_results
+    b_results: dict[str, ModuleBResult] = results.module_b_results
+
+    chosen: list[str] = []
+    recommendations: list[DPARecommendation] = []
+
+    # (i) highest combined severity among flagged (WATCH/REJECT) parts.
+    severity_candidates = sorted(
+        (
+            (cid, a_results[cid].combined_severity)
+            for cid, a in assessments.items()
+            if a.verdict in DPA_FLAGGED_TIERS and cid in a_results
+        ),
+        key=lambda pair: (-pair[1], pair[0]),
+    )
+    if severity_candidates:
+        cid, severity = severity_candidates[0]
+        chosen.append(cid)
+        recommendations.append(DPARecommendation(
+            component_id=cid, reason=f"Highest combined severity in the lot ({severity:.2f}).",
+        ))
+
+    # (ii) highest-uncertainty part nearest the WATCH/REJECT boundary.
+    for tiers in (DPA_BOUNDARY_TIERS_PRIMARY, DPA_BOUNDARY_TIERS_FALLBACK):
+        candidates = sorted(
+            (
+                (cid, width)
+                for cid, a in assessments.items()
+                if a.verdict in tiers and cid not in chosen
+                for width in [_module_b_interval_width(b_results, cid)]
+                if width is not None
+            ),
+            key=lambda pair: (-pair[1], pair[0]),
+        )
+        if candidates:
+            cid, width = candidates[0]
+            chosen.append(cid)
+            recommendations.append(DPARecommendation(
+                component_id=cid,
+                reason=f"Highest-uncertainty part near the WATCH/REJECT boundary "
+                       f"(Module B interval width {width:.2f}).",
+            ))
+            break
+
+    # (iii) one control part: lowest component_id among PASS-tier parts not already chosen.
+    control_candidates = sorted(
+        cid for cid, a in assessments.items() if a.verdict == "PASS" and cid not in chosen
+    )
+    if control_candidates:
+        cid = control_candidates[0]
+        chosen.append(cid)
+        severity = a_results[cid].combined_severity if cid in a_results else None
+        reason = (
+            f"Unflagged control part (PASS verdict, combined severity {severity:.2f}) for comparison."
+            if severity is not None else "Unflagged control part (PASS verdict) for comparison."
+        )
+        recommendations.append(DPARecommendation(component_id=cid, reason=reason))
+
+    return recommendations[:DPA_MAX_RECOMMENDATIONS]
 
 
 def get_all_capas() -> list[TEMP_CapaRecord]:
