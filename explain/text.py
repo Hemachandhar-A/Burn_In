@@ -176,3 +176,35 @@ def unavailable_forecast_note(module_b: ModuleBResult | None) -> str | None:
         f"Drift prediction unavailable for {module_b.parameter}: outside Module B's trained "
         f"parameter set, no calibrated model, or an invalid required input."
     )
+
+
+def staleness_note(
+    disposition_analysis_run_id: str,
+    latest_analysis_run_id: str,
+    second_latest_analysis_run_id: str | None,
+    diff_vs_prior: dict | None,
+) -> str | None:
+    """E4 step 10 / E11: named exactly what changed, sourced ONLY from the stored diff - never a
+    bare flag, never an invented one (rule 7). `storage.repository.save_analysis_run` only ever
+    computes `diff_vs_prior` against a `ProjectData` row's own immediate predecessor - there is no
+    stored diff for a wider gap - so this returns None unless the disposition was signed against
+    exactly the run immediately before the latest one (`second_latest_analysis_run_id`), in which
+    case the latest row's own `diff_vs_prior` IS that exact pair's diff."""
+    if disposition_analysis_run_id == latest_analysis_run_id:
+        return None  # not stale - signed against the latest run
+    if second_latest_analysis_run_id is None or second_latest_analysis_run_id != disposition_analysis_run_id:
+        return None  # gap wider than one run: no single stored diff spans it (CONTRACT_CHANGES.md)
+    if diff_vs_prior is None:
+        return None
+
+    parts = []
+    for cid, modules in sorted((diff_vs_prior.get("newly_activated_modules") or {}).items()):
+        parts.append(f"{cid}: {', '.join(sorted(modules))} activated")
+    for cid, info in sorted((diff_vs_prior.get("resolved_forecasts") or {}).items()):
+        parts.append(f"{cid}: forecast resolved (predicted {info.get('predicted')}, actual {info.get('actual')})")
+    for cid, info in sorted((diff_vs_prior.get("verdict_changes") or {}).items()):
+        parts.append(f"{cid}: verdict moved from {info.get('from')} to {info.get('to')}")
+
+    if not parts:
+        return "A newer analysis run exists since this disposition was signed off, with no tracked changes."
+    return "A newer analysis run exists since this disposition was signed off: " + "; ".join(parts) + "."

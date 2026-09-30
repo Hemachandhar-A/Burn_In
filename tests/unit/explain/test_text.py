@@ -4,7 +4,7 @@
 from contracts import ModuleBResult, RiskAssessment
 from explain.text import (
     confidence_qualifier, explanation_sentence, explanation_summary, severity_cap_note,
-    unavailable_forecast_note,
+    staleness_note, unavailable_forecast_note,
 )
 
 
@@ -269,3 +269,40 @@ def test_unavailable_forecast_note_set_when_forecast_unavailable():
     assert note is not None
     assert "custom_param" in note
     assert "unavailable" in note.lower()
+
+
+# --- Part 3f: staleness_note (E4 step 10 / E11) ---------------------------------------------------
+
+def test_staleness_note_none_when_disposition_matches_latest_run():
+    assert staleness_note("run-3", "run-3", "run-2", {"newly_activated_modules": {}}) is None
+
+
+def test_staleness_note_none_when_gap_wider_than_one_run():
+    """No single stored diff spans a gap of more than one run (0d-iv: diff_vs_prior is only ever
+    against the immediate predecessor) - rule 7 forbids inventing/chaining one, so this returns
+    None rather than an approximated diff."""
+    diff = {"newly_activated_modules": {}, "resolved_forecasts": {}, "verdict_changes": {}}
+    assert staleness_note("run-1", "run-3", "run-2", diff) is None
+
+
+def test_staleness_note_none_when_diff_missing():
+    assert staleness_note("run-1", "run-2", "run-1", None) is None
+
+
+def test_staleness_note_names_activation_resolution_and_verdict_move():
+    diff = {
+        "newly_activated_modules": {"C1": ["module_a"]},
+        "resolved_forecasts": {"C2": {"predicted": 50.0, "actual": 55.0}},
+        "verdict_changes": {"C3": {"from": "WATCH", "to": "REJECT"}},
+    }
+    note = staleness_note("run-1", "run-2", "run-1", diff)
+    assert note is not None
+    assert "C1" in note and "module_a" in note and "activated" in note
+    assert "C2" in note and "50.0" in note and "55.0" in note
+    assert "C3" in note and "WATCH" in note and "REJECT" in note
+
+
+def test_staleness_note_empty_diff_still_names_a_newer_run():
+    diff = {"newly_activated_modules": {}, "resolved_forecasts": {}, "verdict_changes": {}}
+    note = staleness_note("run-1", "run-2", "run-1", diff)
+    assert note == "A newer analysis run exists since this disposition was signed off, with no tracked changes."
