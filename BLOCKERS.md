@@ -124,6 +124,23 @@ Entry format:
 
 ---
 
+---
+
+## 2026-09-27 P1 - PPT differentiation slide: harness numbers do not support "Module A beats the industry baselines"
+- Blocked on: a Lead decision on how the differentiation-vs-industry slide is framed, and whether Module A's scoring should change before G8. G8 requires every PPT claim to trace to a harness number. The E5 framing ("demonstrably better than industry practice") is not what P1.8's numbers show.
+- What the numbers show (`harness/results/p18/`, seed 2026, the same 9,779 held-out parts / 521 defective as P1.7):
+  - Module A at REVIEW has 84.1% recall at 24.3% flagged, which beats static limits (4.0%), static PAT (44.7%) and DPAT (59.1%) on recall.
+  - But fixed delta limits reach 100% recall at 24.0% flagged, with a lower cost per part (0.186 vs Module A's 0.283 at 10:1).
+  - DPAT has a lower cost (0.219) at 97.2% precision.
+  - Given the same flag count as each baseline, Module A has lower recall than every one of them. At DPAT's budget it gets 30.7% vs 59.1%.
+  - The golden worked example is missed by static and delta limits but caught by both DPAT and Module A.
+- Likely causes (diagnosis only, in `harness/results/p18/FINDINGS.md`):
+  - (1) Module A's severity is a within-lot percentile rank (E2 step 5), so it cannot express magnitude, and every lot's top ~20% score near 1.0.
+  - (2) Fixed-delta allowances were set from the generator's own healthy drift (P1.5, disclosed), and every defect archetype is a drift trajectory, so that baseline is favoured by construction.
+  - (3) IF/ECOD see only 0h/24h (the existing OPEN CONTRACT_CHANGES entry).
+- What was tried: nothing changed outside `harness/`. Module A's scoring is P3's (and E2/context.md 6.1's), and the slide is the Lead's. The tables are generated and committed as-is, with no re-tuning of the baselines to make Module A look better. FINDINGS.md lists what the slide can honestly claim today.
+- Status: OPEN - Lead decision.
+
 ## 2026-09-30 P1 - RESOLVED: MOCK_submitDisposition (follow-up to the P1.11 entry)
 - Blocked on: `POST /parts/{component_id}/disposition` needing `project_id`/`analysis_run_id`.
 - What was tried: hand-typed mock per the Part Detail screen.
@@ -171,3 +188,15 @@ Entry format:
 ## 2026-09-30 P1 - RESOLVED: Lot Dashboard metadata fields (Block 5F Part 1e)
 - Resolves the Block 5E entry "ProjectSummary has no manufacturer, date code or test date".
 - Status: RESOLVED (2026-09-30, Block 5F) - `ProjectSummary` now carries nullable `manufacturer`, `date_code`, `test_date` (merged from develop `aa7ec74`). The Lot Dashboard panel shows Part Number, Manufacturer, Date Code and Test Date (date part, via `formatUtc`) only when present; null or empty fields are left out.
+
+---
+
+## 2026-09-30 Lead - the golden lot is REJECT (PDA 0.49) through POST /lots, HOLD (PDA 0.039) through the pipeline directly
+- Blocked on: an owner decision (ingestion/units.py vs module_b/ vs the golden fixture's units); found while loading DEMO-GOLDEN-01 via scripts/load_demo_lots.py (session 6, chunk 2).
+- What was found (reproduced, same 924 readings, only the route differs):
+  - `harness.golden.golden_lot()` has leakage in **uA** (the problem statement's 10 uA / 45 uA / 50 uA example). `run_full_pipeline` on it directly: HOLD, PDA 0.039 (Module A tiers: 216 PASS, 8 REVIEW, 7 REJECT; Module B leakage exceeds_safety_slope False for 77/77).
+  - `POST /lots` runs `ingestion.units.normalize_readings`, which converts leakage to **nA** (x1000; 308 readings change). `run_full_pipeline` on that: REJECT, PDA 0.4935. Module A is unchanged (robust z is unit-invariant); Module B leakage exceeds_safety_slope is True for 37/77 parts.
+  - The generator's own leakage unit is nA (`generator/parameters.py`), so Module B's synthetic calibration lives on that scale; a part whose leakage is genuinely 10 uA (= 10000 nA) is far outside it.
+  - Existing tests missed it: `test_golden_module_a.py` never goes through ingestion; `test_g5_routes.py` uploads the golden lot but asserts only status.
+- What was tried: nothing changed (ingestion/, module_b/ and harness/ are not the Lead's in this chunk). No in-scope workaround exists: any value uploaded is normalized to nA before Module B sees it, and rescaling the data would change the worked example. `tests/unit/scripts/test_load_demo_lots.py` carries a skipped test asserting HOLD/0.039 that should be un-skipped when this is fixed.
+- Status: OPEN - blocks the demo claim "DEMO-GOLDEN-01 is HOLD, PDA ~0.039, GOLDEN-045 REJECT first" via the real route.

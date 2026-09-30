@@ -1,0 +1,4 @@
+strategy,mean_held_out_cost,shipped
+max,0.34419716646989373,True
+weighted_average,0.19046466520492494,False
+meta_model,0.14577584752909428,False

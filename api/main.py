@@ -2,8 +2,8 @@
 
 App instance, CORS for the Vite dev origin, /health, and router registration. A router is
 registered here in the same merge that introduces it (IMPLEMENTATION_PLAN.md Part 8) - a merged
-session is not a reachable route. The StaticFiles mount for the built frontend is added in L3
-(scripts/build_demo.sh).
+session is not a reachable route. The built frontend (frontend/dist) is mounted last, by api/static.py,
+when it exists (scripts/build_demo.sh).
 """
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +14,7 @@ from identity.auth import get_current_account
 from identity.router import router as identity_router
 from ingestion.router import router as ingestion_router
 from report.router import router as report_router
+from api.static import mount_frontend
 from storage.repository import init_db
 from storage.router import router as storage_router
 
@@ -51,3 +52,8 @@ app.include_router(capa_router)
 @app.get("/health", tags=["meta"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# LAST registration, after every router and /health: serves frontend/dist when it has been built (scripts/
+# build_demo.sh). No-op otherwise, so the dev loop (Vite on :5173) and the tests are unaffected.
+mount_frontend(app)

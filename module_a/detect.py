@@ -94,6 +94,11 @@ _RANDOM_STATE: int = 42
 
 _THRESHOLDS_PATH = pathlib.Path(__file__).parent.parent / "config" / "harness_thresholds.yaml"
 
+# Epsilon for float equality in explainable_corroboration. All percentile values are
+# rankdata(arr)/n — integer ranks divided by n — so equality between same-source values
+# is mathematically exact. The epsilon makes the semantics explicit and future-proof.
+_CORROBORATION_EPS: float = 1e-10
+
 
 def _load_thresholds() -> HarnessThresholds:
     """Load harness thresholds from config/harness_thresholds.yaml.
@@ -317,10 +322,10 @@ def _detect_single_lot(
             severity_tier_value = "PASS"
 
         # explainable_corroboration: True iff an explainable-tagged detector (robust_z, always tagged;
-        # mcd, only when it actually ran) reached or tied the combined max on its own - never a single
-        # "worst detector" name, since ties and multi-detector cases need the whole set, not a winner.
+        # mcd, only when it actually ran) reached or tied the combined max within epsilon.
+        # Uses epsilon tolerance (not exact ==) since these are floating-point percentile ranks.
         explainable_max = max(z_pct[i], mcd_pct[i] if mcd_tag else -1.0)
-        explainable_corroboration = explainable_max >= raw_combined
+        explainable_corroboration = explainable_max >= raw_combined - _CORROBORATION_EPS
 
         results.append(ModuleAResult(
             component_id=frame.component_id,
