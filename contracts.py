@@ -473,7 +473,7 @@ class EventResponse(BaseModel):
     event_id: str
     project_id: str
     account_id: str
-    event_type: Literal["ingest", "checkpoint_add", "analysis_run", "config_change"]
+    event_type: Literal["ingest", "checkpoint_add", "analysis_run", "config_change", "timing_flag"]
     timestamp: datetime
     payload: dict  # dict deliberately - depends on event_type; see Part 5.6 note
 

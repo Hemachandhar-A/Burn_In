@@ -37,7 +37,7 @@ from contracts import (
 )
 from storage.database import SessionLocal, init_db  # noqa: F401 - re-exported for scripts/seed.py
 
-_EVENT_TYPES = {"ingest", "checkpoint_add", "analysis_run", "config_change"}
+_EVENT_TYPES = {"ingest", "checkpoint_add", "analysis_run", "config_change", "timing_flag"}
 _DISPOSITION_VERDICTS = {"ACCEPT", "HOLD", "REJECT"}
 _CONFIRMED_OUTCOMES = {"Confirmed Good", "Confirmed Defective", "Unknown"}
 
