@@ -1,9 +1,10 @@
 import type { ApiClient } from './client'
 import { unwrap } from './errors'
-import { MOCK_submitDisposition, type MOCK_DispositionRecord, type MOCK_DispositionRequest } from './mocks'
 import type { components } from './schema'
 
 export type PartDetailResponse = components['schemas']['PartDetailResponse']
+export type DispositionRequest = components['schemas']['DispositionRequest']
+export type DispositionRecord = components['schemas']['DispositionRecord']
 export type ConfirmedOutcomeRequest = components['schemas']['ConfirmedOutcomeRequest']
 export type ConfirmedOutcomeRecord = components['schemas']['ConfirmedOutcomeRecord']
 
@@ -26,17 +27,25 @@ export async function getPartDetail(
 }
 
 /**
- * `POST /parts/{component_id}/disposition`. MOCKED: the real route needs `project_id` and
- * `analysis_run_id` as required query parameters, and `PartDetailResponse` gives the frontend no
- * way to obtain either (CONTRACT_CHANGES.md, "PartDetailResponse gives the frontend no way to
- * call POST /parts/{component_id}/disposition correctly"). Block 5D swaps this.
+ * `POST /parts/{component_id}/disposition`: real (P5.5, identity/router.py). The route takes
+ * `project_id` and `analysis_run_id` as required query parameters; `PartDetailResponse` now
+ * returns both (Block 4c Part 3a), so the caller passes them straight from the fetched part.
  */
-export function submitDisposition(
+export async function submitDisposition(
+  client: ApiClient,
   componentId: string,
-  request: MOCK_DispositionRequest,
-  accountId: string,
-): Promise<MOCK_DispositionRecord> {
-  return MOCK_submitDisposition(componentId, request, accountId)
+  ids: { projectId: string; analysisRunId: string },
+  request: DispositionRequest,
+): Promise<DispositionRecord> {
+  return unwrap(
+    await client.POST('/parts/{component_id}/disposition', {
+      params: {
+        path: { component_id: componentId },
+        query: { project_id: ids.projectId, analysis_run_id: ids.analysisRunId },
+      },
+      body: request,
+    }),
+  )
 }
 
 /**

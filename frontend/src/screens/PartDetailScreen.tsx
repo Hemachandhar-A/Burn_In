@@ -4,15 +4,14 @@ import { useId, useState } from 'react'
 import RawPlot from 'react-plotly.js'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useApiClient } from '../api/ApiClientContext'
-import { displayNameFor, TEMP_LOGIN_ACCOUNTS } from '../auth/accounts'
-import { useAuth } from '../auth/AuthContext'
+import { displayNameFor } from '../auth/accounts'
 import { describeFailure } from '../api/errors'
 import { getPartDetail, submitConfirmedOutcome, submitDisposition } from '../api/parts'
 import type { PartDetailResponse } from '../api/parts'
 import type { components } from '../api/schema'
 import { WORKLIST_QUERY_KEY } from '../api/settings'
 import { pathToLot } from './registry'
-import { formatNumber } from './settingsFormat'
+import { formatNumber, formatUtc } from './settingsFormat'
 import { VerdictBadge } from './VerdictBadge'
 
 type DispositionRecord = components['schemas']['DispositionRecord']
@@ -31,7 +30,7 @@ type ShapContributionRow = components['schemas']['ShapContributionRow']
 const Plot = (RawPlot as unknown as { default?: typeof RawPlot }).default ?? RawPlot
 
 function formatTimestamp(iso: string): string {
-  return iso.slice(0, 16).replace('T', ' ')
+  return formatUtc(iso).slice(0, 16)
 }
 
 function NoteCard({
@@ -323,15 +322,39 @@ function TrajectoryChart({
   )
 }
 
-function lastSignoff(history: DispositionRecord[]): DispositionRecord | null {
-  if (history.length === 0) return null
-  return [...history].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))[0]
+function sortedSignoffs(history: DispositionRecord[]): DispositionRecord[] {
+  return [...history].sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0))
 }
 
-type PartDetailNavState = {
-  lotId?: string
-  verdict?: 'PASS' | 'WATCH' | 'REJECT'
-} | null
+/** What the backend history actually says: a list of sign-offs and how many distinct accounts made
+ * them. The backend has no "finalized" state for a part disposition, so none is shown. */
+function SignoffHistory({ history }: { history: DispositionRecord[] }) {
+  if (history.length === 0) return <p className="card-note">No sign-offs recorded yet.</p>
+  const distinct = new Set(history.map((h) => h.account_id)).size
+  return (
+    <div className="signoff-history" aria-label="Sign-off history">
+      <p className="summary-label">
+        {distinct} sign-off(s) recorded by distinct accounts
+      </p>
+      <ul className="signoff-list">
+        {sortedSignoffs(history).map((h, i) => (
+          <li key={i}>
+            <VerdictBadge verdict={h.verdict} /> by{' '}
+            <span className="mono">{h.account_id}</span> ({displayNameFor(h.account_id)}) on{' '}
+            <span className="mono">{formatUtc(h.timestamp)}</span> UTC · run{' '}
+            <span className="mono">{h.analysis_run_id}</span>
+            {h.rationale && <span className="muted"> — {h.rationale}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Only the lot is read from navigation state, and only as the route's documented `lot_id`
+ * query parameter that disambiguates a component_id reused across lots; everything displayed
+ * comes from the response. */
+type PartDetailNavState = { lotId?: string } | null
 
 /** E6 screen 4, opened from either ranked list on the Lot Dashboard. */
 export function PartDetailScreen() {
@@ -364,9 +387,7 @@ function PartDetailForComponent({
   navState: PartDetailNavState
 }) {
   const client = useApiClient()
-  const { session } = useAuth()
   const queryClient = useQueryClient()
-  const accountId = session?.accountId ?? ''
 
   const [rationale, setRationale] = useState('')
   const [showConfirmedOutcome, setShowConfirmedOutcome] = useState(false)
@@ -383,11 +404,22 @@ function PartDetailForComponent({
   const queryKey = ['part-detail', componentId, navState?.lotId]
 
   const disposition = useMutation({
-    mutationFn: (verdict: 'ACCEPT' | 'HOLD' | 'REJECT') =>
-      submitDisposition(componentId, { verdict, rationale: rationale.trim() }, accountId),
+    mutationFn: (verdict: 'ACCEPT' | 'HOLD' | 'REJECT') => {
+      const projectId = detail.data?.project_id
+      const analysisRunId = detail.data?.analysis_run_id
+      if (!projectId || !analysisRunId)
+        return Promise.reject(new Error('This part response carries no project or analysis run.'))
+      return submitDisposition(
+        client,
+        detail.data?.component_id ?? componentId,
+        { projectId, analysisRunId },
+        { verdict, rationale: rationale.trim() },
+      )
+    },
     onSuccess: () => {
       setRationale('')
       void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ queryKey: WORKLIST_QUERY_KEY })
     },
   })
 
@@ -451,11 +483,11 @@ function PartDetailForComponent({
   }
 
   const data = detail.data
-  const lotId = data.module_a?.lot_id ?? data.module_b?.lot_id ?? navState?.lotId ?? null
+  const lotId = data.lot_id ?? null
+  const shownComponentId = data.component_id ?? componentId
   const parameter = primaryParameter(data)
-  const signoff = lastSignoff(data.disposition_history)
-  const signoffAccount = TEMP_LOGIN_ACCOUNTS.find((a) => a.account_id === signoff?.account_id)
-  const disabledForm = disposition.isPending || rationale.trim() === ''
+  const canSubmit = Boolean(data.project_id && data.analysis_run_id)
+  const disabledForm = disposition.isPending || !canSubmit
   const confidenceQualifier = data.confidence_qualifier.trim()
   const zscoreRows = data.explanation?.zscore_table ?? []
   const mcdRows = data.explanation?.mcd_contributions ?? []
@@ -470,15 +502,15 @@ function PartDetailForComponent({
       <header className="part-detail-header">
         <div className="part-detail-heading">
           <span className="chip">
-            DUT IDENTIFIER <span className="mono">{componentId}</span>
+            DUT IDENTIFIER <span className="mono">{shownComponentId}</span>
           </span>
           <div>
             <p className="summary-label">Primary Target Parameter</p>
             <h1 className="screen-title">{parameter ?? 'No Parameter Flagged'}</h1>
           </div>
         </div>
-        {navState?.verdict ? (
-          <VerdictBadge verdict={navState.verdict} />
+        {data.verdict ? (
+          <VerdictBadge verdict={data.verdict} />
         ) : (
           <span className="muted">Verdict unavailable</span>
         )}
@@ -621,14 +653,9 @@ function PartDetailForComponent({
               rationale.
             </p>
           </div>
-          {signoff && (
-            <p className="past-signoff">
-              Past Sign-off: <VerdictBadge verdict={signoff.verdict} /> by{' '}
-              {signoffAccount ? displayNameFor(signoff.account_id) : signoff.account_id} (
-              {signoffAccount?.role ?? 'unknown role'}) on {formatTimestamp(signoff.timestamp)}
-            </p>
-          )}
         </header>
+
+        <SignoffHistory history={data.disposition_history} />
 
         {disposition.isError && (
           <div className="card-note form-error" role="alert">
@@ -641,7 +668,7 @@ function PartDetailForComponent({
         )}
 
         <label className="field-label" htmlFor={rationaleId}>
-          Technical Disposition Rationale
+          Technical Disposition Rationale (optional)
         </label>
         <textarea
           id={rationaleId}

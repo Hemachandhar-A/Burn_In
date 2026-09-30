@@ -123,3 +123,8 @@ Entry format:
 - Status: RESOLVED.
 
 ---
+
+## 2026-09-30 P1 - RESOLVED: MOCK_submitDisposition (follow-up to the P1.11 entry)
+- Blocked on: `POST /parts/{component_id}/disposition` needing `project_id`/`analysis_run_id`.
+- What was tried: hand-typed mock per the Part Detail screen.
+- Status: RESOLVED (2026-09-30, Block 5D Part 2) - `MOCK_submitDisposition` deleted. `submitDisposition` in `api/parts.ts` calls the real route with the ids from the fetched `PartDetailResponse` (Block 4c Part 3a). `mocks.ts` now holds only fixture data.

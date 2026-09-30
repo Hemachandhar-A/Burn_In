@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { Link, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { ApiError } from '../api/errors'
 import * as partsApi from '../api/parts'
 import type { PartDetailResponse } from '../api/parts'
 import { fakeServer, renderWithApi } from '../test-utils'
@@ -80,6 +79,11 @@ const DETAIL = (overrides: Partial<PartDetailResponse> = {}): PartDetailResponse
   disposition_history: [],
   confirmed_outcomes: [],
   explanation: EXPLANATION,
+  component_id: 'DUT-042',
+  lot_id: 'LOT-2024-W19-B',
+  project_id: 'proj-LOT-2024-W19-B',
+  analysis_run_id: '03',
+  verdict: 'REJECT',
   ...overrides,
 })
 
@@ -264,75 +268,119 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(screen.queryByText('SHAP Feature Contribution')).toBeNull()
   })
 
-  test('a past sign-off is shown, with the deciding account and role', async () => {
+  const SIGNOFF = (account_id: string, timestamp: string) => ({
+    project_id: 'proj-LOT-2024-W19-B',
+    component_id: 'DUT-042',
+    account_id,
+    verdict: 'REJECT' as const,
+    rationale: 'Leakage well past REVIEW at 24h.',
+    timestamp,
+    analysis_run_id: '03',
+  })
+
+  test('the header shows the response verdict and component id, not navigation state', async () => {
+    setup('/parts/DUT-042', DETAIL({ verdict: 'WATCH', component_id: 'DUT-042' }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const header = document.querySelector('.part-detail-header') as HTMLElement
+    expect(within(header).getByText('WATCH')).toBeInTheDocument()
+    expect(within(header).getByText('DUT-042')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'LOT-2024-W19-B' })).toBeInTheDocument()
+  })
+
+  test('the sign-off history lists every sign-off with account, verdict, time and run, and counts distinct accounts', async () => {
     setup(
       '/parts/DUT-042',
       DETAIL({
         disposition_history: [
-          {
-            project_id: 'proj-1',
-            component_id: 'DUT-042',
-            account_id: 'a.sharma',
-            verdict: 'REJECT',
-            rationale: 'Leakage well past REVIEW at 24h.',
-            timestamp: '2024-05-12T15:40:00',
-            analysis_run_id: '02',
-          },
+          SIGNOFF('a.sharma', '2026-09-30T10:00:00'),
+          SIGNOFF('r.mehta', '2026-09-30T10:05:00'),
         ],
       }),
     )
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
-    const note = screen.getByText(/Past Sign-off:/)
-    expect(note).toHaveTextContent('A. Sharma')
-    expect(note).toHaveTextContent('Quality Engineer')
-    expect(note).toHaveTextContent('2024-05-12 15:40')
+    const history = screen.getByLabelText('Sign-off history')
+    expect(history).toHaveTextContent('2 sign-off(s) recorded by distinct accounts')
+    const items = within(history).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('a.sharma')
+    expect(items[0]).toHaveTextContent('2026-09-30 10:00:00')
+    expect(items[0]).toHaveTextContent('run 03')
+    expect(items[1]).toHaveTextContent('r.mehta')
+    expect(screen.queryByText(/finalized/i)).toBeNull()
   })
 
-  test('disposition buttons stay disabled until a rationale is entered, then submit through the (still mocked) typed client and show the returned record', async () => {
-    setup()
-    const submitDisposition = vi.spyOn(partsApi, 'submitDisposition').mockResolvedValue({
-      project_id: 'proj-1',
-      component_id: 'DUT-042',
-      account_id: 'a.sharma',
-      verdict: 'REJECT',
-      rationale: 'Confirmed leakage drift.',
-      timestamp: '2026-09-26T10:00:00',
-      analysis_run_id: '03',
+  test('the same account signing twice counts as one distinct account', async () => {
+    setup(
+      '/parts/DUT-042',
+      DETAIL({
+        disposition_history: [
+          SIGNOFF('a.sharma', '2026-09-30T10:00:00'),
+          SIGNOFF('a.sharma', '2026-09-30T10:01:00'),
+        ],
+      }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.getByLabelText('Sign-off history')).toHaveTextContent(
+      '1 sign-off(s) recorded by distinct accounts',
+    )
+  })
+
+  test('a disposition posts to the real route with the ids from the response, enabled without a rationale, then refreshes the part and worklist', async () => {
+    let body: unknown = null
+    const server = fakeServer({
+      'GET /parts/DUT-042': { body: DETAIL() },
+      'POST /parts/DUT-042/disposition': async (request) => {
+        body = await request.json()
+        return { body: SIGNOFF('a.sharma', '2026-09-30T10:00:00') }
+      },
+    })
+    const { queryClient } = renderWithApi(routed(), {
+      fetch: server.fetch,
+      path: '/parts/DUT-042',
     })
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
     const reject = screen.getByRole('button', { name: 'Reject' })
-    expect(reject).toBeDisabled()
-
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale'), {
+    expect(reject).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (optional)'), {
       target: { value: 'Confirmed leakage drift.' },
     })
-    expect(reject).toBeEnabled()
-
     fireEvent.click(reject)
+
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body).toEqual({ verdict: 'REJECT', rationale: 'Confirmed leakage drift.' })
+    const post = server.requests.find((r) => r.method === 'POST') as Request
+    const url = new URL(post.url)
+    expect(url.searchParams.get('project_id')).toBe('proj-LOT-2024-W19-B')
+    expect(url.searchParams.get('analysis_run_id')).toBe('03')
     await waitFor(() =>
-      expect(submitDisposition).toHaveBeenCalledWith(
-        'DUT-042',
-        { verdict: 'REJECT', rationale: 'Confirmed leakage drift.' },
-        'a.sharma',
-      ),
+      expect(screen.getByLabelText('Technical Disposition Rationale (optional)')).toHaveValue(''),
     )
-    await waitFor(() =>
-      expect(screen.getByLabelText('Technical Disposition Rationale')).toHaveValue(''),
+    expect(invalidate.mock.calls.some((c) => c[0]?.queryKey?.[0] === 'part-detail')).toBe(true)
+    expect(invalidate.mock.calls.some((c) => c[0]?.queryKey?.[1] === 'worklist')).toBe(true)
+  })
+
+  test('a same-account retry shows the server 400 message', async () => {
+    const server = fakeServer({
+      'GET /parts/DUT-042': { body: DETAIL() },
+      'POST /parts/DUT-042/disposition': {
+        status: 400,
+        body: { detail: 'Dual sign-off requires two distinct account IDs, not two role labels' },
+      },
+    })
+    renderWithApi(routed(), { fetch: server.fetch, path: '/parts/DUT-042' })
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Dual sign-off requires two distinct account IDs, not two role labels',
     )
   })
 
-  test('a failed disposition submission shows the server message', async () => {
-    setup()
-    vi.spyOn(partsApi, 'submitDisposition').mockRejectedValue(
-      new ApiError(422, ['A technical rationale is required.']),
-    )
+  test('a response without project/analysis-run ids disables the disposition buttons', async () => {
+    setup('/parts/DUT-042', DETAIL({ project_id: null, analysis_run_id: null }))
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale'), {
-      target: { value: 'x' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('A technical rationale is required.')
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled()
   })
 
   test('Record Confirmed Outcome reveals its own form, separate from the disposition action', async () => {
@@ -411,34 +459,30 @@ describe('Part Detail screen (E6 screen 4)', () => {
     renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
 
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale'), {
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (optional)'), {
       target: { value: 'Half-typed note meant for DUT-042 only.' },
     })
 
     fireEvent.click(screen.getByRole('link', { name: 'go' }))
     await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))
-    await screen.findByLabelText('Technical Disposition Rationale')
-    expect(screen.getByLabelText('Technical Disposition Rationale')).toHaveValue('')
-    // And the buttons are disabled again, since the new screen starts with no rationale either.
-    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled()
+    await screen.findByLabelText('Technical Disposition Rationale (optional)')
+    expect(screen.getByLabelText('Technical Disposition Rationale (optional)')).toHaveValue('')
   })
 
   test('navigating to a different part clears a stale disposition error from the previous one', async () => {
     const server = fakeServer({
       'GET /parts/DUT-042': { body: DETAIL() },
       'GET /parts/DUT-008': { body: DETAIL() },
+      'POST /parts/DUT-042/disposition': { status: 400, body: { detail: 'Rejected by server.' } },
     })
-    vi.spyOn(partsApi, 'submitDisposition').mockRejectedValue(
-      new ApiError(422, ['A technical rationale is required.']),
-    )
     renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
 
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale'), {
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (optional)'), {
       target: { value: 'x' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('A technical rationale is required.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Rejected by server.')
 
     fireEvent.click(screen.getByRole('link', { name: 'go' }))
     await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))

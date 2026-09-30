@@ -1,60 +1,7 @@
 /**
- * Hand-typed stand-ins for routes not yet in the live OpenAPI schema. Each MOCK_<TypeName>
- * mirrors its contracts.py Pydantic model field for field, and each has an open BLOCKERS.md entry
- * naming the route it stands in for.
- *
- * When a route goes live, the one function that calls its mock is edited to call the generated
- * client, and the mock is deleted here. There is no global mock switch on purpose.
- *
- * As of Block 5C, every mocked route except `POST /parts/{component_id}/disposition` is real
- * (`GET /lots/{lot_id}`, `GET /parts/{component_id}`, `GET /settings/worklist`,
- * `GET /settings/corrective-status`, `POST /lots/{lot_id}/dpa-work-order`,
- * `POST /parts/{component_id}/confirmed-outcome`) - their `TEMP_`/`MOCK_` response types and
- * fixture generators were deleted in Block 5B-1/5B-2/5C. `POST /parts/{component_id}/disposition`
- * stays mocked: CONTRACT_CHANGES.md, "PartDetailResponse gives the frontend no way to call
- * POST /parts/{component_id}/disposition correctly" (needs `project_id`/`analysis_run_id` query
- * parameters the response gives the frontend no way to obtain). Block 5D swaps this.
+ * There are no mocked routes left: every route a screen calls is real (Block 5D swapped the last,
+ * `POST /parts/{component_id}/disposition`). What remains is fixture data only.
  */
-import { ApiError } from './errors'
-
-/** contracts.py `DispositionRecord`, verbatim. */
-export interface MOCK_DispositionRecord {
-  project_id: string
-  component_id: string
-  account_id: string
-  verdict: 'ACCEPT' | 'HOLD' | 'REJECT'
-  rationale: string
-  timestamp: string
-  analysis_run_id: string
-}
-
-/** contracts.py `DispositionRequest`, verbatim. */
-export interface MOCK_DispositionRequest {
-  verdict: 'ACCEPT' | 'HOLD' | 'REJECT'
-  rationale: string
-}
-
-const MOCK_LATENCY_SHORT_MS = 200
-
-/** `POST /parts/{component_id}/disposition` (P5.5, identity/router.py). */
-export async function MOCK_submitDisposition(
-  componentId: string,
-  request: MOCK_DispositionRequest,
-  accountId: string,
-): Promise<MOCK_DispositionRecord> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  if (request.rationale.trim() === '')
-    throw new ApiError(422, ['A technical rationale is required.'])
-  return {
-    project_id: `proj-${componentId}`,
-    component_id: componentId,
-    account_id: accountId,
-    verdict: request.verdict,
-    rationale: request.rationale,
-    timestamp: new Date().toISOString(),
-    analysis_run_id: '03',
-  }
-}
 
 /**
  * The projects a few screens' tests refer to, in contracts.py `ProjectSummary` shape. Not served
