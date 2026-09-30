@@ -841,6 +841,28 @@
       },
       "PartDetailResponse": {
         "properties": {
+          "analysis_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Run Id"
+          },
+          "component_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Id"
+          },
           "confidence_qualifier": {
             "title": "Confidence Qualifier",
             "type": "string"
@@ -873,6 +895,17 @@
             "title": "Explanation Sentence",
             "type": "string"
           },
+          "lot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Id"
+          },
           "module_a": {
             "anyOf": [
               {
@@ -892,6 +925,17 @@
                 "type": "null"
               }
             ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
           },
           "severity_cap_note": {
             "anyOf": [
@@ -925,6 +969,22 @@
               }
             ],
             "title": "Unavailable Forecast Note"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PASS",
+                  "WATCH",
+                  "REJECT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
           }
         },
         "required": [
@@ -997,6 +1057,14 @@
               "$ref": "#/components/schemas/ShapContributionRow"
             },
             "title": "Shap Contributions",
+            "type": "array"
+          },
+          "trajectory": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TrajectoryPoint"
+            },
+            "title": "Trajectory",
             "type": "array"
           },
           "unavailable_forecast_note": {
@@ -1313,6 +1381,36 @@
           "role"
         ],
         "title": "TokenResponse",
+        "type": "object"
+      },
+      "TrajectoryPoint": {
+        "description": "Block 4c Part 3b: one measured checkpoint of a part's worst parameter over burn-in - built at\nanalysis time from the stored FeatureFrame, one point per checkpoint that actually has a value\n(never a guessed/NaN one - rule 7, and the same discipline the earlier SHAP null bug required).",
+        "properties": {
+          "checkpoint_hour": {
+            "title": "Checkpoint Hour",
+            "type": "integer"
+          },
+          "lot_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Median"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "checkpoint_hour",
+          "value"
+        ],
+        "title": "TrajectoryPoint",
         "type": "object"
       },
       "ValidationError": {

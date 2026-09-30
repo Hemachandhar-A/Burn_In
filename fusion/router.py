@@ -133,6 +133,13 @@ def get_part_detail(
         disposition_history=disposition_history,
         confirmed_outcomes=confirmed_outcomes,
         explanation=explanation,
+        # Block 4c Part 3a (Lead ruling D79): all five filled for every found part - never None here,
+        # the field-level Optional/None-default exists only so an old stored/cached response parses.
+        component_id=assessment.component_id,
+        lot_id=assessment.lot_id,
+        project_id=project.project_id,
+        analysis_run_id=row.analysis_run_id,
+        verdict=assessment.verdict,
     )
 
 
