@@ -186,11 +186,10 @@ def compute_corrective_status(
     CEILING_EXCEEDED iff the FN rate is known and exceeds ceiling, else OK. fp_rate is informational
     only, never a trigger (E13 step 7).
 
-    CorrectiveStatusResponse.fn_rate/fp_rate are contract-frozen required floats (not Optional) -
-    contracts.py is read-only here (AGENTS.md rule 3), so a None rate (zero denominator, e.g. zero
-    Confirmed Defective outcomes so far) is rendered as 0.0 at this API boundary, a disclosed
-    rendering choice logged in CONTRACT_CHANGES.md, not a silent guess: compute_match_rates itself
-    still returns the honest None to any caller that wants it."""
+    CorrectiveStatusResponse.fn_rate/fp_rate are float | None (Block 4a-resume R2,
+    CONTRACT_CHANGES.md 2026-09-30) - a zero denominator (e.g. zero Confirmed Defective outcomes so
+    far) passes straight through as None, the same honest value compute_match_rates itself returns.
+    No 0.0 substitution at this boundary any more (retired by R2)."""
     if outcomes is None:
         outcomes = query_confirmed_outcomes()
 
@@ -212,8 +211,8 @@ def compute_corrective_status(
         status = "OK"
 
     return CorrectiveStatusResponse(
-        fn_rate=rates.fn_rate if rates.fn_rate is not None else 0.0,
-        fp_rate=rates.fp_rate if rates.fp_rate is not None else 0.0,
+        fn_rate=rates.fn_rate,
+        fp_rate=rates.fp_rate,
         confirmed_outcome_count=confirmed_outcome_count,
         status=status,
     )

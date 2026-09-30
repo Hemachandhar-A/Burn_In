@@ -158,3 +158,53 @@ def test_unknown_excluded_from_the_minimum_count(client, auth_headers):
     body = resp.json()
     assert body["confirmed_outcome_count"] == 9
     assert body["status"] == "INSUFFICIENT_DATA"
+
+
+# Block 4a-resume R2: fn_rate/fp_rate are now float | None - a zero denominator passes through as
+# null, never a silently-guessed 0.0 (contracts.py, CONTRACT_CHANGES.md 2026-09-30).
+
+def test_no_confirmed_defective_outcomes_fn_rate_is_null(client, auth_headers):
+    for i in range(10):
+        _seed_outcome(f"proj{i}", f"comp{i}", "PASS", "Confirmed Good")  # all Confirmed Good + PASS = fine
+
+    resp = client.get("/settings/corrective-status", headers=auth_headers)
+    body = resp.json()
+    assert body["confirmed_outcome_count"] == 10
+    assert body["fn_rate"] is None       # zero confirmed-defective denominator
+    assert body["fp_rate"] == pytest.approx(0.0)  # 0/10 false alarms - a real, computable zero
+
+
+def test_no_confirmed_good_outcomes_fp_rate_is_null(client, auth_headers):
+    for i in range(10):
+        _seed_outcome(f"proj{i}", f"comp{i}", "REJECT", "Confirmed Defective")  # all Confirmed Defective
+
+    resp = client.get("/settings/corrective-status", headers=auth_headers)
+    body = resp.json()
+    assert body["confirmed_outcome_count"] == 10
+    assert body["fp_rate"] is None
+    assert body["fn_rate"] == pytest.approx(0.0)
+
+
+def test_insufficient_data_status_still_carries_the_counts_and_computable_rates(client, auth_headers):
+    # 5 outcomes, below the minimum of 10 -> INSUFFICIENT_DATA, but the rate that IS computable
+    # (both sides present) is still reported, not suppressed just because status is INSUFFICIENT_DATA.
+    for i in range(3):
+        _seed_outcome(f"proj-def{i}", f"comp-def{i}", "PASS", "Confirmed Defective")  # 3 misses
+    for i in range(2):
+        _seed_outcome(f"proj-good{i}", f"comp-good{i}", "PASS", "Confirmed Good")  # 2 fine
+
+    resp = client.get("/settings/corrective-status", headers=auth_headers)
+    body = resp.json()
+    assert body["status"] == "INSUFFICIENT_DATA"
+    assert body["confirmed_outcome_count"] == 5
+    assert body["fn_rate"] == pytest.approx(1.0)  # 3/3 missed
+    assert body["fp_rate"] == pytest.approx(0.0)  # 0/2 false alarms
+
+
+def test_old_shape_json_without_nulls_still_parses():
+    from contracts import CorrectiveStatusResponse
+
+    old_shape = '{"fn_rate": 0.1, "fp_rate": 0.2, "confirmed_outcome_count": 12, "status": "OK"}'
+    parsed = CorrectiveStatusResponse.model_validate_json(old_shape)
+    assert parsed.fn_rate == pytest.approx(0.1)
+    assert parsed.fp_rate == pytest.approx(0.2)
