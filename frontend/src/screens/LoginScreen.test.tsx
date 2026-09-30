@@ -1,33 +1,21 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as authApi from '../api/auth'
-import { ApiError } from '../api/errors'
-import type { MOCK_TokenResponse } from '../api/mocks'
+import { fakeServer, renderWithApi } from '../test-utils'
 import { useAuth } from '../auth/AuthContext'
-import { AuthProvider } from '../auth/AuthProvider'
 import { LoginScreen } from './LoginScreen'
-
-const TOKEN: MOCK_TokenResponse = {
-  access_token: 'jwt-1',
-  token_type: 'bearer',
-  account_id: 'r.mehta',
-  role: 'Reliability Engineer',
-}
 
 function SessionProbe() {
   const { session } = useAuth()
   return <output data-testid="session">{session ? session.accountId : 'none'}</output>
 }
 
-function renderLogin() {
-  return render(
-    <AuthProvider>
-      <MemoryRouter>
-        <LoginScreen />
-        <SessionProbe />
-      </MemoryRouter>
-    </AuthProvider>,
+function renderLogin(fetch: (r: Request) => Promise<Response>) {
+  return renderWithApi(
+    <>
+      <LoginScreen />
+      <SessionProbe />
+    </>,
+    { fetch, session: null },
   )
 }
 
@@ -41,7 +29,7 @@ beforeEach(() => {
 
 describe('Login screen (E6 screen 1)', () => {
   test('offers exactly the two named accounts, by name and fixed role, first one selected', () => {
-    renderLogin()
+    renderLogin(fakeServer({}).fetch)
     const group = screen.getByRole('group', { name: 'Select Account' })
     const radios = screen.getAllByRole('radio')
     expect(group).toContainElement(radios[0])
@@ -51,34 +39,50 @@ describe('Login screen (E6 screen 1)', () => {
   })
 
   test('the PIN is a labelled, masked field', () => {
-    renderLogin()
+    renderLogin(fakeServer({}).fetch)
     expect(pin()).toHaveAttribute('type', 'password')
   })
 
   test('an empty PIN is caught before any request', () => {
-    const login = vi.spyOn(authApi, 'login')
-    renderLogin()
+    const { fetch, requests } = fakeServer({})
+    renderLogin(fetch)
     fireEvent.click(signInButton())
     expect(screen.getByRole('alert')).toHaveTextContent('Enter your PIN.')
-    expect(login).not.toHaveBeenCalled()
+    expect(requests).toHaveLength(0)
   })
 
   test('sends the selected account and PIN, then holds the session in memory', async () => {
-    const login = vi.spyOn(authApi, 'login').mockResolvedValue(TOKEN)
-    renderLogin()
+    const { fetch, requests } = fakeServer({
+      'POST /auth/login': {
+        body: {
+          access_token: 'jwt-1',
+          token_type: 'bearer',
+          account_id: 'r.mehta',
+          role: 'Reliability Engineer',
+        },
+      },
+    })
+    renderLogin(fetch)
 
     fireEvent.click(screen.getByRole('radio', { name: /R\. Mehta/ }))
     fireEvent.change(pin(), { target: { value: '5678' } })
     fireEvent.click(signInButton())
 
-    expect(login).toHaveBeenCalledWith({ account_id: 'r.mehta', pin: '5678' })
     await waitFor(() => expect(session()).toBe('r.mehta'))
+    expect(await requests[0].json()).toEqual({ account_id: 'r.mehta', pin: '5678' })
   })
 
   test('while signing in the button is disabled, so a double click sends one request', async () => {
-    let resolve: (value: MOCK_TokenResponse) => void = () => {}
-    const login = vi.spyOn(authApi, 'login').mockReturnValue(new Promise((r) => (resolve = r)))
-    renderLogin()
+    let resolve: (value: Response) => void = () => {}
+    let calls = 0
+    const fetch = vi.fn(
+      () =>
+        new Promise<Response>((r) => {
+          calls++
+          resolve = r
+        }),
+    )
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '1234' } })
 
     fireEvent.click(signInButton())
@@ -86,16 +90,28 @@ describe('Login screen (E6 screen 1)', () => {
 
     expect(signInButton()).toBeDisabled()
     expect(signInButton()).toHaveTextContent('Signing in…')
-    expect(login).toHaveBeenCalledTimes(1)
-    await act(async () => resolve({ ...TOKEN, account_id: 'a.sharma' }))
-    expect(session()).toBe('a.sharma')
+    await waitFor(() => expect(calls).toBe(1))
+    await waitFor(() =>
+      resolve(
+        new Response(
+          JSON.stringify({
+            access_token: 'jwt-1',
+            token_type: 'bearer',
+            account_id: 'a.sharma',
+            role: 'Quality Engineer',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+    await waitFor(() => expect(session()).toBe('a.sharma'))
   })
 
   test('a wrong PIN shows the server message, clears the PIN, and stays signed out', async () => {
-    vi.spyOn(authApi, 'login').mockRejectedValue(
-      new ApiError(401, ['Incorrect PIN for this account.']),
-    )
-    renderLogin()
+    const { fetch } = fakeServer({
+      'POST /auth/login': { status: 401, body: { detail: 'Incorrect PIN for this account.' } },
+    })
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '0000' } })
     fireEvent.click(signInButton())
 
@@ -110,17 +126,17 @@ describe('Login screen (E6 screen 1)', () => {
   })
 
   test('a whitespace-only PIN counts as empty and is never sent', () => {
-    const login = vi.spyOn(authApi, 'login')
-    renderLogin()
+    const { fetch, requests } = fakeServer({})
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '   ' } })
     fireEvent.click(signInButton())
     expect(screen.getByRole('alert')).toHaveTextContent('Enter your PIN.')
-    expect(login).not.toHaveBeenCalled()
+    expect(requests).toHaveLength(0)
   })
 
   test('while signing in the PIN cannot be edited, but stays focusable', () => {
-    vi.spyOn(authApi, 'login').mockReturnValue(new Promise(() => {}))
-    renderLogin()
+    const fetch = vi.fn(() => new Promise<Response>(() => {}))
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '1234' } })
     fireEvent.click(signInButton())
     expect(pin()).toHaveAttribute('readonly')
@@ -129,8 +145,10 @@ describe('Login screen (E6 screen 1)', () => {
 
   test('identical server messages are all shown, without key collisions', async () => {
     const errorSpy = vi.spyOn(console, 'error')
-    vi.spyOn(authApi, 'login').mockRejectedValue(new ApiError(401, ['Nope.', 'Nope.']))
-    renderLogin()
+    const { fetch } = fakeServer({
+      'POST /auth/login': { status: 401, body: { detail: ['Nope.', 'Nope.'] } },
+    })
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '0000' } })
     fireEvent.click(signInButton())
     const alert = await screen.findByRole('alert')
@@ -139,8 +157,8 @@ describe('Login screen (E6 screen 1)', () => {
   })
 
   test('no readable response says so, rather than "Failed to fetch"', async () => {
-    vi.spyOn(authApi, 'login').mockRejectedValue(new TypeError('Failed to fetch'))
-    renderLogin()
+    const fetch = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '1234' } })
     fireEvent.click(signInButton())
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -149,8 +167,10 @@ describe('Login screen (E6 screen 1)', () => {
   })
 
   test('switching account clears a previous error', async () => {
-    vi.spyOn(authApi, 'login').mockRejectedValue(new ApiError(401, ['Incorrect PIN.']))
-    renderLogin()
+    const { fetch } = fakeServer({
+      'POST /auth/login': { status: 401, body: { detail: 'Incorrect PIN.' } },
+    })
+    renderLogin(fetch)
     fireEvent.change(pin(), { target: { value: '0000' } })
     fireEvent.click(signInButton())
     await screen.findByRole('alert')
@@ -169,15 +189,15 @@ describe('Login screen (E6 screen 1)', () => {
         </button>
       )
     }
-    render(
-      <AuthProvider
-        initialSession={{ token: 't', accountId: 'a.sharma', role: 'Quality Engineer' }}
-      >
-        <MemoryRouter>
-          <LoginScreen />
-          <Expire />
-        </MemoryRouter>
-      </AuthProvider>,
+    renderWithApi(
+      <>
+        <LoginScreen />
+        <Expire />
+      </>,
+      {
+        fetch: fakeServer({}).fetch,
+        session: { token: 't', accountId: 'a.sharma', role: 'Quality Engineer' },
+      },
     )
     fireEvent.click(screen.getByRole('button', { name: 'expire' }))
     expect(screen.getByRole('status')).toHaveTextContent('Your session ended. Sign in again')

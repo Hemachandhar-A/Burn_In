@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { login } from '../api/auth'
+import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
 import { TEMP_LOGIN_ACCOUNTS } from '../auth/accounts'
 import { useAuth } from '../auth/AuthContext'
@@ -22,6 +23,7 @@ function DriftSketch() {
  */
 export function LoginScreen() {
   const { signIn, endedBy } = useAuth()
+  const client = useApiClient()
   const [accountId, setAccountId] = useState(TEMP_LOGIN_ACCOUNTS[0].account_id)
   const [pin, setPin] = useState('')
   const [errors, setErrors] = useState<string[]>([])
@@ -43,7 +45,7 @@ export function LoginScreen() {
     setPending(true)
     setErrors([])
     try {
-      signIn(await login({ account_id: accountId, pin }))
+      signIn(await login(client, { account_id: accountId, pin }))
     } catch (error) {
       setErrors(describeFailure(error))
       setPin('')

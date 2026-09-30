@@ -1,5 +1,5 @@
 import type { ApiClient } from './client'
-import { ApiError, errorMessages } from './errors'
+import { ApiError, unwrap } from './errors'
 import type { components } from './schema'
 
 export type LotUploadResponse = components['schemas']['LotUploadResponse']
@@ -36,11 +36,6 @@ function toFormData(body: Record<string, unknown>): FormData {
     else form.append(key, String(value))
   }
   return form
-}
-
-function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
-  if (result.data !== undefined && result.response.ok) return result.data
-  throw new ApiError(result.response.status, errorMessages(result.error, result.response.status))
 }
 
 /**

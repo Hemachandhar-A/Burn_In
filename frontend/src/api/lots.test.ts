@@ -13,7 +13,6 @@ import {
   uploadLot,
   type LotMetadata,
 } from './lots'
-import { MOCK_login } from './mocks'
 
 const BASE = 'http://api.test'
 
@@ -166,25 +165,6 @@ describe('errorMessages', () => {
   })
 })
 
-describe('MOCK_login (stands in for POST /auth/login until P5.4)', () => {
-  test('a seeded account with its seed.py PIN gets a bearer TokenResponse', async () => {
-    await expect(MOCK_login({ account_id: 'r.mehta', pin: '5678' }, 0)).resolves.toEqual({
-      access_token: 'mock-token.r.mehta',
-      token_type: 'bearer',
-      account_id: 'r.mehta',
-      role: 'Reliability Engineer',
-    })
-  })
-
-  test.each([
-    ['a.sharma', '5678'],
-    ['a.sharma', ''],
-    ['nobody', '1234'],
-  ])('%s with PIN %j is rejected with a 401', async (account_id, pin) => {
-    await expect(MOCK_login({ account_id, pin }, 0)).rejects.toMatchObject({ status: 401 })
-  })
-})
-
 describe('lotIdProblem: ids the API could store but never address again', () => {
   test.each(['LOT-2024-8841', 'lot 7', 'A.B', '..A', 'x#y', '100%', 'Ünïcødé'])(
     '%j is fine',
@@ -245,13 +225,3 @@ describe('listProjects ordering', () => {
   })
 })
 
-describe('MOCK_login hygiene', () => {
-  test.each(['constructor', '__proto__', 'toString'])(
-    'an inherited property name (%s) is not an account',
-    async (account_id) => {
-      await expect(MOCK_login({ account_id, pin: 'undefined' }, 0)).rejects.toMatchObject({
-        status: 401,
-      })
-    },
-  )
-})

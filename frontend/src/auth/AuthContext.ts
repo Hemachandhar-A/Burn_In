@@ -1,11 +1,7 @@
 import { createContext, useContext } from 'react'
-import type { MOCK_TokenResponse } from '../api/mocks'
+import type { TokenResponse } from '../api/auth'
 
-/**
- * contracts.py `TokenResponse`. Hand-typed in api/mocks.ts while `POST /auth/login` isn't in the
- * live schema (P5.4). When it is, point this at `components['schemas']['TokenResponse']`.
- */
-export type TokenResponse = MOCK_TokenResponse
+export type { TokenResponse }
 
 export interface Session {
   token: string

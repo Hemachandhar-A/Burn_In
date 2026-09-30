@@ -45,6 +45,12 @@ export function errorMessages(body: unknown, status: number): string[] {
   return [`The server answered ${status} with no further detail.`]
 }
 
+/** The parsed body of a successful openapi-fetch result, or a readable `ApiError` otherwise. */
+export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
+  if (result.data !== undefined && result.response.ok) return result.data
+  throw new ApiError(result.response.status, errorMessages(result.error, result.response.status))
+}
+
 /** Turns whatever a call threw (ApiError, a network failure, anything) into lines to show. */
 export function describeFailure(error: unknown): string[] {
   if (error instanceof ApiError) return error.messages

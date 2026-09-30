@@ -1,10 +1,11 @@
-import { MOCK_login, type MOCK_LoginRequest, type MOCK_TokenResponse } from './mocks'
+import type { ApiClient } from './client'
+import { unwrap } from './errors'
+import type { components } from './schema'
 
-/**
- * `POST /auth/login`. MOCKED: the route isn't in the live OpenAPI schema yet (P5.4, BLOCKERS.md).
- * When it lands, regenerate the client and make this take the ApiClient and call
- * `client.POST('/auth/login', { body: request })`. It's the only line that changes.
- */
-export function login(request: MOCK_LoginRequest): Promise<MOCK_TokenResponse> {
-  return MOCK_login(request)
+export type LoginRequest = components['schemas']['LoginRequest']
+export type TokenResponse = components['schemas']['TokenResponse']
+
+/** `POST /auth/login`: real (P5.4, identity/router.py). */
+export async function login(client: ApiClient, request: LoginRequest): Promise<TokenResponse> {
+  return unwrap(await client.POST('/auth/login', { body: request }))
 }
