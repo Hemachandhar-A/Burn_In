@@ -11,10 +11,10 @@ import { login } from '../src/api/auth'
 import { createApiClient } from '../src/api/client'
 import { ApiError } from '../src/api/errors'
 import { listEvents } from '../src/api/history'
-import { getLotSummary } from '../src/api/lotDetail'
+import { generateDpaWorkOrder, getLotSummary } from '../src/api/lotDetail'
 import { loadDemoLot, uploadLot, type LotMetadata } from '../src/api/lots'
-import { getPartDetail } from '../src/api/parts'
-import { getSettings } from '../src/api/settings'
+import { getPartDetail, submitConfirmedOutcome } from '../src/api/parts'
+import { getCorrectiveStatus, getSettings, getWorklist } from '../src/api/settings'
 
 const BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8001'
 
@@ -125,6 +125,73 @@ async function main() {
   console.log(
     'submitDisposition round-trip ... SKIPPED (submitDisposition is mocked - see CONTRACT_CHANGES.md, ' +
       '"PartDetailResponse gives the frontend no way to call POST /parts/{component_id}/disposition correctly")',
+  )
+
+  // Block 5C Part 3a: a real DPA work order on the Complete demo lot.
+  const workOrder = await step('generateDpaWorkOrder (Complete lot)', () =>
+    generateDpaWorkOrder(client, upload.lot_id),
+  )
+  assert(
+    workOrder.recommendations.length >= 1 && workOrder.recommendations.length <= 3,
+    `expected 1-3 recommendations, got ${workOrder.recommendations.length}`,
+  )
+  for (const rec of workOrder.recommendations) {
+    assert(rec.reason.trim() !== '', `recommendation for ${rec.component_id} has an empty reason`)
+  }
+  console.log(
+    `  recommendations=${workOrder.recommendations.map((r) => `${r.component_id} (${r.reason})`).join('; ')}`,
+  )
+
+  await step('generateDpaWorkOrder on an in-progress lot returns the 409 path', async () => {
+    let caught: unknown
+    try {
+      await generateDpaWorkOrder(client, inProgressUpload.lot_id)
+    } catch (error) {
+      caught = error
+    }
+    assert(caught instanceof ApiError, 'in-progress DPA request did not throw an ApiError')
+    assert(
+      (caught as ApiError).status === 409,
+      `in-progress DPA request gave status ${(caught as ApiError).status}, not 409`,
+    )
+    console.log(`  409 message: "${(caught as ApiError).messages.join(' ')}"`)
+  })
+
+  // Block 5C Part 3b: confirmed outcomes for two different flagged parts.
+  const second = flagged.find((a) => a.component_id !== top.component_id)
+  assert(second, 'the demo lot has fewer than 2 flagged components')
+  const defectiveOutcome = await step(`submitConfirmedOutcome (${top.component_id}, Confirmed Defective)`, () =>
+    submitConfirmedOutcome(
+      client,
+      top.component_id,
+      { confirmed_outcome: 'Confirmed Defective', note: 'Smoke test' },
+      upload.lot_id,
+    ),
+  )
+  assert(defectiveOutcome.confirmed_outcome === 'Confirmed Defective', 'wrong confirmed_outcome echoed back')
+
+  const goodOutcome = await step(`submitConfirmedOutcome (${second.component_id}, Confirmed Good)`, () =>
+    submitConfirmedOutcome(
+      client,
+      second.component_id,
+      { confirmed_outcome: 'Confirmed Good', note: 'Smoke test' },
+      upload.lot_id,
+    ),
+  )
+  assert(goodOutcome.confirmed_outcome === 'Confirmed Good', 'wrong confirmed_outcome echoed back')
+
+  const corrective = await step('getCorrectiveStatus', () => getCorrectiveStatus(client))
+  assert(corrective.confirmed_outcome_count === 2, `expected count=2, got ${corrective.confirmed_outcome_count}`)
+  assert(corrective.status === 'INSUFFICIENT_DATA', `expected INSUFFICIENT_DATA, got ${corrective.status}`)
+  console.log(
+    `  status=${corrective.status} count=${corrective.confirmed_outcome_count} fn_rate=${corrective.fn_rate ?? 'null'} fp_rate=${corrective.fp_rate ?? 'null'}`,
+  )
+
+  const worklist = await step('getWorklist', () => getWorklist(client))
+  console.log(
+    worklist.pending.length > 0
+      ? `  pending=${worklist.pending.length}`
+      : '  pending=0 (no dispositions exist yet - dispositions cannot be created from the frontend until Block 5D, since submitDisposition is still mocked)',
   )
 
   await step('wrong-PIN login returns the 401 path', async () => {
