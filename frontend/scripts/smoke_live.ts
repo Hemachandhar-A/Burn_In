@@ -13,9 +13,14 @@ import { ApiError } from '../src/api/errors'
 import { listEvents } from '../src/api/history'
 import { generateDpaWorkOrder, getLotSummary } from '../src/api/lotDetail'
 import { loadDemoLot, uploadLot, type LotMetadata } from '../src/api/lots'
-import { getPartDetail, submitConfirmedOutcome } from '../src/api/parts'
+import { getPartDetail, submitConfirmedOutcome, submitDisposition } from '../src/api/parts'
 import { getCorrectiveStatus, getSettings, getWorklist } from '../src/api/settings'
 
+import { execFileSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8001'
 
 let token: string | null = null
@@ -27,9 +32,24 @@ function assert(condition: unknown, message: string): asserts condition {
 
 async function step<T>(name: string, run: () => Promise<T>): Promise<T> {
   process.stdout.write(`${name} ... `)
+  const start = performance.now()
   const result = await run()
-  console.log('ok')
+  console.log(`ok (${((performance.now() - start) / 1000).toFixed(2)}s)`)
   return result
+}
+
+/** Three one-second samples of total CPU load (Windows `Get-Counter`), printed before a slow call. */
+function cpuReading(label: string): void {
+  try {
+    const out = execFileSync(
+      'powershell',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'cpu.ps1')],
+      { encoding: 'utf8' },
+    )
+    console.log(`  CPU before ${label}: ${out.trim().split(/\s+/).join('% / ')}%`)
+  } catch {
+    console.log(`  CPU before ${label}: unavailable`)
+  }
 }
 
 async function main() {
@@ -41,6 +61,7 @@ async function main() {
   token = session.access_token
   console.log(`  account_id=${session.account_id} role=${session.role}`)
 
+  cpuReading('loadDemoLot')
   const upload = await step('loadDemoLot', () => loadDemoLot(client, session.account_id))
   assert(upload.lot_id, 'loadDemoLot response has no lot_id')
   console.log(`  lot_id=${upload.lot_id} status=${upload.status}`)
@@ -88,6 +109,65 @@ async function main() {
     `  explanation: zscore_table=${partDetail.explanation!.zscore_table.length} mcd_contributions=${partDetail.explanation!.mcd_contributions.length} ecod_dimensions=${partDetail.explanation!.ecod_dimensions.length} shap_contributions=${partDetail.explanation!.shap_contributions.length}`,
   )
 
+  assert(
+    partDetail.component_id === top.component_id &&
+      partDetail.lot_id === upload.lot_id &&
+      partDetail.project_id &&
+      partDetail.analysis_run_id &&
+      partDetail.verdict === top.verdict,
+    'PartDetailResponse is missing its ids or verdict',
+  )
+  console.log(
+    `  ids: component_id=${partDetail.component_id} lot_id=${partDetail.lot_id} project_id=${partDetail.project_id} analysis_run_id=${partDetail.analysis_run_id} verdict=${partDetail.verdict} trajectory=${partDetail.explanation?.trajectory.length ?? 0} checkpoints`,
+  )
+
+  // Block 5D Part 4a: the full disposition round trip on the real route.
+  const ids = {
+    projectId: partDetail.project_id as string,
+    analysisRunId: partDetail.analysis_run_id as string,
+  }
+  const first = await step(`submitDisposition (${top.component_id}, REJECT) as a.sharma`, () =>
+    submitDisposition(client, top.component_id, ids, { verdict: 'REJECT', rationale: 'Smoke: first sign-off' }),
+  )
+  assert(first.account_id === 'a.sharma' && first.analysis_run_id === ids.analysisRunId, 'wrong first record')
+
+  await step('same account again returns the 400 path', async () => {
+    let caught: unknown
+    try {
+      await submitDisposition(client, top.component_id, ids, { verdict: 'REJECT', rationale: 'Smoke: retry' })
+    } catch (error) {
+      caught = error
+    }
+    assert(caught instanceof ApiError, 'same-account retry did not throw an ApiError')
+    assert((caught as ApiError).status === 400, `same-account retry gave status ${(caught as ApiError).status}, not 400`)
+    console.log(`  400 message: "${(caught as ApiError).messages.join(' ')}"`)
+  })
+
+  const mehta = await step('login as r.mehta', () => login(client, { account_id: 'r.mehta', pin: '5678' }))
+  token = mehta.access_token
+  const second = await step(`submitDisposition (${top.component_id}, REJECT) as r.mehta`, () =>
+    submitDisposition(client, top.component_id, ids, { verdict: 'REJECT', rationale: 'Smoke: second sign-off' }),
+  )
+  assert(second.account_id === 'r.mehta', 'wrong second record')
+
+  const afterSignoffs = await step('getPartDetail after both sign-offs', () =>
+    getPartDetail(client, top.component_id, upload.lot_id),
+  )
+  const history = afterSignoffs.disposition_history
+  assert(history.length === 2, `expected 2 sign-offs in history, got ${history.length}`)
+  assert(new Set(history.map((h) => h.account_id)).size === 2, 'sign-offs are not from two distinct accounts')
+  assert(new Set(history.map((h) => h.analysis_run_id)).size === 1, 'sign-offs carry different analysis_run_ids')
+  console.log(
+    `  history: ${history.map((h) => `${h.account_id}/${h.verdict}/run ${h.analysis_run_id}`).join(', ')}`,
+  )
+
+  const worklistBefore = await step('getWorklist (before confirmed outcome)', () => getWorklist(client))
+  assert(
+    worklistBefore.pending.some((w) => w.component_id === top.component_id),
+    'worklist does not contain the dispositioned part',
+  )
+  console.log(`  pending=${worklistBefore.pending.length}, contains ${top.component_id}`)
+
   // Block 5B-2 Part 3b: a small in-progress lot (0h+24h only) - Module A should not have run.
   const csv = [
     'component_id,parameter,checkpoint_hour,value,unit',
@@ -105,6 +185,7 @@ async function main() {
     test_date: '2026-09-30',
   }
   const file = new File([csv], 'inprogress.csv', { type: 'text/csv' })
+  cpuReading('uploadLot')
   const inProgressUpload = await step('uploadLot (small in-progress lot)', () =>
     uploadLot(client, inProgressMeta, file, session.account_id),
   )
@@ -117,15 +198,6 @@ async function main() {
   assert(c1Detail.module_a === null || c1Detail.module_a === undefined, 'module_a is present on an in-progress lot')
   assert(c1Detail.module_b !== null && c1Detail.module_b !== undefined, 'module_b is missing on an in-progress lot')
   console.log(`  module_a=${c1Detail.module_a ?? 'null'} module_b.parameter=${c1Detail.module_b!.parameter}`)
-
-  // Block 5B-2 Part 3c: submitDisposition stays mocked (CONTRACT_CHANGES.md - the real
-  // POST /parts/{component_id}/disposition needs project_id/analysis_run_id query parameters
-  // PartDetailResponse gives the frontend no way to obtain), so a real round-trip through
-  // disposition_history in a fresh getPartDetail is not possible yet. Skipped, not faked.
-  console.log(
-    'submitDisposition round-trip ... SKIPPED (submitDisposition is mocked - see CONTRACT_CHANGES.md, ' +
-      '"PartDetailResponse gives the frontend no way to call POST /parts/{component_id}/disposition correctly")',
-  )
 
   // Block 5C Part 3a: a real DPA work order on the Complete demo lot.
   const workOrder = await step('generateDpaWorkOrder (Complete lot)', () =>
@@ -158,8 +230,8 @@ async function main() {
   })
 
   // Block 5C Part 3b: confirmed outcomes for two different flagged parts.
-  const second = flagged.find((a) => a.component_id !== top.component_id)
-  assert(second, 'the demo lot has fewer than 2 flagged components')
+  const other = flagged.find((a) => a.component_id !== top.component_id)
+  assert(other, 'the demo lot has fewer than 2 flagged components')
   const defectiveOutcome = await step(`submitConfirmedOutcome (${top.component_id}, Confirmed Defective)`, () =>
     submitConfirmedOutcome(
       client,
@@ -170,10 +242,10 @@ async function main() {
   )
   assert(defectiveOutcome.confirmed_outcome === 'Confirmed Defective', 'wrong confirmed_outcome echoed back')
 
-  const goodOutcome = await step(`submitConfirmedOutcome (${second.component_id}, Confirmed Good)`, () =>
+  const goodOutcome = await step(`submitConfirmedOutcome (${other.component_id}, Confirmed Good)`, () =>
     submitConfirmedOutcome(
       client,
-      second.component_id,
+      other.component_id,
       { confirmed_outcome: 'Confirmed Good', note: 'Smoke test' },
       upload.lot_id,
     ),
@@ -187,12 +259,12 @@ async function main() {
     `  status=${corrective.status} count=${corrective.confirmed_outcome_count} fn_rate=${corrective.fn_rate ?? 'null'} fp_rate=${corrective.fp_rate ?? 'null'}`,
   )
 
-  const worklist = await step('getWorklist', () => getWorklist(client))
-  console.log(
-    worklist.pending.length > 0
-      ? `  pending=${worklist.pending.length}`
-      : '  pending=0 (no dispositions exist yet - dispositions cannot be created from the frontend until Block 5D, since submitDisposition is still mocked)',
+  const worklist = await step('getWorklist (after confirmed outcome)', () => getWorklist(client))
+  assert(
+    !worklist.pending.some((w) => w.component_id === top.component_id),
+    'worklist still contains the part after its confirmed outcome',
   )
+  console.log(`  pending=${worklist.pending.length}, no longer contains ${top.component_id}`)
 
   await step('wrong-PIN login returns the 401 path', async () => {
     let caught: unknown
