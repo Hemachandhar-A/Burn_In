@@ -10,17 +10,14 @@ is P2's own module, not a cross-directory reimplementation.
 for `project_data.raw_data`, logged to CONTRACT_CHANGES.md this session since nothing had
 pinned it before.
 
-Until fusion (P5, `p5-fusion`) is merged and P2.5 wires the real pipeline, `results_json`
-in practice only ever carries what a test fixture or the seed script puts there -
-`lot_disposition` and `per_component[*].explanation_sentence` are therefore usually absent.
-This module never fabricates either: `pda_available=False` and `explanation=None` are the
-honest, disclosed states (AGENTS.md rule 12), not a guessed number.
+`results_json` is a serialized `contracts.AnalysisResults`, read as-is. This module never fabricates
+a value: `explanation=None` stays None until the explainability engine populates it (AGENTS.md rule 12).
 """
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from contracts import LotDataset
+from contracts import AnalysisResults, LotDataset
 from features import compute as features_compute
 from ingestion import store as ingestion_store
 from storage import repository
@@ -152,14 +149,14 @@ def build_report_data(project_id: str) -> ReportData:
     import json
 
     raw_data = json.loads(latest.raw_data) if isinstance(latest.raw_data, str) else latest.raw_data
-    results = json.loads(latest.results_json) if isinstance(latest.results_json, str) else latest.results_json
+    results = AnalysisResults.model_validate_json(latest.results_json)
 
     lot: LotDataset | None = None
     manufacturer = date_code = None
     lot_status = "IN_PROGRESS"
     delta_table: list[DeltaRow] = []
     quantity_screened = 0
-    per_component = results.get("per_component", {}) if isinstance(results, dict) else {}
+    assessments = {a.component_id: a for a in results.assessments}
 
     if raw_data and raw_data.get("readings"):
         lot = LotDataset.model_validate(raw_data)
@@ -174,7 +171,8 @@ def build_report_data(project_id: str) -> ReportData:
         pooled_reference = features_compute.build_pooled_reference(lot.part_number, pooled_readings)
         frames = features_compute.compute(lot, pooled_reference=pooled_reference or None)
         for frame in frames:
-            verdict = per_component.get(frame.component_id, {}).get("verdict")
+            assessment = assessments.get(frame.component_id)
+            verdict = assessment.verdict if assessment else None
             delta_table.append(DeltaRow(
                 component_id=frame.component_id, parameter=frame.parameter,
                 value_0h=frame.value_0h, value_24h=frame.value_24h, delta_24h=frame.delta_24h,
@@ -183,13 +181,13 @@ def build_report_data(project_id: str) -> ReportData:
                 verdict=verdict,
             ))
 
-    quantity_flagged = sum(1 for c in per_component.values() if c.get("verdict") in ("WATCH", "REJECT"))
+    quantity_flagged = sum(1 for a in assessments.values() if a.verdict in ("WATCH", "REJECT"))
 
-    lot_disposition = results.get("lot_disposition") if isinstance(results, dict) else None
-    pda_available = lot_disposition is not None
-    pda_result = lot_disposition.get("pda_result") if lot_disposition else None
-    overall_disposition = lot_disposition.get("verdict") if lot_disposition else None
-    is_forecast = lot_disposition.get("is_forecast") if lot_disposition else None
+    disposition = results.disposition
+    pda_available = True
+    pda_result = disposition.pda_result
+    overall_disposition = disposition.verdict
+    is_forecast = disposition.is_forecast
 
     disposition_signoffs = repository.query_disposition_signoffs(project_id)
     signoffs_by_component: dict[str, list[dict]] = {}
@@ -203,14 +201,14 @@ def build_report_data(project_id: str) -> ReportData:
         reviewer_entries.append(entry)
 
     flagged_parts: list[FlaggedPart] = []
-    for cid, detail in per_component.items():
-        verdict = detail.get("verdict")
+    for cid, assessment in assessments.items():
+        verdict = assessment.verdict
         if verdict not in ("WATCH", "REJECT"):
             continue
         parameter = next((row.parameter for row in delta_table if row.component_id == cid), "")
         flagged_parts.append(FlaggedPart(
             component_id=cid, parameter=parameter, verdict=verdict,
-            explanation=detail.get("explanation_sentence"),
+            explanation=assessment.explanation_sentence,
             disposition_history=signoffs_by_component.get(cid, []),
         ))
 

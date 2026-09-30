@@ -219,23 +219,26 @@ def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
     open-ended dicts that would otherwise carry the target through on a Complete lot)."""
 
 class ModuleAResult(BaseModel):
-    component_id: str; parameter: str
+    component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot
     robust_z: float; mcd_distance: float | None   # None if lot < 30 (5-feature MCD ceiling — context.md 4.2)
     isolation_forest_score: float | None            # None on a part number's first-ever lot (cold start)
     ecod_score: float
-    explainable_tags: dict[str, bool]   # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": True}
+    explainable_tags: dict[str, bool]   # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": False}
     direction: Literal["above_median", "below_median"]   # feeds the direction-awareness cap — context.md 4.2
     severity_tier: Literal["PASS", "REVIEW", "REJECT"]
     severity_cap_reason: str | None     # populated if capped — context.md 5.16, 6.2
+    combined_severity: float            # E2 step 5's max-combined percentile (0–1) — flagged missing twice (P1 P1.7, P5 P5.2), CONTRACT_CHANGES.md
+    explainable_corroboration: bool     # True iff an explainable-tagged detector (robust_z/mcd) reached or tied combined_severity — a property of the whole detector set, not a single "worst detector"; E12 step 2's gate keys off this
 
 class ModuleBResult(BaseModel):
-    component_id: str; parameter: str
+    component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot
     predicted_168h: float | None        # None if parameter outside trained three
     interval_lower: float | None; interval_upper: float | None
     physics_baseline_prediction: float | None
     physics_disagreement_gap: float | None
     drift_rate: float | None; exceeds_safety_slope: bool | None
     safety_slope: float | None          # calibrated threshold drift_rate was compared against (E3 step 7's "threshold used"); same units as drift_rate; None whenever drift_rate/exceeds_safety_slope are. E4's "exceeds by 38%" is (drift_rate - safety_slope) / safety_slope, computed where the sentence is built (P5's explainability), not stored
+    lower_bound_exceeds_safety_slope: bool | None  # conservative counterpart: the same comparison with interval_lower in place of predicted_168h — STOP_RUN_RECOMMENDED (E12 step 5, context.md 5.18) keys off this, not exceeds_safety_slope; None whenever exceeds_safety_slope/safety_slope are
     forecast_unavailable: bool          # explicit flag — context.md 5.9
 ```
 

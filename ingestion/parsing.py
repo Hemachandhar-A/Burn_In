@@ -12,6 +12,7 @@ format-equivalence tests.
 """
 import csv
 import io
+import math
 import re
 
 from contracts import Reading
@@ -108,12 +109,18 @@ def parse_lot_csv(
         except (TypeError, ValueError):
             errors.append(f"line {line_no}: checkpoint_hour {raw_hour!r} is not a number")
             continue
+        if not math.isfinite(checkpoint_hour):
+            errors.append(f"line {line_no}: checkpoint_hour {raw_hour!r} is not a finite number")
+            continue
 
         raw_value = row[columns["value"]]
         try:
             value = float(raw_value)
         except (TypeError, ValueError):
             errors.append(f"line {line_no}: value {raw_value!r} is not a number")
+            continue
+        if not math.isfinite(value):
+            errors.append(f"line {line_no}: value {raw_value!r} is not a finite number")
             continue
 
         key = (component_id, parameter, checkpoint_hour)
@@ -183,6 +190,9 @@ def parse_wide_lot_csv(
         except (TypeError, ValueError):
             errors.append(f"line {line_no}: checkpoint_hour {raw_hour!r} is not a number")
             continue
+        if not math.isfinite(checkpoint_hour):
+            errors.append(f"line {line_no}: checkpoint_hour {raw_hour!r} is not a finite number")
+            continue
 
         for header, parameter, unit in value_columns:
             raw_value = (row.get(header) or "").strip()
@@ -192,6 +202,9 @@ def parse_wide_lot_csv(
                 value = float(raw_value)
             except (TypeError, ValueError):
                 errors.append(f"line {line_no}: value {raw_value!r} for column '{header}' is not a number")
+                continue
+            if not math.isfinite(value):
+                errors.append(f"line {line_no}: value {raw_value!r} for column '{header}' is not a finite number")
                 continue
             key = (component_id, parameter, checkpoint_hour)
             if key in seen:

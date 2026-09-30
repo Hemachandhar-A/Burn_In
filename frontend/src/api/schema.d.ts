@@ -4,6 +4,66 @@
  */
 
 export interface paths {
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/disposition-signoffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get All Disposition Signoffs
+         * @description Global feed across every project - History screen (E6 screen 6). Same resolution
+         *     as get_all_events above.
+         */
+        get: operations["get_all_disposition_signoffs_disposition_signoffs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get All Events
+         * @description Global feed across every project - History screen (E6 screen 6). CONTRACT_CHANGES.md
+         *     2026-09-26 "Routers registered; P2.8's storage routes differ from Part 5.6" - added
+         *     alongside the per-project route above, not instead of it.
+         */
+        get: operations["get_all_events_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -60,6 +120,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lots/{lot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lot Summary */
+        get: operations["get_lot_summary_lots__lot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lots/{lot_id}/checkpoints": {
         parameters: {
             query?: never;
@@ -110,6 +187,40 @@ export interface paths {
         put?: never;
         /** Generate Report */
         post: operations["generate_report_lots__lot_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/parts/{component_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Part Detail */
+        get: operations["get_part_detail_parts__component_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/parts/{component_id}/disposition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Disposition */
+        post: operations["create_disposition_parts__component_id__disposition_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -184,6 +295,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/propose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Setting */
+        post: operations["propose_setting_settings_propose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/signoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Signoff Setting */
+        post: operations["signoff_setting_settings_signoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -221,6 +383,29 @@ export interface components {
             /** Test Date */
             test_date?: string | null;
         };
+        /** ConfirmedOutcomeRecord */
+        ConfirmedOutcomeRecord: {
+            /** Account Id */
+            account_id: string;
+            /** Analysis Run Id */
+            analysis_run_id: string;
+            /** Component Id */
+            component_id: string;
+            /**
+             * Confirmed Outcome
+             * @enum {string}
+             */
+            confirmed_outcome: "Confirmed Good" | "Confirmed Defective" | "Unknown";
+            /** Note */
+            note: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
         /** DispositionRecord */
         DispositionRecord: {
             /** Account Id */
@@ -243,6 +428,23 @@ export interface components {
              * @enum {string}
              */
             verdict: "ACCEPT" | "HOLD" | "REJECT";
+        };
+        /** DispositionRequest */
+        DispositionRequest: {
+            /** Rationale */
+            rationale: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "ACCEPT" | "HOLD" | "REJECT";
+        };
+        /** EcodDimensionRow */
+        EcodDimensionRow: {
+            /** Dimension */
+            dimension: string;
+            /** Score */
+            score: number;
         };
         /** EventResponse */
         EventResponse: {
@@ -272,6 +474,69 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Account Id */
+            account_id: string;
+            /** Pin */
+            pin: string;
+        };
+        /** LotDisposition */
+        LotDisposition: {
+            /** Is Forecast */
+            is_forecast: boolean;
+            /** Lot Id */
+            lot_id: string;
+            /** Pda Result */
+            pda_result: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "IN_PROGRESS" | "COMPLETE";
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "LOT_ON_TRACK" | "LOT_AT_RISK" | "STOP_RUN_RECOMMENDED" | "ACCEPT" | "HOLD" | "REJECT";
+        };
+        /** LotSummaryResponse */
+        LotSummaryResponse: {
+            /** Assessments */
+            assessments: components["schemas"]["RiskAssessment"][];
+            disposition: components["schemas"]["LotDisposition"];
+            /**
+             * Explanation Summary
+             * @default
+             */
+            explanation_summary: string;
+            /**
+             * Insufficient Data Components
+             * @default []
+             */
+            insufficient_data_components: string[];
+            /**
+             * Module A Results
+             * @default {}
+             */
+            module_a_results: {
+                [key: string]: components["schemas"]["ModuleAResult"];
+            };
+            /**
+             * Module B Results
+             * @default {}
+             */
+            module_b_results: {
+                [key: string]: components["schemas"]["ModuleBResult"];
+            };
+            /**
+             * Part Explanations
+             * @default {}
+             */
+            part_explanations: {
+                [key: string]: components["schemas"]["PartExplanation"];
+            };
+        };
         /** LotUploadResponse */
         LotUploadResponse: {
             /**
@@ -291,6 +556,149 @@ export interface components {
              */
             status: "IN_PROGRESS" | "COMPLETE";
         };
+        /** MCDContributionRow */
+        MCDContributionRow: {
+            /** Contribution */
+            contribution: number;
+            /** Parameter */
+            parameter: string;
+        };
+        /** ModuleAResult */
+        ModuleAResult: {
+            /** Combined Severity */
+            combined_severity: number;
+            /** Component Id */
+            component_id: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "above_median" | "below_median";
+            /** Ecod Score */
+            ecod_score: number;
+            /** Explainable Corroboration */
+            explainable_corroboration: boolean;
+            /** Explainable Tags */
+            explainable_tags: {
+                [key: string]: boolean;
+            };
+            /** Isolation Forest Score */
+            isolation_forest_score: number | null;
+            /** Lot Id */
+            lot_id: string;
+            /** Mcd Distance */
+            mcd_distance: number | null;
+            /** Parameter */
+            parameter: string;
+            /** Robust Z */
+            robust_z: number;
+            /** Severity Cap Reason */
+            severity_cap_reason: string | null;
+            /**
+             * Severity Tier
+             * @enum {string}
+             */
+            severity_tier: "PASS" | "REVIEW" | "REJECT";
+        };
+        /** ModuleBResult */
+        ModuleBResult: {
+            /** Component Id */
+            component_id: string;
+            /** Drift Rate */
+            drift_rate: number | null;
+            /** Exceeds Safety Slope */
+            exceeds_safety_slope: boolean | null;
+            /** Forecast Unavailable */
+            forecast_unavailable: boolean;
+            /** Interval Lower */
+            interval_lower: number | null;
+            /** Interval Upper */
+            interval_upper: number | null;
+            /** Lot Id */
+            lot_id: string;
+            /** Lower Bound Exceeds Safety Slope */
+            lower_bound_exceeds_safety_slope: boolean | null;
+            /** Parameter */
+            parameter: string;
+            /** Physics Baseline Prediction */
+            physics_baseline_prediction: number | null;
+            /** Physics Disagreement Gap */
+            physics_disagreement_gap: number | null;
+            /** Predicted 168H */
+            predicted_168h: number | null;
+            /** Safety Slope */
+            safety_slope: number | null;
+        };
+        /** PartDetailResponse */
+        PartDetailResponse: {
+            /** Confidence Qualifier */
+            confidence_qualifier: string;
+            /** Confirmed Outcomes */
+            confirmed_outcomes: components["schemas"]["ConfirmedOutcomeRecord"][];
+            /** Disposition History */
+            disposition_history: components["schemas"]["DispositionRecord"][];
+            explanation?: components["schemas"]["PartExplanation"] | null;
+            /** Explanation Sentence */
+            explanation_sentence: string;
+            module_a: components["schemas"]["ModuleAResult"];
+            module_b: components["schemas"]["ModuleBResult"];
+            /** Severity Cap Note */
+            severity_cap_note: string | null;
+            /** Staleness Note */
+            staleness_note: string | null;
+            /** Unavailable Forecast Note */
+            unavailable_forecast_note: string | null;
+        };
+        /**
+         * PartExplanation
+         * @description Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the
+         *     text/notes for that one part. Every field optional/defaulted - a PASS part gets none of this
+         *     (AnalysisResults.part_explanations only ever holds non-PASS parts, Part 3g).
+         */
+        PartExplanation: {
+            /** Confidence Qualifier */
+            confidence_qualifier?: string | null;
+            /**
+             * Ecod Dimensions
+             * @default []
+             */
+            ecod_dimensions: components["schemas"]["EcodDimensionRow"][];
+            /** Explanation Sentence */
+            explanation_sentence?: string | null;
+            /**
+             * Mcd Contributions
+             * @default []
+             */
+            mcd_contributions: components["schemas"]["MCDContributionRow"][];
+            /** Severity Cap Note */
+            severity_cap_note?: string | null;
+            /**
+             * Shap Contributions
+             * @default []
+             */
+            shap_contributions: components["schemas"]["ShapContributionRow"][];
+            /** Unavailable Forecast Note */
+            unavailable_forecast_note?: string | null;
+            /**
+             * Zscore Table
+             * @default []
+             */
+            zscore_table: components["schemas"]["ZScoreTableRow"][];
+        };
+        /** PendingSettingChange */
+        PendingSettingChange: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "fn_fp_cost_ratio" | "pda_threshold" | "confirmed_outcome_fn_ceiling";
+            /** Proposed By */
+            proposed_by: string;
+            /** Proposed Value */
+            proposed_value: number;
+            /** Signed Off By */
+            signed_off_by: string | null;
+        };
         /** ProjectSummary */
         ProjectSummary: {
             /**
@@ -307,6 +715,87 @@ export interface components {
             /** Project Id */
             project_id: string;
         };
+        /** RiskAssessment */
+        RiskAssessment: {
+            /** Actual 168H */
+            actual_168h: number | null;
+            /** Component Id */
+            component_id: string;
+            /** Explanation Sentence */
+            explanation_sentence: string | null;
+            /** Lot Id */
+            lot_id: string;
+            /** Module A Ran */
+            module_a_ran: boolean;
+            /** Module A Rank */
+            module_a_rank: number;
+            /** Module B Ran */
+            module_b_ran: boolean;
+            /** Module B Rank */
+            module_b_rank: number;
+            /** Predicted 168H */
+            predicted_168h: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "PASS" | "WATCH" | "REJECT";
+            /** Worst Parameter */
+            worst_parameter: string;
+        };
+        /** SettingsProposalRequest */
+        SettingsProposalRequest: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "fn_fp_cost_ratio" | "pda_threshold" | "confirmed_outcome_fn_ceiling";
+            /** Proposed Value */
+            proposed_value: number;
+        };
+        /** SettingsResponse */
+        SettingsResponse: {
+            /** Confirmed Outcome Fn Ceiling */
+            confirmed_outcome_fn_ceiling: number;
+            /** Fn Fp Cost Ratio */
+            fn_fp_cost_ratio: number;
+            /** Pda Threshold */
+            pda_threshold: number;
+            /** Pending Changes */
+            pending_changes: components["schemas"]["PendingSettingChange"][];
+        };
+        /** SettingsSignoffRequest */
+        SettingsSignoffRequest: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "fn_fp_cost_ratio" | "pda_threshold" | "confirmed_outcome_fn_ceiling";
+        };
+        /** ShapContributionRow */
+        ShapContributionRow: {
+            /** Feature */
+            feature: string;
+            /** Shap Value */
+            shap_value: number;
+            /** Value */
+            value: number;
+        };
+        /** TokenResponse */
+        TokenResponse: {
+            /** Access Token */
+            access_token: string;
+            /** Account Id */
+            account_id: string;
+            /** Role */
+            role: string;
+            /**
+             * Token Type
+             * @default bearer
+             * @constant
+             */
+            token_type: "bearer";
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -320,6 +809,17 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** ZScoreTableRow */
+        ZScoreTableRow: {
+            /** Lot Median */
+            lot_median: number;
+            /** Parameter */
+            parameter: string;
+            /** Value */
+            value: number;
+            /** Z */
+            z: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -329,6 +829,90 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    login_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_all_disposition_signoffs_disposition_signoffs_get: {
+        parameters: {
+            query?: {
+                component_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionRecord"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_all_events_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventResponse"][];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
@@ -404,6 +988,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LotUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lot_summary_lots__lot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LotSummaryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -503,6 +1118,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_part_detail_parts__component_id__get: {
+        parameters: {
+            query?: {
+                lot_id?: string | null;
+            };
+            header?: never;
+            path: {
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_disposition_parts__component_id__disposition_post: {
+        parameters: {
+            query: {
+                project_id: string;
+                analysis_run_id: string;
+            };
+            header?: never;
+            path: {
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionRecord"];
                 };
             };
             /** @description Validation Error */
@@ -618,6 +1304,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    propose_setting_settings_propose_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingSettingChange"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    signoff_setting_settings_signoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsSignoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
                 };
             };
             /** @description Validation Error */

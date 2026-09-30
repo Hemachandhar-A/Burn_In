@@ -8,10 +8,11 @@ Sections mirror the plan:
   5.1 config   5.2 ingestion -> features   5.3 features -> modules
   5.4 modules -> fusion   5.5 database schema (SQLAlchemy)   5.6 REST API models
 """
+import math
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -61,6 +62,15 @@ class Reading(BaseModel):
     checkpoint_hour: float  # explicit numeric, not an assumed 0/24/96/168 - context.md 5.9
     value: float
     unit: str
+
+    @field_validator("value", "checkpoint_hour")
+    @classmethod
+    def _must_be_finite(cls, v: float, info) -> float:
+        # A literal NaN/inf is neither a reading nor "no reading" (a blank cell is): reject it here, once,
+        # so Module A, the feature statistics and the report never see it (rule 7 - never silently coerced).
+        if not math.isfinite(v):
+            raise ValueError(f"{info.field_name} must be a finite number, got {v!r}")
+        return v
 
 
 class LotDataset(BaseModel):
@@ -146,19 +156,31 @@ def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
 
 class ModuleAResult(BaseModel):
     component_id: str
+    lot_id: str  # component IDs are only unique within a lot - a batch spanning lots must not collide
     parameter: str
     robust_z: float
     mcd_distance: float | None  # None if lot < 30 (5-feature MCD ceiling - context.md 4.2)
     isolation_forest_score: float | None  # None on a part number's first-ever lot (cold start)
     ecod_score: float
-    explainable_tags: dict[str, bool]  # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": True}
+    explainable_tags: dict[str, bool]  # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": False}
     direction: Literal["above_median", "below_median"]  # direction-awareness cap - context.md 4.2
     severity_tier: Literal["PASS", "REVIEW", "REJECT"]
     severity_cap_reason: str | None  # populated if capped - context.md 5.16, 6.2
+    # E2 step 5's max-combined percentile (0-1) - the same value severity_tier and the direction-awareness
+    # cap were computed against. Flagged twice (P1 during P1.7, P5 during P5.2) as missing from this
+    # contract - see CONTRACT_CHANGES.md.
+    combined_severity: float
+    # True iff at least one explainable-tagged detector (robust_z or mcd, per explainable_tags) reached or
+    # tied combined_severity; False iff combined_severity was reached solely by unexplainable-tagged
+    # detectors (isolation_forest and/or ecod). This is a property of the whole detector set, not a single
+    # "worst detector" name - it handles ties and multi-detector cases a single name cannot. Fusion's E12
+    # step 2 explainability gate keys off this field, not a hardcoded detector name.
+    explainable_corroboration: bool
 
 
 class ModuleBResult(BaseModel):
     component_id: str
+    lot_id: str  # component IDs are only unique within a lot - a batch spanning lots must not collide
     parameter: str
     predicted_168h: float | None  # None if parameter outside trained three
     interval_lower: float | None
@@ -168,6 +190,12 @@ class ModuleBResult(BaseModel):
     drift_rate: float | None
     exceeds_safety_slope: bool | None
     safety_slope: float | None  # the calibrated threshold drift_rate was compared against (E3 step 7's "threshold used"); same units as drift_rate; None whenever drift_rate/exceeds_safety_slope are
+    # The conservative counterpart to exceeds_safety_slope: the same drift-rate comparison against
+    # safety_slope, but with interval_lower in place of predicted_168h - the calibrated interval's lower
+    # bound, not the point estimate. STOP_RUN_RECOMMENDED (essential-features.md E12 step 5, context.md
+    # 5.18) keys off this field, not exceeds_safety_slope. Same required-but-nullable pattern, None
+    # whenever exceeds_safety_slope/safety_slope are.
+    lower_bound_exceeds_safety_slope: bool | None
     forecast_unavailable: bool  # explicit flag - context.md 5.9
 
 
@@ -275,6 +303,51 @@ class ConfirmedOutcome(Base):
 
 
 # ---------------------------------------------------------------------------
+# Block 3B Part 2: additive explainability chart payload (E4 steps 1-4). Simple typed rows, not
+# explain/models.py's local Pydantic models (that module is deliberately not contracts.py - see its
+# own docstring), so the generated frontend TS client sees a plain, readable shape.
+# ---------------------------------------------------------------------------
+
+
+class ShapContributionRow(BaseModel):
+    feature: str
+    value: float
+    shap_value: float
+
+
+class MCDContributionRow(BaseModel):
+    parameter: str
+    contribution: float
+
+
+class EcodDimensionRow(BaseModel):
+    dimension: str
+    score: float
+
+
+class ZScoreTableRow(BaseModel):
+    parameter: str
+    value: float
+    lot_median: float
+    z: float
+
+
+class PartExplanation(BaseModel):
+    """Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the
+    text/notes for that one part. Every field optional/defaulted - a PASS part gets none of this
+    (AnalysisResults.part_explanations only ever holds non-PASS parts, Part 3g)."""
+
+    shap_contributions: list[ShapContributionRow] = []
+    mcd_contributions: list[MCDContributionRow] = []
+    ecod_dimensions: list[EcodDimensionRow] = []
+    zscore_table: list[ZScoreTableRow] = []
+    explanation_sentence: str | None = None
+    confidence_qualifier: str | None = None
+    severity_cap_note: str | None = None
+    unavailable_forecast_note: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # 5.6 REST API - request and response models
 # ---------------------------------------------------------------------------
 
@@ -286,6 +359,22 @@ class AnalysisResults(BaseModel):
 
     assessments: list[RiskAssessment]
     disposition: LotDisposition
+    # component_ids with no 0h or 24h reading for some parameter (INSUFFICIENT_DATA, E7 step 7), carried
+    # through to a dashboard reload - not just the upload response (LotUploadResponse.insufficient_data_components).
+    # Default [] so existing constructors and stored rows without the field keep working (CONTRACT_CHANGES.md).
+    insufficient_data_components: list[str] = []
+    # Block 3B Part 2 (additive, CONTRACT_CHANGES.md 2026-09-30): keyed by component_id, one
+    # PartExplanation per non-PASS assessment (E4 steps 1-9) - a PASS part has no entry, not an
+    # empty one. Defaults so a pre-Block-3B stored row still parses.
+    part_explanations: dict[str, PartExplanation] = {}
+    explanation_summary: str = ""  # E4 step 7's lot-level rollup template
+    # Block 3B Part 4 (additive, CONTRACT_CHANGES.md 2026-09-30): GET /parts/{component_id} needs
+    # PartDetailResponse.module_a/module_b, but RiskAssessment (the only per-component shape
+    # AnalysisResults stored before this) never carried the full ModuleAResult/ModuleBResult - only
+    # a fused summary. Keyed by component_id, one entry per analysed component for whichever
+    # parameter is that component's worst_parameter - never re-run the pipeline to reconstruct one.
+    module_a_results: dict[str, ModuleAResult] = {}
+    module_b_results: dict[str, ModuleBResult] = {}
 
 
 class LoginRequest(BaseModel):
@@ -345,6 +434,9 @@ class PartDetailResponse(BaseModel):
     staleness_note: str | None  # E4 step 10
     disposition_history: list[DispositionRecord]
     confirmed_outcomes: list[ConfirmedOutcomeRecord]
+    # Additive (Block 3B, CONTRACT_CHANGES.md 2026-09-30): the chart-bearing counterpart to the flat
+    # text fields above, which predate this block and stay as-is for backward compatibility.
+    explanation: PartExplanation | None = None
 
 
 class DispositionRequest(BaseModel):

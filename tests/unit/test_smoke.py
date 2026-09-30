@@ -90,3 +90,23 @@ def test_module_b_input_never_carries_168h():
     assert (b.value_0h, b.value_24h, b.value_96h, b.part_number, b.parameter) == (1.0, 1.1, 1.2, "P", "iddq")
     assert frame.robust_z["168h"] == 0.6  # the source frame is untouched
 
+
+def _reading(**overrides):
+    base = dict(component_id="c1", lot_id="L1", part_number="P", manufacturer="m", date_code="2601",
+                parameter="iddq", checkpoint_hour=24.0, value=1.0, unit="uA")
+    return contracts.Reading(**{**base, **overrides})
+
+
+def test_reading_rejects_non_finite_value_and_checkpoint_hour():
+    import pytest
+    from pydantic import ValidationError
+
+    for field in ("value", "checkpoint_hour"):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with pytest.raises(ValidationError, match="must be a finite number"):
+                _reading(**{field: bad})
+
+
+def test_reading_still_accepts_ordinary_finite_values():
+    assert _reading(value=-3.5, checkpoint_hour=0.0).value == -3.5
+

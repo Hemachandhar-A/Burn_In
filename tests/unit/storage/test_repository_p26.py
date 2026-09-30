@@ -1,14 +1,14 @@
 """Session P2.6: E11 steps 4-8 - project_data+diff, events, disposition_signoffs,
 confirmed_outcomes, and the full repository query API (IMPLEMENTATION_PLAN.md Part 10).
 
-`results` passed to save_analysis_run is a TEMP_ANALYSIS_RESULTS_DICT shape (see
-repository.py module docstring / CONTRACT_CHANGES.md) since E9's JSON export (which
-project_data.results_json is documented to mirror) doesn't exist yet - P2.7 builds it.
+`results` passed to save_analysis_run is a real `contracts.AnalysisResults`.
 """
 import importlib
 from datetime import UTC, datetime
 
 import pytest
+
+from contracts import AnalysisResults, LotDisposition, RiskAssessment
 
 
 @pytest.fixture()
@@ -29,17 +29,16 @@ def repository(tmp_path, monkeypatch):
 
 def _results(component_id="C1", verdict="PASS", module_a_ran=True, module_b_ran=True,
              predicted_168h=None, actual_168h=None):
-    return {
-        "per_component": {
-            component_id: {
-                "verdict": verdict,
-                "module_a_ran": module_a_ran,
-                "module_b_ran": module_b_ran,
-                "predicted_168h": predicted_168h,
-                "actual_168h": actual_168h,
-            }
-        }
-    }
+    return AnalysisResults(
+        assessments=[RiskAssessment(
+            component_id=component_id, lot_id="L1", verdict=verdict, module_a_rank=0.25, module_b_rank=0.75,
+            worst_parameter="iddq", module_a_ran=module_a_ran, module_b_ran=module_b_ran,
+            predicted_168h=predicted_168h, actual_168h=actual_168h, explanation_sentence=None,
+        )],
+        disposition=LotDisposition(
+            lot_id="L1", status="IN_PROGRESS", pda_result=0.0, verdict="LOT_ON_TRACK", is_forecast=True,
+        ),
+    )
 
 
 # --- save_analysis_run / query_project_data / query_latest_project_data -----------
@@ -51,6 +50,27 @@ def test_first_analysis_run_has_null_diff(repository):
     )
     assert run.project_id == "proj-1"
     assert run.analysis_run_id
+    assert run.diff_vs_prior is None
+
+
+def test_results_json_is_the_real_analysis_results_with_ranks_intact(repository):
+    run = repository.save_analysis_run(project_id="proj-1", raw_data={}, results=_results(verdict="WATCH"))
+    stored = AnalysisResults.model_validate_json(run.results_json)
+    assessment = stored.assessments[0]
+    assert (assessment.module_a_rank, assessment.module_b_rank, assessment.worst_parameter) == (0.25, 0.75, "iddq")
+
+
+def test_legacy_per_component_prior_row_yields_null_diff(repository):
+    from contracts import ProjectData
+    from storage.database import SessionLocal
+
+    with SessionLocal() as session:
+        session.add(ProjectData(
+            analysis_run_id="run-legacy", project_id="proj-1", raw_data="{}",
+            results_json='{"per_component": {}}', diff_vs_prior=None, created_at=datetime(2026, 8, 1, tzinfo=UTC),
+        ))
+        session.commit()
+    run = repository.save_analysis_run(project_id="proj-1", raw_data={}, results=_results())
     assert run.diff_vs_prior is None
 
 

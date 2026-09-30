@@ -7,6 +7,8 @@ import importlib
 from datetime import UTC, datetime
 
 import pytest
+
+from contracts import AnalysisResults, LotDisposition, RiskAssessment
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -45,10 +47,16 @@ def client(tmp_path, monkeypatch):
     )
     repository.save_analysis_run(
         project_id="proj-1", raw_data=lot.model_dump(mode="json"),
-        results={"per_component": {"C0": {
-            "verdict": "WATCH", "module_a_ran": True, "module_b_ran": False,
-            "predicted_168h": None, "actual_168h": None, "explanation_sentence": "elevated z-score",
-        }}},
+        results=AnalysisResults(
+            assessments=[RiskAssessment(
+                component_id="C0", lot_id="L1", verdict="WATCH", module_a_rank=0.5, module_b_rank=0.5,
+                worst_parameter="iddq", module_a_ran=True, module_b_ran=False, predicted_168h=None,
+                actual_168h=None, explanation_sentence="elevated z-score",
+            )],
+            disposition=LotDisposition(
+                lot_id="L1", status="IN_PROGRESS", pda_result=0.02, verdict="LOT_ON_TRACK", is_forecast=True,
+            ),
+        ),
     )
 
     return TestClient(app)

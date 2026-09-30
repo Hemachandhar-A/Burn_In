@@ -1,7 +1,17 @@
 """Session P2.2: POST /lots, /lots/{lot_id}/checkpoints, /lots/demo - real parsing,
-validation, merge, and the demo-lot button, over the interim in-process store."""
+validation, merge, and the demo-lot button, over the interim in-process store.
+
+Session P2.5: every POST /lots and POST /lots/{lot_id}/checkpoints call also runs
+`fusion.run_full_pipeline` and persists via `storage.repository` now - each test gets its own
+temp SQLite file (same pattern as tests/unit/storage/test_repository.py), reloading
+storage.database/storage.repository so DATABASE_URL takes effect; ingestion/router.py holds a
+`from storage import repository` module reference, so the reload is picked up in place.
+"""
+import importlib
 import io
 import json
+
+from contracts import AnalysisResults
 
 import pytest
 from fastapi import FastAPI
@@ -16,7 +26,15 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _reset_store():
+def _reset_store_and_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    from storage import database
+
+    importlib.reload(database)
+    from storage import repository
+
+    importlib.reload(repository)
+    repository.init_db()
     store.clear()
     yield
     store.clear()
@@ -33,8 +51,9 @@ METADATA = {"lot_id": "L1", "part_number": "PN-1", "manufacturer": "ACME", "date
 def test_post_lots_parses_and_stores_a_real_upload():
     response = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
     assert response.status_code == 200
+    # VALID_CSV is 0h-only for both components - both are INSUFFICIENT_DATA (R7: never a silent drop).
     assert response.json() == {"lot_id": "L1", "part_number": "PN-1", "status": "IN_PROGRESS", "reading_count": 2,
-        "insufficient_data_components": []}
+        "insufficient_data_components": ["c1", "c2"]}
 
 
 def test_post_lots_requires_metadata_fields():
@@ -47,6 +66,23 @@ def test_post_lots_returns_422_with_specific_errors_on_bad_csv():
     response = client.post("/lots", files=_csv_file(bad_csv), data=METADATA)
     assert response.status_code == 422
     assert any("checkpoint_hour" in e for e in response.json()["detail"])
+
+
+def test_post_lots_returns_422_not_500_on_a_nan_cell():
+    # B2 (Lead-as-P2): a bare float() parses "nan" successfully; without the parser-level check
+    # this would reach Reading's pydantic validator (contracts.py:66) as an unhandled 500.
+    bad_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,0,nan,uA\n"
+    response = client.post("/lots", files=_csv_file(bad_csv), data=METADATA)
+    assert response.status_code == 422
+    assert any("value" in e for e in response.json()["detail"])
+
+
+def test_post_lots_checkpoints_returns_422_not_500_on_an_inf_cell():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    bad_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,inf,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(bad_csv), data={"account_id": "a.sharma"})
+    assert response.status_code == 422
+    assert any("value" in e for e in response.json()["detail"])
 
 
 def test_post_lots_rejects_a_second_upload_for_the_same_lot_id():
@@ -173,6 +209,65 @@ def test_post_lots_applies_tester_offset_correction_from_reference_parts():
     assert c1.value == pytest.approx(11.0)
 
 
+# B1 (Lead-as-P2): insufficient_data_components (R7) - populated from ingestion.quality's existing
+# INSUFFICIENT_DATA flag, never a new rejection or change to what is stored/analysed.
+
+
+def test_post_lots_insufficient_data_components_lists_only_the_incomplete_component():
+    csv_text = (
+        "component_id,parameter,checkpoint_hour,value,unit\n"
+        "x,iddq,0,1.2,uA\n"
+        "y,iddq,0,1.1,uA\n"
+        "y,iddq,24,1.15,uA\n"
+    )
+    response = client.post("/lots", files=_csv_file(csv_text), data=METADATA)
+    assert response.json()["insufficient_data_components"] == ["x"]
+
+
+def test_post_lots_insufficient_data_components_empty_when_both_complete():
+    response = client.post("/lots", files=_csv_file(VALID_IN_PROGRESS_CSV), data=METADATA)
+    assert response.json()["insufficient_data_components"] == []
+
+
+def test_post_lots_checkpoints_insufficient_data_components_becomes_empty_after_merge():
+    # Incremental: 0h-only upload lists both components; the 24h checkpoint completes them, and the
+    # list must be recomputed over the MERGED dataset, not just the newly-uploaded checkpoint file.
+    first = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    assert first.json()["insufficient_data_components"] == ["c1", "c2"]
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    assert response.json()["insufficient_data_components"] == []
+
+
+def test_post_lots_checkpoints_insufficient_data_components_lists_the_still_incomplete_component():
+    # Only c1 gets a checkpoint; c2 stays 0h-only and must still be listed after the merge.
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    assert response.json()["insufficient_data_components"] == ["c2"]
+
+
+def test_post_lots_insufficient_data_components_reaches_stored_results_json():
+    """AnalysisResults.insufficient_data_components (additive, CONTRACT_CHANGES.md 2026-09-30) must be
+    populated on the stored results_json too, not only on LotUploadResponse - so a dashboard reload
+    (GET /lots/{lot_id}) sees the same banner, not just the upload response."""
+    response = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    assert response.json()["insufficient_data_components"] == ["c1", "c2"]
+    runs = _repository().query_project_data("L1")
+    results = AnalysisResults.model_validate_json(runs[-1].results_json)
+    assert results.insufficient_data_components == ["c1", "c2"]
+
+
+def test_post_lots_checkpoints_insufficient_data_components_reaches_stored_results_json():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    assert response.json()["insufficient_data_components"] == ["c2"]
+    runs = _repository().query_project_data("L1")
+    results = AnalysisResults.model_validate_json(runs[-1].results_json)
+    assert results.insufficient_data_components == ["c2"]
+
+
 def test_post_lots_demo_returns_a_complete_synthetic_lot():
     response = client.post("/lots/demo", data={"account_id": "a.sharma"})
     assert response.status_code == 200
@@ -186,3 +281,152 @@ def test_post_lots_demo_returns_a_fresh_lot_id_each_call():
     first = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()
     second = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()
     assert first["lot_id"] != second["lot_id"]
+
+
+# P2.5: fusion.run_full_pipeline + storage persistence, wired after a successful save.
+
+
+def _repository():
+    from storage import repository
+
+    return repository
+
+
+VALID_IN_PROGRESS_CSV = (
+    "component_id,parameter,checkpoint_hour,value,unit\n"
+    "c1,iddq,0,1.2,uA\n"
+    "c1,iddq,24,1.25,uA\n"
+    "c2,iddq,0,1.1,uA\n"
+    "c2,iddq,24,1.15,uA\n"
+)
+
+
+def test_post_lots_creates_a_project_row_and_persists_an_analysis_run():
+    response = client.post("/lots", files=_csv_file(VALID_IN_PROGRESS_CSV), data=METADATA)
+    assert response.status_code == 200
+    assert response.json()["status"] == "IN_PROGRESS"
+    repository = _repository()
+
+    project = repository.query_project("L1")
+    assert project is not None
+    assert project.lot_id == "L1"
+    assert project.part_number == "PN-1"
+    assert project.created_by == "a.sharma"
+
+    runs = repository.query_project_data("L1")
+    assert len(runs) == 1
+    results = AnalysisResults.model_validate_json(runs[0].results_json)
+    # Real fusion.run_full_pipeline output now, not P5's old fixed-stub round trip - only the
+    # shape is pinned here, never a specific verdict.
+    assert sorted(a.component_id for a in results.assessments) == ["c1", "c2"]
+    assert all(a.verdict in {"PASS", "WATCH", "REJECT"} for a in results.assessments)
+    assert results.disposition.verdict in {"LOT_ON_TRACK", "LOT_AT_RISK", "STOP_RUN_RECOMMENDED"}
+
+
+def test_post_lots_logs_an_analysis_run_event():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    repository = _repository()
+
+    events = repository.query_events("L1")
+    event_types = [e.event_type for e in events]
+    assert "analysis_run" in event_types
+
+
+def test_post_lots_checkpoints_reuses_the_same_project_row_and_adds_another_run():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    repository = _repository()
+
+    assert len(repository.query_projects()) == 1
+    runs = repository.query_project_data("L1")
+    assert len(runs) == 2
+    assert runs[1].diff_vs_prior is not None
+
+
+def test_post_lots_demo_creates_a_project_row():
+    # Was test_post_lots_demo_does_not_require_a_project_row, which pinned /lots/demo as unchanged by P2.5
+    # ("out of scope per Part 10's session wording") - a scope note, not a design choice. The demo route now
+    # runs the same pipeline-and-persist sequence as POST /lots, so it gets a Project row (Lead, 2026-09-27).
+    response = client.post("/lots/demo", data={"account_id": "a.sharma"})
+    assert response.status_code == 200
+    lot_id = response.json()["lot_id"]
+    assert _repository().query_project(lot_id) is not None
+
+
+# --- P2-flagged findings, fixed by the Lead while P2 was offline (CONTRACT_CHANGES.md 2026-09-27) ---
+
+
+def test_demo_lot_runs_the_pipeline_and_persists_a_real_analysis_run():
+    response = client.post("/lots/demo", data={"account_id": "a.sharma"})
+    assert response.status_code == 200
+    lot_id = response.json()["lot_id"]
+
+    from storage import repository
+
+    project = repository.query_project(lot_id)
+    assert project is not None and project.part_number == "DEMO-PN"
+    run = repository.query_latest_project_data(lot_id)
+    assert run is not None
+    stored = AnalysisResults.model_validate_json(run.results_json)  # a real AnalysisResults, persisted
+    assert stored.assessments and stored.disposition.verdict
+    assert json.loads(run.raw_data)["lot_id"] == lot_id
+    assert "analysis_run" in {e.event_type for e in repository.query_events(lot_id)}
+
+
+def test_ingest_and_checkpoint_add_events_are_persisted_alongside_analysis_run():
+    from storage import repository
+
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    types = [e.event_type for e in repository.query_events("L1")]
+    assert sorted(types) == ["analysis_run", "ingest"]
+
+    later = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    client.post("/lots/L1/checkpoints", files=_csv_file(later), data={"account_id": "r.mehta"})
+    events = repository.query_events("L1")
+    assert sorted(e.event_type for e in events) == ["analysis_run", "analysis_run", "checkpoint_add", "ingest"]
+    # Each ingestion event is attributed to the account that did it (E7 step 11).
+    by_type = {e.event_type: e.account_id for e in events if e.event_type != "analysis_run"}
+    assert by_type == {"ingest": "a.sharma", "checkpoint_add": "r.mehta"}
+    assert all(isinstance(e.payload, dict) for e in events)
+
+
+def test_demo_lot_persists_an_ingest_event_too():
+    from storage import repository
+
+    lot_id = client.post("/lots/demo", data={"account_id": "a.sharma"}).json()["lot_id"]
+    assert sorted(e.event_type for e in repository.query_events(lot_id)) == ["analysis_run", "ingest"]
+
+
+def test_malformed_test_date_is_a_422_naming_the_field_not_a_500():
+    response = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "next tuesday"})
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list) and len(detail) == 1
+    assert "test_date" in detail[0] and "'next tuesday'" in detail[0]  # field name and what was received
+
+
+def test_malformed_test_date_leaves_no_state_behind_so_a_corrected_retry_succeeds():
+    bad = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-13-45"})
+    assert bad.status_code == 422
+    assert store.get("L1") is None  # nothing stored: a retry must not hit "lot already exists" (409)
+    good = client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26"})
+    assert good.status_code == 200
+
+
+def test_valid_iso_test_date_and_absent_test_date_still_work():
+    assert client.post("/lots", files=_csv_file(VALID_CSV), data={**METADATA, "test_date": "2026-09-26T14:30:00"}).status_code == 200
+    other = {**METADATA, "lot_id": "L2"}
+    assert client.post("/lots", files=_csv_file(VALID_CSV), data=other).status_code == 200
+
+
+def test_demo_route_attributes_its_events_and_project_to_the_acting_account():
+    """E7 step 11: every ingestion event carries the account that did it. Two different accounts, so a
+    hardcoded identity in load_demo_lot can match at most one of them."""
+    from storage import repository
+
+    for account in ("a.sharma", "r.mehta"):
+        lot_id = client.post("/lots/demo", data={"account_id": account}).json()["lot_id"]
+        events = {e.event_type: e.account_id for e in repository.query_events(lot_id)}
+        assert events == {"ingest": account, "analysis_run": account}
+        assert repository.query_project(lot_id).created_by == account
