@@ -84,11 +84,15 @@ function hours(value: unknown): string | null {
   return value.map((h) => `${String(h)}h`).join(', ')
 }
 
-/** Every key the payload has, as-is: an unrecognized shape is shown, never silently dropped. */
+/** Every key the payload has, as-is: an unrecognized shape is shown, never silently dropped. A
+ * number is rounded (formatNumber, same helper the diff trace uses) so float noise from the
+ * server never leaks into the log verbatim. */
 function genericDescription(payload: Record<string, unknown>): string {
-  const parts = Object.entries(payload).map(
-    ([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`,
-  )
+  const parts = Object.entries(payload).map(([k, v]) => {
+    const text =
+      typeof v === 'number' ? (formatNumber(v) ?? String(v)) : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return `${k}: ${text}`
+  })
   return parts.length > 0 ? parts.join('; ') : 'No details recorded'
 }
 

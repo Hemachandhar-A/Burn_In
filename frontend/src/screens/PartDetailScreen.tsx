@@ -12,6 +12,7 @@ import type { PartDetailResponse } from '../api/parts'
 import type { components } from '../api/schema'
 import { WORKLIST_QUERY_KEY } from '../api/settings'
 import { pathToLot } from './registry'
+import { formatNumber } from './settingsFormat'
 import { VerdictBadge } from './VerdictBadge'
 
 type DispositionRecord = components['schemas']['DispositionRecord']
@@ -175,7 +176,7 @@ function ShapCard({ rows }: { rows: ShapContributionRow[] }) {
           <ContributionBar
             key={row.feature}
             label={row.feature}
-            sublabel={row.value === null ? 'not available yet' : String(row.value)}
+            sublabel={row.value === null ? 'not available yet' : (formatNumber(row.value) ?? String(row.value))}
             valueText={`${row.shap_value >= 0 ? '+' : ''}${row.shap_value.toFixed(3)}`}
             pct={(Math.abs(row.shap_value) / max) * 100}
           />
@@ -212,8 +213,8 @@ function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
           {rows.map((row) => (
             <tr key={row.parameter} className={Math.abs(row.z) >= 3 ? 'row-elevated' : ''}>
               <td>{row.parameter}</td>
-              <td className="mono numeric">{row.value}</td>
-              <td className="mono numeric muted">{row.lot_median}</td>
+              <td className="mono numeric">{formatNumber(row.value) ?? row.value}</td>
+              <td className="mono numeric muted">{formatNumber(row.lot_median) ?? row.lot_median}</td>
               <td className="mono numeric">
                 {row.z >= 0 ? '+' : ''}
                 {row.z.toFixed(2)} σ
@@ -250,7 +251,7 @@ function TrajectoryChart({
       name: 'Measured (24h)',
       x: [24],
       y: [zscoreRow.value],
-      text: [`${zscoreRow.value}`],
+      text: [formatNumber(zscoreRow.value) ?? `${zscoreRow.value}`],
       textposition: 'top center',
       marker: { color: '#0f172a', size: 8 },
     })
@@ -271,7 +272,7 @@ function TrajectoryChart({
       name: 'Module B Forecast (168h)',
       x: [168],
       y: [moduleB.predicted_168h],
-      text: [`${moduleB.predicted_168h}`],
+      text: [formatNumber(moduleB.predicted_168h) ?? `${moduleB.predicted_168h}`],
       textposition: 'top right',
       marker: { color: '#b45309', size: 10, symbol: 'square' },
       error_y:
@@ -568,16 +569,14 @@ function PartDetailForComponent({
                   <div>
                     <p className="summary-label">Physics Baseline</p>
                     <p className="mono disagreement-value">
-                      {data.module_b.physics_baseline_prediction === null
-                        ? '—'
-                        : data.module_b.physics_baseline_prediction}
+                      {formatNumber(data.module_b.physics_baseline_prediction) ?? '—'}
                     </p>
                     <p className="muted">Power-law extrapolation baseline</p>
                   </div>
                   <div>
                     <p className="summary-label">Live ML Model</p>
                     <p className="mono disagreement-value">
-                      {data.module_b.predicted_168h === null ? '—' : data.module_b.predicted_168h}
+                      {formatNumber(data.module_b.predicted_168h) ?? '—'}
                     </p>
                     <p className="muted">Gradient-boosted regression</p>
                   </div>
@@ -587,7 +586,7 @@ function PartDetailForComponent({
                   <p className="mono">
                     {data.module_b.physics_disagreement_gap === null
                       ? '—'
-                      : `${data.module_b.physics_disagreement_gap >= 0 ? '+' : ''}${data.module_b.physics_disagreement_gap}`}
+                      : `${data.module_b.physics_disagreement_gap >= 0 ? '+' : ''}${formatNumber(data.module_b.physics_disagreement_gap)}`}
                   </p>
                 </div>
               </section>
