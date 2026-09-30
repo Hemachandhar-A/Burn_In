@@ -129,7 +129,7 @@ def _trigger_for_run(events: list, run_created_at: datetime) -> str:
     candidates = [e for e in events if e.event_type in _TRIGGER_EVENT_TYPES and e.timestamp <= run_created_at]
     if not candidates:
         return "analysis_run"
-    return max(candidates, key=lambda e: e.timestamp).event_type
+    return max(enumerate(candidates), key=lambda t: (t[1].timestamp, t[0]))[1].event_type  # ties: later insert wins
 
 
 def build_report_data(project_id: str) -> ReportData:

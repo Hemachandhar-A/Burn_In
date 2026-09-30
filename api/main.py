@@ -5,11 +5,12 @@ registered here in the same merge that introduces it (IMPLEMENTATION_PLAN.md Par
 session is not a reachable route. The StaticFiles mount for the built frontend is added in L3
 (scripts/build_demo.sh).
 """
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from capa.router import planned_router as capa_router
 from fusion.router import router as fusion_router
+from identity.auth import get_current_account
 from identity.router import router as identity_router
 from ingestion.router import router as ingestion_router
 from report.router import router as report_router
@@ -35,10 +36,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(ingestion_router)
-app.include_router(storage_router)
-app.include_router(report_router)
-app.include_router(fusion_router)
+# Auth policy (G5 findings 1/3/4): these four routers are registered behind get_current_account here, at
+# app level, so router-only unit tests keep working without a token. /auth/login (identity router) and
+# /health stay open; identity/capa routes already declare the dependency per route.
+_auth = [Depends(get_current_account)]
+app.include_router(ingestion_router, dependencies=_auth)
+app.include_router(storage_router, dependencies=_auth)
+app.include_router(report_router, dependencies=_auth)
+app.include_router(fusion_router, dependencies=_auth)
 app.include_router(identity_router)
 app.include_router(capa_router)
 

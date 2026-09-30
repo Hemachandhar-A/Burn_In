@@ -75,7 +75,7 @@ def get_part_detail(
     # 4a: the most recent stored analysis run that contains component_id - across every matching
     # lot when lot_id is not given (an ambiguous component_id resolves to its newest run, never an
     # error), or within the one named lot when it is.
-    project, row, results = max(matches, key=lambda m: m[1].created_at)
+    _, (project, row, results) = max(enumerate(matches), key=lambda t: (t[1][1].created_at, t[0]))  # ties: later insert wins
 
     assessment = next(a for a in results.assessments if a.component_id == component_id)
     module_a = results.module_a_results.get(component_id)
@@ -150,7 +150,7 @@ def _staleness_note_for(project_id: str, component_id: str, latest_row) -> str |
     signoffs = query_disposition_signoffs(project_id=project_id, component_id=component_id)
     if not signoffs:
         return None
-    latest_signoff = max(signoffs, key=lambda s: s.timestamp)
+    latest_signoff = max(enumerate(signoffs), key=lambda t: (t[1].timestamp, t[0]))[1]  # ties: later insert wins
 
     rows = query_project_data(project_id)  # ascending by created_at
     second_latest_run_id = rows[-2].analysis_run_id if len(rows) >= 2 else None
