@@ -154,6 +154,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lots/{lot_id}/dpa-work-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Dpa Work Order
+         * @description E13 step 5: up to 3 recommended parts for destructive physical analysis, on a COMPLETE lot
+         *     only (a lot still IN_PROGRESS has no final verdict tier to select against - 409, not a guess).
+         */
+        post: operations["create_dpa_work_order_lots__lot_id__dpa_work_order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lots/{lot_id}/quality": {
         parameters: {
             query?: never;
@@ -204,6 +225,31 @@ export interface paths {
         get: operations["get_part_detail_parts__component_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/parts/{component_id}/confirmed-outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Confirmed Outcome
+         * @description E13 step 1: records a confirmed real-world outcome for a part, linked to the analysis_run_id
+         *     of the latest stored run containing it (never the disposition itself - this measures whether the
+         *     model's verdict tier was right, a different question from whether the human's disposition was).
+         *     Append-only: never touches disposition_signoffs. No event is logged - see CONTRACT_CHANGES.md,
+         *     this block: none of the five event_type literal values fits this action, and AGENTS.md rule 3
+         *     forbids inventing a new one here.
+         */
+        post: operations["create_confirmed_outcome_parts__component_id__confirmed_outcome_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -312,6 +358,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/corrective-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Corrective Status
+         * @description E13 steps 6-8: live-computed on every call, nothing stored, nothing to dismiss. The ceiling
+         *     read here is the live Settings value (post dual sign-off), via identity.router's own state
+         *     function - never re-derived from raw events a second time.
+         */
+        get: operations["get_corrective_status_settings_corrective_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/propose": {
         parameters: {
             query?: never;
@@ -340,6 +408,26 @@ export interface paths {
         put?: never;
         /** Signoff Setting */
         post: operations["signoff_setting_settings_signoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Worklist
+         * @description E13 step 4: "N dispositions awaiting a confirmed outcome" - tracking only, changes nothing.
+         */
+        get: operations["get_worklist_settings_worklist_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -405,6 +493,42 @@ export interface components {
              * Format: date-time
              */
             recorded_at: string;
+        };
+        /** ConfirmedOutcomeRequest */
+        ConfirmedOutcomeRequest: {
+            /**
+             * Confirmed Outcome
+             * @enum {string}
+             */
+            confirmed_outcome: "Confirmed Good" | "Confirmed Defective" | "Unknown";
+            /** Note */
+            note?: string | null;
+        };
+        /** CorrectiveStatusResponse */
+        CorrectiveStatusResponse: {
+            /** Confirmed Outcome Count */
+            confirmed_outcome_count: number;
+            /** Fn Rate */
+            fn_rate?: number | null;
+            /** Fp Rate */
+            fp_rate?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "OK" | "CEILING_EXCEEDED" | "INSUFFICIENT_DATA";
+        };
+        /** DPARecommendation */
+        DPARecommendation: {
+            /** Component Id */
+            component_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** DPAWorkOrderResponse */
+        DPAWorkOrderResponse: {
+            /** Recommendations */
+            recommendations: components["schemas"]["DPARecommendation"][];
         };
         /** DispositionRecord */
         DispositionRecord: {
@@ -809,6 +933,11 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WorklistResponse */
+        WorklistResponse: {
+            /** Pending */
+            pending: components["schemas"]["DispositionRecord"][];
+        };
         /** ZScoreTableRow */
         ZScoreTableRow: {
             /** Lot Median */
@@ -1067,6 +1196,37 @@ export interface operations {
             };
         };
     };
+    create_dpa_work_order_lots__lot_id__dpa_work_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DPAWorkOrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_quality_flags_lots__lot_id__quality_get: {
         parameters: {
             query?: never;
@@ -1151,6 +1311,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PartDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_confirmed_outcome_parts__component_id__confirmed_outcome_post: {
+        parameters: {
+            query?: {
+                lot_id?: string | null;
+            };
+            header?: never;
+            path: {
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmedOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmedOutcomeRecord"];
                 };
             };
             /** @description Validation Error */
@@ -1337,6 +1534,26 @@ export interface operations {
             };
         };
     };
+    get_corrective_status_settings_corrective_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectiveStatusResponse"];
+                };
+            };
+        };
+    };
     propose_setting_settings_propose_post: {
         parameters: {
             query?: never;
@@ -1399,6 +1616,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_worklist_settings_worklist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorklistResponse"];
                 };
             };
         };

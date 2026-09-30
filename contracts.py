@@ -506,8 +506,12 @@ class WorklistResponse(BaseModel):
 
 
 class CorrectiveStatusResponse(BaseModel):
-    fn_rate: float
-    fp_rate: float
+    # Nullable (Block 4a-resume R2, CONTRACT_CHANGES.md 2026-09-30): None means that rate's
+    # denominator is genuinely zero (e.g. no Confirmed Defective outcomes yet for fn_rate) - not a
+    # guessed 0.0. Was previously required float; the earlier-session workaround that coerced a zero
+    # denominator to 0.0 at the API boundary is retired by this widening.
+    fn_rate: float | None = None
+    fp_rate: float | None = None
     confirmed_outcome_count: int
     status: Literal["OK", "CEILING_EXCEEDED", "INSUFFICIENT_DATA"]  # INSUFFICIENT_DATA below the min count
 

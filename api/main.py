@@ -8,6 +8,7 @@ session is not a reachable route. The StaticFiles mount for the built frontend i
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from capa.router import planned_router as capa_router
 from fusion.router import router as fusion_router
 from identity.router import router as identity_router
 from ingestion.router import router as ingestion_router
@@ -39,6 +40,7 @@ app.include_router(storage_router)
 app.include_router(report_router)
 app.include_router(fusion_router)
 app.include_router(identity_router)
+app.include_router(capa_router)
 
 
 @app.get("/health", tags=["meta"])
