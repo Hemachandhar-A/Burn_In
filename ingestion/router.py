@@ -79,6 +79,11 @@ def _run_pipeline_and_persist(
 ) -> None:
     _ensure_project(dataset, account_id, test_date)
     results = run_full_pipeline(dataset, ScreeningConfig())
+    # AnalysisResults.insufficient_data_components (additive, CONTRACT_CHANGES.md 2026-09-30): the same
+    # list LotUploadResponse carries, also stored so a dashboard reload (GET /lots/{lot_id}) sees it too.
+    results = results.model_copy(
+        update={"insufficient_data_components": _insufficient_data_components(dataset.readings)}
+    )
     repository.save_analysis_run(
         project_id=dataset.lot_id,
         raw_data=dataset.model_dump(mode="json"),

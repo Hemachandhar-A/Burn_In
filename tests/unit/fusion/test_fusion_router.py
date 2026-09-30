@@ -1,3 +1,6 @@
+import json
+import uuid as uuid_lib
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -98,3 +101,66 @@ def test_get_lot_summary_no_live_recompute():
         assert data["assessments"][0]["module_b_rank"] == 0.8
         assert data["assessments"][0]["worst_parameter"] == "iddq_uA"
         assert data["disposition"]["verdict"] == "ACCEPT"
+
+
+def test_get_lot_summary_returns_insufficient_data_components():
+    """AnalysisResults.insufficient_data_components (additive, CONTRACT_CHANGES.md 2026-09-30) reaches
+    GET /lots/{lot_id} on a stored row that set it."""
+    uid = str(uuid.uuid4())
+    lot_id = f"test-lot-idc-{uid}"
+    tester_id = f"tester-{uid}"
+    repository.save_account(tester_id, "Tester", "operator", "hash")
+    repository.save_project(lot_id, lot_id, "PN-1", datetime.now(UTC), tester_id)
+
+    from contracts import AnalysisResults, LotDisposition
+
+    results = AnalysisResults(
+        assessments=[],
+        disposition=LotDisposition(
+            lot_id=lot_id, status="IN_PROGRESS", pda_result=0.0, verdict="LOT_AT_RISK", is_forecast=True
+        ),
+        insufficient_data_components=["C9"],
+    )
+    raw_data = {"lot_id": lot_id, "part_number": "PN-1", "status": "IN_PROGRESS", "readings": [], "account_id": tester_id}
+    repository.save_analysis_run(lot_id, raw_data, results)
+
+    resp = client.get(f"/lots/{lot_id}")
+    assert resp.status_code == 200
+    assert resp.json()["insufficient_data_components"] == ["C9"]
+
+
+def test_get_lot_summary_parses_an_old_stored_row_without_insufficient_data_components():
+    """A row stored before this field existed has no key at all in its results_json - must still parse,
+    defaulting to [] (additive field, CONTRACT_CHANGES.md 2026-09-30), not a validation error on reload."""
+    uid = str(uuid.uuid4())
+    lot_id = f"test-lot-old-shape-{uid}"
+    tester_id = f"tester-{uid}"
+    repository.save_account(tester_id, "Tester", "operator", "hash")
+    repository.save_project(lot_id, lot_id, "PN-1", datetime.now(UTC), tester_id)
+
+    old_shape_results_json = json.dumps({
+        "assessments": [],
+        "disposition": {
+            "lot_id": lot_id, "status": "IN_PROGRESS", "pda_result": 0.0,
+            "verdict": "LOT_ON_TRACK", "is_forecast": True,
+        },
+        # deliberately no "insufficient_data_components" key - the pre-this-field stored shape.
+    })
+
+    from contracts import ProjectData
+    from storage.repository import SessionLocal
+
+    with SessionLocal() as session:
+        session.add(ProjectData(
+            analysis_run_id=f"run-{uuid_lib.uuid4().hex[:12]}",
+            project_id=lot_id,
+            raw_data=json.dumps({}),
+            results_json=old_shape_results_json,
+            diff_vs_prior=None,
+            created_at=datetime.now(UTC),
+        ))
+        session.commit()
+
+    resp = client.get(f"/lots/{lot_id}")
+    assert resp.status_code == 200
+    assert resp.json()["insufficient_data_components"] == []

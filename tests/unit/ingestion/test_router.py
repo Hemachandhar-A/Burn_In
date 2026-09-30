@@ -247,6 +247,27 @@ def test_post_lots_checkpoints_insufficient_data_components_lists_the_still_inco
     assert response.json()["insufficient_data_components"] == ["c2"]
 
 
+def test_post_lots_insufficient_data_components_reaches_stored_results_json():
+    """AnalysisResults.insufficient_data_components (additive, CONTRACT_CHANGES.md 2026-09-30) must be
+    populated on the stored results_json too, not only on LotUploadResponse - so a dashboard reload
+    (GET /lots/{lot_id}) sees the same banner, not just the upload response."""
+    response = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    assert response.json()["insufficient_data_components"] == ["c1", "c2"]
+    runs = _repository().query_project_data("L1")
+    results = AnalysisResults.model_validate_json(runs[-1].results_json)
+    assert results.insufficient_data_components == ["c1", "c2"]
+
+
+def test_post_lots_checkpoints_insufficient_data_components_reaches_stored_results_json():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    assert response.json()["insufficient_data_components"] == ["c2"]
+    runs = _repository().query_project_data("L1")
+    results = AnalysisResults.model_validate_json(runs[-1].results_json)
+    assert results.insufficient_data_components == ["c2"]
+
+
 def test_post_lots_demo_returns_a_complete_synthetic_lot():
     response = client.post("/lots/demo", data={"account_id": "a.sharma"})
     assert response.status_code == 200

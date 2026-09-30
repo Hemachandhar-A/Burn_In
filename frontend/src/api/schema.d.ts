@@ -458,6 +458,11 @@ export interface components {
             /** Assessments */
             assessments: components["schemas"]["RiskAssessment"][];
             disposition: components["schemas"]["LotDisposition"];
+            /**
+             * Insufficient Data Components
+             * @default []
+             */
+            insufficient_data_components: string[];
         };
         /** LotUploadResponse */
         LotUploadResponse: {

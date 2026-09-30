@@ -314,6 +314,10 @@ class AnalysisResults(BaseModel):
 
     assessments: list[RiskAssessment]
     disposition: LotDisposition
+    # component_ids with no 0h or 24h reading for some parameter (INSUFFICIENT_DATA, E7 step 7), carried
+    # through to a dashboard reload - not just the upload response (LotUploadResponse.insufficient_data_components).
+    # Default [] so existing constructors and stored rows without the field keep working (CONTRACT_CHANGES.md).
+    insufficient_data_components: list[str] = []
 
 
 class LoginRequest(BaseModel):
