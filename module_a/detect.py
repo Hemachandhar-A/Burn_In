@@ -373,6 +373,53 @@ def _build_if_models(
 
 
 # ---------------------------------------------------------------------------
+# P5.7 (explain/): additive, read-only accessors.
+#
+# Neither function is called by detect()/_detect_single_lot() - each is a parallel refit against the
+# same inputs and the same constants (_MCD_LOT_SIZE_FLOOR, _RANDOM_STATE) used internally, so it
+# reproduces exactly the fitted model object detect() itself discards after reducing it to a scalar
+# distance/score. detect()'s own code path is untouched (see
+# tests/unit/module_a/test_explain_accessors.py's before/after comparison).
+# ---------------------------------------------------------------------------
+
+def fit_mcd(frames: list[FeatureFrame], checkpoint: str) -> tuple[list[str], list[str], MinCovDet] | None:
+    """The fitted MinCovDet for one lot's checkpoint, mirroring _detect_single_lot's step-2 fit exactly
+    (same lot-size floor, same random_state) - so explain/mcd.py can read location_/precision_ for a
+    per-parameter Mahalanobis decomposition. Returns (component_ids, parameters, mcd), both sorted as
+    build_mcd_matrix returns them; None wherever _detect_single_lot's own MCD step would have skipped
+    (lot below the size floor, too few qualifying components, or a singular covariance matrix)."""
+    if not frames or frames[0].lot_size < _MCD_LOT_SIZE_FLOOR:
+        return None
+    component_ids, parameters, matrix = build_mcd_matrix(frames, checkpoint)
+    if len(component_ids) < _MCD_LOT_SIZE_FLOOR or not matrix or len(matrix[0]) == 0:
+        return None
+    X = np.array(matrix, dtype=float)
+    try:
+        mcd = MinCovDet(random_state=_RANDOM_STATE)
+        mcd.fit(X)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
+    return component_ids, parameters, mcd
+
+
+def fit_ecod(frames: list[FeatureFrame], parameter: str) -> tuple[list[str], ECOD] | None:
+    """The fitted ECOD for one lot's parameter group, mirroring _detect_single_lot's step-4 fit exactly
+    (same [value_0h, value_24h] matrix, same contamination) - so explain/ecod.py can read the
+    per-dimension score matrix (`.O`) the aggregated ecod_score is summed from. `frames` must be one
+    lot's frames (detect()'s own per-lot scoping - see detect()'s docstring). Returns
+    (component_ids_in_row_order, ecod), or None if no frame in `frames` has this parameter."""
+    pframes = [f for f in frames if f.parameter == parameter]
+    if not pframes:
+        return None
+    X = _value_matrix(pframes)
+    if X.shape[0] == 0:
+        return None
+    clf_ecod = ECOD(contamination=0.1)
+    clf_ecod.fit(X)
+    return [f.component_id for f in pframes], clf_ecod
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
