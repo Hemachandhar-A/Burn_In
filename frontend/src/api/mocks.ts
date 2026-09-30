@@ -11,14 +11,17 @@
 import { ApiError } from './errors'
 
 /* ------------------------------------------------------------------------------------------ *
- * Lot Dashboard + Part Detail (P1.11). Stand in for `GET /lots/{lot_id}`, `GET
- * /parts/{component_id}`, `POST /parts/{component_id}/disposition`,
- * `POST /parts/{component_id}/confirmed-outcome`, `POST /lots/{lot_id}/dpa-work-order` - none are
- * in the live schema (P5.3/P5.5/P5.6/P5.7/P5.8 unmerged; BLOCKERS.md). The response shapes below
- * also carry fields `contracts.py` doesn't have yet (CONTRACT_CHANGES.md, "Lot Dashboard and Part
- * Detail need fields..."), named `TEMP_` rather than `MOCK_` for exactly the fields that are
- * additive over the real contract; every field that does exist on the real Pydantic model keeps
- * that model's own name and type.
+ * Lot Dashboard's DPA work order, and Part Detail's disposition/confirmed-outcome writes. Stand
+ * in for `POST /lots/{lot_id}/dpa-work-order` and `POST /parts/{component_id}/confirmed-outcome`
+ * (P5.8, capa/router.py - not merged; BLOCKERS.md) and `POST /parts/{component_id}/disposition`
+ * (real route exists, but needs `project_id`/`analysis_run_id` query parameters
+ * `PartDetailResponse` gives the frontend no way to obtain - CONTRACT_CHANGES.md, "PartDetailResponse
+ * gives the frontend no way to call POST /parts/{component_id}/disposition correctly"). `GET
+ * /lots/{lot_id}` and `GET /parts/{component_id}` are both real now (lotDetail.ts, parts.ts); their
+ * former `TEMP_`/`MOCK_` response types were deleted in Block 5B-1/5B-2. The response shapes below
+ * still carry fields `contracts.py` doesn't have yet (CONTRACT_CHANGES.md item 1, "manufacturer
+ * has no home..."), named `TEMP_` for exactly the fields that are additive over the real contract;
+ * every field that does exist on the real Pydantic model keeps that model's own name and type.
  * ------------------------------------------------------------------------------------------ */
 
 type Verdict = 'PASS' | 'WATCH' | 'REJECT'
@@ -62,35 +65,6 @@ export interface TEMP_LotSummaryResponse {
   lot_size: number
 }
 
-/** contracts.py `ModuleAResult`, verbatim. */
-export interface MOCK_ModuleAResult {
-  component_id: string
-  parameter: string
-  robust_z: number
-  mcd_distance: number | null
-  isolation_forest_score: number | null
-  ecod_score: number
-  explainable_tags: Record<string, boolean>
-  direction: 'above_median' | 'below_median'
-  severity_tier: 'PASS' | 'REVIEW' | 'REJECT'
-  severity_cap_reason: string | null
-}
-
-/** contracts.py `ModuleBResult`, verbatim. */
-export interface MOCK_ModuleBResult {
-  component_id: string
-  parameter: string
-  predicted_168h: number | null
-  interval_lower: number | null
-  interval_upper: number | null
-  physics_baseline_prediction: number | null
-  physics_disagreement_gap: number | null
-  drift_rate: number | null
-  exceeds_safety_slope: boolean | null
-  safety_slope: number | null
-  forecast_unavailable: boolean
-}
-
 /** contracts.py `DispositionRecord`, verbatim. */
 export interface MOCK_DispositionRecord {
   project_id: string
@@ -125,70 +99,6 @@ export interface MOCK_ConfirmedOutcomeRequest {
   note?: string | null
 }
 
-/**
- * contracts.py `FeatureFrame`, with one deviation: `lot_median_0h`/`lot_median_24h` (the only
- * per-checkpoint values that are scalars rather than dict-keyed) are unified into `lot_median`,
- * keyed the same way as `robust_z`/`elapsed_hours` (CONTRACT_CHANGES.md item 4) - the real
- * `FeatureFrame` has no 96h/168h lot-median field to read from at all.
- */
-export interface TEMP_FeatureFrame {
-  component_id: string
-  lot_id: string
-  part_number: string
-  parameter: string
-  unit: string
-  value_0h: number
-  value_24h: number
-  value_96h: number | null
-  value_168h: number | null
-  delta_24h: number
-  delta_96h: number | null
-  delta_168h: number | null
-  lot_median: Record<string, number>
-  robust_z: Record<string, number>
-  lot_size: number
-  used_pooled_fallback: boolean
-  elapsed_hours: Record<string, number>
-}
-
-/** CONTRACT_CHANGES.md item 5: MCD's per-feature Mahalanobis-distance decomposition. */
-export interface TEMP_MCDContribution {
-  parameter: string
-  share_pct: number
-}
-
-/** CONTRACT_CHANGES.md item 5: ECOD's per-dimension tail probability. */
-export interface TEMP_ECODContribution {
-  parameter: string
-  tail: 'Right Tail' | 'Left Tail'
-  neg_log_p: number
-}
-
-/**
- * contracts.py `PartDetailResponse` plus `component_id`/`lot_id`/`verdict` (CONTRACT_CHANGES.md
- * items 2-3), `feature_frame` (item 4) and the two contribution charts (item 5).
- */
-export interface TEMP_PartDetailResponse {
-  component_id: string
-  lot_id: string
-  part_number: string
-  verdict: Verdict
-  module_a: MOCK_ModuleAResult
-  module_b: MOCK_ModuleBResult
-  explanation_sentence: string
-  confidence_qualifier: string
-  severity_cap_note: string | null
-  unavailable_forecast_note: string | null
-  staleness_note: string | null
-  disposition_history: MOCK_DispositionRecord[]
-  confirmed_outcomes: MOCK_ConfirmedOutcomeRecord[]
-  feature_frame: TEMP_FeatureFrame
-  mcd_d_squared: number
-  mcd_contributions: TEMP_MCDContribution[]
-  ecod_o_score: number
-  ecod_contributions: TEMP_ECODContribution[]
-}
-
 /** contracts.py `DPARecommendation`, verbatim. */
 export interface MOCK_DPARecommendation {
   component_id: string
@@ -201,14 +111,6 @@ export interface MOCK_DPAWorkOrderResponse {
 }
 
 const MOCK_LATENCY_SHORT_MS = 200
-
-/**
- * Anchor for synthetic *past* records (a disposition or confirmed outcome that already exists,
- * as opposed to one just submitted through the form). Using `Date.now()` there would violate rule
- * 9 (same input, same seed, same output, every time) - the exact same component would show a
- * different "N days ago" timestamp depending on what day the app happens to be opened.
- */
-const MOCK_REFERENCE_DATE_MS = Date.parse('2026-09-20T12:00:00Z')
 
 /** deterministic per-string seed (rule 9: same input, same seed, same output). */
 function hashSeed(value: string): number {
@@ -415,238 +317,6 @@ export async function MOCK_generateDpaWorkOrder(lotId: string): Promise<MOCK_DPA
     reason: 'Control part from the unflagged population.',
   })
   return { recommendations: recommendations.slice(0, 3) }
-}
-
-function severityCapNote(rand: () => number): string | null {
-  const roll = rand()
-  if (roll < 0.2) {
-    return 'Module A raw score flagged REJECT via Isolation Forest cross-lot anomaly, but is capped at WATCH pending explainable corroboration.'
-  }
-  if (roll < 0.3) {
-    return "Module A's deviation is below the lot median; capped under direction-awareness and cannot reach REJECT on this signal alone."
-  }
-  return null
-}
-
-/** `GET /parts/{component_id}` (P5.7, fusion/router.py aggregator). Deterministic per `componentId`. */
-export async function MOCK_getPartDetail(
-  componentId: string,
-  hint?: { lotId?: string; verdict?: Verdict; worstParameter?: string },
-): Promise<TEMP_PartDetailResponse> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  const rand = mulberry32(hashSeed(componentId))
-  const param =
-    MOCK_PARAMETERS.find((p) => p.name === hint?.worstParameter) ??
-    pickWeighted(MOCK_PARAMETERS, rand)
-  const lotId = hint?.lotId ?? `LOT-2024-${String(1000 + Math.floor(rand() * 9000))}`
-  const partNumber = `AD${Math.floor(100 + rand() * 900)}-JH`
-  const verdict: Verdict =
-    hint?.verdict ?? (rand() < 0.4 ? 'REJECT' : rand() < 0.7 ? 'WATCH' : 'PASS')
-
-  const lotMedian0h = round(9 + rand() * 2)
-  const lotMedian24h = round(9.5 + rand() * 2)
-  const lotMedian96h = round(10 + rand() * 2.5)
-  const lotMedian168h = round(11 + rand() * 3)
-
-  const severityFactor =
-    verdict === 'REJECT' ? 3.5 + rand() * 1.5 : verdict === 'WATCH' ? 1.8 + rand() : 0.3 + rand()
-  const value0h = round(lotMedian0h + (rand() - 0.5) * 3)
-  const value24h = round(lotMedian24h + severityFactor * (3 + rand() * 2))
-  const value96h = round(lotMedian96h + severityFactor * (4 + rand() * 3))
-  const value168h = round(lotMedian168h + severityFactor * (5 + rand() * 3))
-
-  const robustZ = {
-    '0h': round((value0h - lotMedian0h) / 5, 2),
-    '24h': round((value24h - lotMedian24h) / 5, 2),
-    '96h': round((value96h - lotMedian96h) / 5, 2),
-    '168h': round((value168h - lotMedian168h) / 5, 2),
-  }
-  const elapsedHours = {
-    '0h': 0,
-    '24h': round(23.5 + rand()),
-    '96h': round(95.5 + rand()),
-    '168h': round(167.5 + rand()),
-  }
-
-  const unrecognizedParameter = rand() < 0.08
-  const physicsBaseline = round(value168h * (0.68 + rand() * 0.08))
-  const disagreementGap = round(value168h - physicsBaseline)
-  const disagreementPct =
-    physicsBaseline > 0 ? round((disagreementGap / physicsBaseline) * 100, 1) : 0
-  const safetySlope = round((value168h - value24h) / (167.5 - 23.5) / 1.35, 3)
-  const driftRate = round((value168h - value24h) / (167.5 - 23.5), 3)
-
-  const moduleB: MOCK_ModuleBResult = unrecognizedParameter
-    ? {
-        component_id: componentId,
-        parameter: param.name,
-        predicted_168h: null,
-        interval_lower: null,
-        interval_upper: null,
-        physics_baseline_prediction: null,
-        physics_disagreement_gap: null,
-        drift_rate: null,
-        exceeds_safety_slope: null,
-        safety_slope: null,
-        forecast_unavailable: true,
-      }
-    : {
-        component_id: componentId,
-        parameter: param.name,
-        predicted_168h: value168h,
-        interval_lower: round(value168h * 0.94),
-        interval_upper: round(value168h * 1.06),
-        physics_baseline_prediction: physicsBaseline,
-        physics_disagreement_gap: disagreementGap,
-        drift_rate: driftRate,
-        exceeds_safety_slope: driftRate > safetySlope,
-        safety_slope: safetySlope,
-        forecast_unavailable: false,
-      }
-
-  // Cold-start (no prior lots for this part number): null, per ModuleAResult's own doc comment -
-  // and a null score can never itself be one of the "explainable" detectors that corroborated
-  // the flag (explainable_tags), so the tag is derived from the score, never rolled separately.
-  const isolationForestScore = rand() < 0.15 ? null : round(rand(), 3)
-  const moduleA: MOCK_ModuleAResult = {
-    component_id: componentId,
-    parameter: param.name,
-    robust_z: robustZ['24h'],
-    mcd_distance: round(15 + rand() * 20),
-    isolation_forest_score: isolationForestScore,
-    ecod_score: round(0.6 + rand() * 0.39, 3),
-    explainable_tags: {
-      robust_z: true,
-      mcd: true,
-      isolation_forest: isolationForestScore !== null && rand() > 0.5,
-      ecod: true,
-    },
-    direction: 'above_median',
-    severity_tier: verdict === 'REJECT' ? 'REJECT' : verdict === 'WATCH' ? 'REVIEW' : 'PASS',
-    severity_cap_reason: null,
-  }
-
-  // Sized off MOCK_PARAMETERS itself, not hardcoded to 4 - a future addition to that list would
-  // otherwise silently produce `share_pct: NaN` / a negative `neg_log_p` for the new entry, since
-  // a fixed-length literal here wouldn't grow to match a longer parameter pool.
-  const contribPool = MOCK_PARAMETERS.filter((p) => p.name !== param.name)
-  const allParams = [param, ...contribPool]
-  const mcdRaw = allParams.map((_, i) =>
-    i === 0 ? 0.3 + rand() * 0.7 : rand() * (0.4 / 2 ** (i - 1)),
-  )
-  const mcdTotal = mcdRaw.reduce((s, v) => s + v, 0)
-  const mcdContributions: TEMP_MCDContribution[] = allParams
-    .map((p, i) => ({ parameter: p.name, share_pct: round((mcdRaw[i] / mcdTotal) * 100, 1) }))
-    .sort((a, b) => b.share_pct - a.share_pct)
-
-  const ecodContributions: TEMP_ECODContribution[] = allParams.map((p, i) => ({
-    parameter: p.name,
-    tail: i === allParams.length - 1 ? 'Left Tail' : 'Right Tail',
-    neg_log_p: round(
-      i === 0 ? 3.5 + rand() * 2 : Math.max(0.05, 1.2 - i * 0.3) * (1 + rand() * 0.5),
-      2,
-    ),
-  }))
-  ecodContributions.sort((a, b) => b.neg_log_p - a.neg_log_p)
-
-  // A cap note only makes sense if the fused verdict actually is the capped-down tier (E12 step
-  // 2): it says Module A's raw score would have crossed further, but rule 10's fused verdict
-  // shown at the top of the screen must still be the (correct) capped one, never REJECT.
-  const capNote = verdict === 'WATCH' ? severityCapNote(rand) : null
-  if (capNote) moduleA.severity_cap_reason = capNote
-
-  const stale = rand() < 0.25
-  const dispositionHistory: MOCK_DispositionRecord[] =
-    rand() < 0.5
-      ? [
-          {
-            project_id: `proj-${componentId}`,
-            component_id: componentId,
-            account_id: rand() < 0.5 ? 'a.sharma' : 'r.mehta',
-            verdict: verdict === 'PASS' ? 'ACCEPT' : verdict === 'WATCH' ? 'HOLD' : 'REJECT',
-            rationale: 'Signed off against the analysis available at the time.',
-            timestamp: new Date(
-              MOCK_REFERENCE_DATE_MS - 86_400_000 * (2 + Math.floor(rand() * 5)),
-            ).toISOString(),
-            analysis_run_id: '02',
-          },
-        ]
-      : []
-
-  const confirmedOutcomes: MOCK_ConfirmedOutcomeRecord[] =
-    rand() < 0.25
-      ? [
-          {
-            project_id: `proj-${componentId}`,
-            component_id: componentId,
-            account_id: 'r.mehta',
-            confirmed_outcome: verdict === 'REJECT' ? 'Confirmed Defective' : 'Confirmed Good',
-            note: null,
-            recorded_at: new Date(MOCK_REFERENCE_DATE_MS - 86_400_000).toISOString(),
-            analysis_run_id: '02',
-          },
-        ]
-      : []
-
-  const explanation = unrecognizedParameter
-    ? `Part ${componentId}: ${param.name.toLowerCase()} at 24h is ${Math.abs(robustZ['24h'])} robust-σ ${robustZ['24h'] >= 0 ? 'above' : 'below'} lot median (median = ${lotMedian24h} ${param.unit}, value = ${value24h} ${param.unit}). This parameter is outside the trained three - drift prediction unavailable.`
-    : `Part ${componentId}: ${param.name.toLowerCase()} at 24h is ${Math.abs(robustZ['24h'])} robust-σ ${robustZ['24h'] >= 0 ? 'above' : 'below'} lot median (median = ${lotMedian24h} ${param.unit}, value = ${value24h} ${param.unit}). Predicted 168h drift ${moduleB.exceeds_safety_slope ? 'exceeds' : 'is within'} the calibrated safety slope by ${Math.abs(disagreementPct)}%. Primary driver: 24h delta.`
-
-  return {
-    component_id: componentId,
-    lot_id: lotId,
-    part_number: partNumber,
-    verdict,
-    module_a: moduleA,
-    module_b: moduleB,
-    explanation_sentence: explanation,
-    // E4 step 6: derived from the CQR interval width and the physics-vs-model gap - both of
-    // which only exist when Module B actually produced a forecast. A part with no forecast has
-    // nothing to be confident (or borderline) about; claiming otherwise would be exactly the
-    // kind of certainty rule 12 says this project must never claim it doesn't have.
-    confidence_qualifier: unrecognizedParameter
-      ? 'Not applicable — drift prediction unavailable'
-      : Math.abs(disagreementPct) > 25
-        ? 'High confidence'
-        : 'Borderline — recommend retest',
-    severity_cap_note: capNote,
-    unavailable_forecast_note: unrecognizedParameter
-      ? `${param.name} falls outside the three trained parameters; drift prediction unavailable for this part.`
-      : null,
-    staleness_note: stale
-      ? 'Newer analysis run #03 exists compared to disposition sign-off baseline #02 (Module A re-evaluated with 168h checkpoint readings).'
-      : null,
-    disposition_history: dispositionHistory,
-    confirmed_outcomes: confirmedOutcomes,
-    feature_frame: {
-      component_id: componentId,
-      lot_id: lotId,
-      part_number: partNumber,
-      parameter: param.name,
-      unit: param.unit,
-      value_0h: value0h,
-      value_24h: value24h,
-      value_96h: value96h,
-      value_168h: value168h,
-      delta_24h: round(value24h - value0h),
-      delta_96h: round(value96h - value0h),
-      delta_168h: round(value168h - value0h),
-      lot_median: {
-        '0h': lotMedian0h,
-        '24h': lotMedian24h,
-        '96h': lotMedian96h,
-        '168h': lotMedian168h,
-      },
-      robust_z: robustZ,
-      lot_size: 77,
-      used_pooled_fallback: rand() < 0.1,
-      elapsed_hours: elapsedHours,
-    },
-    mcd_d_squared: round(mcdRaw.reduce((s, v) => s + v, 0) * 40, 1),
-    mcd_contributions: mcdContributions,
-    ecod_o_score: moduleA.ecod_score,
-    ecod_contributions: ecodContributions,
-  }
 }
 
 /** `POST /parts/{component_id}/disposition` (P5.5, identity/router.py). */

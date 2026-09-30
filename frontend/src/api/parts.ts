@@ -1,29 +1,41 @@
+import type { ApiClient } from './client'
+import { unwrap } from './errors'
 import {
-  MOCK_getPartDetail,
   MOCK_submitConfirmedOutcome,
   MOCK_submitDisposition,
   type MOCK_ConfirmedOutcomeRecord,
   type MOCK_ConfirmedOutcomeRequest,
   type MOCK_DispositionRecord,
   type MOCK_DispositionRequest,
-  type TEMP_PartDetailResponse,
 } from './mocks'
+import type { components } from './schema'
+
+export type PartDetailResponse = components['schemas']['PartDetailResponse']
 
 /**
- * `GET /parts/{component_id}`. MOCKED: not in the live OpenAPI schema (P5.7, BLOCKERS.md). `hint`
- * carries context passed from the Lot Dashboard (the lot id, fused verdict and worst parameter
- * already shown there) so opening a part from its ranked list is consistent with the row just
- * clicked; a direct deep link to `/parts/:componentId` has no hint and the mock derives
- * everything from the id alone.
+ * `GET /parts/{component_id}`: real (P5.7, fusion/router.py). `lotId` is the route's own
+ * documented optional query parameter, narrowing an ambiguous component_id (reused across lots)
+ * to its most recent run within that one lot; omitted, the route resolves the newest run across
+ * every lot that ever had this component_id.
  */
-export function getPartDetail(
+export async function getPartDetail(
+  client: ApiClient,
   componentId: string,
-  hint?: { lotId?: string; verdict?: 'PASS' | 'WATCH' | 'REJECT'; worstParameter?: string },
-): Promise<TEMP_PartDetailResponse> {
-  return MOCK_getPartDetail(componentId, hint)
+  lotId?: string,
+): Promise<PartDetailResponse> {
+  return unwrap(
+    await client.GET('/parts/{component_id}', {
+      params: { path: { component_id: componentId }, query: { lot_id: lotId } },
+    }),
+  )
 }
 
-/** `POST /parts/{component_id}/disposition`. MOCKED (P5.5, BLOCKERS.md). */
+/**
+ * `POST /parts/{component_id}/disposition`. MOCKED: the real route needs `project_id` and
+ * `analysis_run_id` as required query parameters, and `PartDetailResponse` gives the frontend no
+ * way to obtain either (CONTRACT_CHANGES.md, "PartDetailResponse gives the frontend no way to
+ * call POST /parts/{component_id}/disposition correctly").
+ */
 export function submitDisposition(
   componentId: string,
   request: MOCK_DispositionRequest,
@@ -32,7 +44,7 @@ export function submitDisposition(
   return MOCK_submitDisposition(componentId, request, accountId)
 }
 
-/** `POST /parts/{component_id}/confirmed-outcome`. MOCKED (P5.8, BLOCKERS.md). */
+/** `POST /parts/{component_id}/confirmed-outcome`. MOCKED: blocked on Block 4a merge. */
 export function submitConfirmedOutcome(
   componentId: string,
   request: MOCK_ConfirmedOutcomeRequest,
