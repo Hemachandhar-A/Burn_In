@@ -10,6 +10,10 @@
  * (part_number "SMOKE-PN") via the app's own typed client, the same way the app itself would.
  *
  *   npx tsx scripts/screenshots.ts
+ *
+ * BASE_URL mode (Session 6): `BASE_URL=http://localhost:8020 npx tsx scripts/screenshots.ts` skips vite entirely and
+ * captures the production build served by FastAPI itself (scripts/build_demo.sh) - same origin for page and API -
+ * of the two demo lots (DEMO-GOLDEN-01, DEMO-EARLY-01) into frontend/screenshots/single-process/.
  */
 import { chromium } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -50,7 +54,94 @@ function waitForServer(url: string, timeoutMs = 30000): Promise<void> {
   })
 }
 
+async function singleProcess(baseUrl: string) {
+  const outDir = path.join(SCREENSHOT_DIR, 'single-process')
+  await mkdir(outDir, { recursive: true })
+  const golden = 'DEMO-GOLDEN-01'
+  const early = 'DEMO-EARLY-01'
+
+  let apiToken: string | null = null
+  const apiClient = createApiClient({ baseUrl, getToken: () => apiToken })
+  apiToken = (await login(apiClient, { account_id: 'a.sharma', pin: '1234' })).access_token
+  const earlySummary = await getLotSummary(apiClient, early)
+  const earlyRejects = earlySummary.assessments.filter((a) => a.verdict === 'REJECT')
+  if (earlyRejects.length === 0) throw new Error(`${early} has no REJECT part`)
+  // module_b_rank is a position: 1 = most severe.
+  const earlyPart = earlyRejects.reduce((best, a) => (a.module_b_rank < best.module_b_rank ? a : best))
+  console.log(`Early REJECT part: ${earlyPart.component_id}`)
+
+  const browser = await chromium.launch()
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  let currentScreen = 'startup'
+  const consoleErrors: string[] = []
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(`[${currentScreen}] console.error: ${msg.text()}`)
+  })
+  page.on('pageerror', (err) => consoleErrors.push(`[${currentScreen}] pageerror: ${err.message}`))
+  const shot = async (name: string) => {
+    await page.waitForTimeout(400)
+    await page.screenshot({ path: path.join(outDir, `${name}.png`) })
+    console.log(`  captured single-process/${name}.png`)
+  }
+
+  try {
+    currentScreen = 'login'
+    await page.goto(`${baseUrl}/#/login`)
+    await page.waitForSelector('text=Sign In')
+    await shot('01-login')
+    await page.getByLabel('A. Sharma').check()
+    await page.getByLabel('PIN').fill('1234')
+    await page.getByRole('button', { name: /^sign in$/i }).click()
+    await page.waitForURL((url) => !url.hash.includes('/login'))
+
+    currentScreen = 'project browser'
+    await page.goto(`${baseUrl}/#/projects`)
+    await page.waitForLoadState('networkidle')
+    await shot('02-project-browser')
+
+    currentScreen = 'lot dashboard golden'
+    await page.goto(`${baseUrl}/#/lots/${golden}`)
+    await page.waitForSelector('text=/PDA:/')
+    const dpaButton = page.getByRole('button', { name: /generate dpa work order/i })
+    if (await dpaButton.isVisible()) {
+      await dpaButton.click()
+      await page.waitForSelector('text=DPA Work Order')
+    }
+    await shot('03-lot-dashboard-golden')
+
+    currentScreen = 'lot dashboard early'
+    await page.goto(`${baseUrl}/#/lots/${early}`)
+    await page.waitForSelector('text=/PDA:/')
+    await shot('04-lot-dashboard-early')
+
+    currentScreen = 'part detail GOLDEN-045'
+    await page.goto(`${baseUrl}/#/parts/GOLDEN-045`)
+    await page.waitForSelector('h1.screen-title')
+    await shot('05-part-detail-golden-045')
+
+    currentScreen = 'part detail early'
+    await page.goto(`${baseUrl}/#/parts/${encodeURIComponent(earlyPart.component_id)}`)
+    await page.waitForSelector('h1.screen-title')
+    await shot('06-part-detail-early-reject')
+
+    currentScreen = 'settings'
+    await page.goto(`${baseUrl}/#/settings`)
+    await page.waitForSelector('text=Corrective Feedback Status')
+    await shot('07-settings')
+  } finally {
+    await browser.close()
+    await writeFile(
+      path.join(outDir, 'console-errors.txt'),
+      consoleErrors.length > 0
+        ? consoleErrors.join('\n') + '\n'
+        : 'No console errors or uncaught page errors.\n',
+    )
+    console.log(`Console errors recorded: ${consoleErrors.length}`)
+  }
+}
+
 async function main() {
+  if (process.env.BASE_URL) return singleProcess(process.env.BASE_URL.replace(/\/+$/, ''))
   await mkdir(SCREENSHOT_DIR, { recursive: true })
 
   // Discover the already-loaded lots (real typed client, not the browser - rule 14 applies to
