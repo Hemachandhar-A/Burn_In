@@ -188,3 +188,15 @@ Entry format:
 ## 2026-09-30 P1 - RESOLVED: Lot Dashboard metadata fields (Block 5F Part 1e)
 - Resolves the Block 5E entry "ProjectSummary has no manufacturer, date code or test date".
 - Status: RESOLVED (2026-09-30, Block 5F) - `ProjectSummary` now carries nullable `manufacturer`, `date_code`, `test_date` (merged from develop `aa7ec74`). The Lot Dashboard panel shows Part Number, Manufacturer, Date Code and Test Date (date part, via `formatUtc`) only when present; null or empty fields are left out.
+
+---
+
+## 2026-09-30 Lead - the golden lot is REJECT (PDA 0.49) through POST /lots, HOLD (PDA 0.039) through the pipeline directly
+- Blocked on: an owner decision (ingestion/units.py vs module_b/ vs the golden fixture's units); found while loading DEMO-GOLDEN-01 via scripts/load_demo_lots.py (session 6, chunk 2).
+- What was found (reproduced, same 924 readings, only the route differs):
+  - `harness.golden.golden_lot()` has leakage in **uA** (the problem statement's 10 uA / 45 uA / 50 uA example). `run_full_pipeline` on it directly: HOLD, PDA 0.039 (Module A tiers: 216 PASS, 8 REVIEW, 7 REJECT; Module B leakage exceeds_safety_slope False for 77/77).
+  - `POST /lots` runs `ingestion.units.normalize_readings`, which converts leakage to **nA** (x1000; 308 readings change). `run_full_pipeline` on that: REJECT, PDA 0.4935. Module A is unchanged (robust z is unit-invariant); Module B leakage exceeds_safety_slope is True for 37/77 parts.
+  - The generator's own leakage unit is nA (`generator/parameters.py`), so Module B's synthetic calibration lives on that scale; a part whose leakage is genuinely 10 uA (= 10000 nA) is far outside it.
+  - Existing tests missed it: `test_golden_module_a.py` never goes through ingestion; `test_g5_routes.py` uploads the golden lot but asserts only status.
+- What was tried: nothing changed (ingestion/, module_b/ and harness/ are not the Lead's in this chunk). No in-scope workaround exists: any value uploaded is normalized to nA before Module B sees it, and rescaling the data would change the worked example. `tests/unit/scripts/test_load_demo_lots.py` carries a skipped test asserting HOLD/0.039 that should be un-skipped when this is fixed.
+- Status: OPEN - blocks the demo claim "DEMO-GOLDEN-01 is HOLD, PDA ~0.039, GOLDEN-045 REJECT first" via the real route.
