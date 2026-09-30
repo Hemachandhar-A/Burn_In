@@ -157,6 +157,17 @@ Entry format:
 - Blocked on: nothing is blocked - a disclosure. `fusion/gate.py` never gives Module B a REVIEW tier, so WATCH comes from Module A only and E12's table rows needing Module B at REVIEW are unreachable.
 - Status: OPEN (disclosed in user-facing material, not fixed).
 
+## 2026-09-30 Lead-as-P2 - OPEN: flaky test_analysis_run_id_matches_the_latest_of_two_runs (real cause is fusion/router.py, not SQL ordering)
+- Blocked on: `fusion/router.py:78` picks the run with `max(matches, key=lambda m: m[1].created_at)`. Python's `max` returns the FIRST maximal element, so when two runs share a `created_at` (coarse Windows clock) it returns the OLDER run. Reproduced deterministically by freezing the clock in `storage.repository`: run1 returned, every time.
+- Done (`storage/repository.py`): every timestamp-ordered query now has a rowid tie-break (insertion order among ties); SQLite already returned insertion order in practice, so those tests pass before and after - it is a guarantee, not a repro.
+- Needs (outside P2's directories): in `fusion/router.py` pick the last max, e.g. `max(reversed(matches), key=...)` (matches are built in query order, ascending by created_at then rowid), plus a frozen-clock twin test in `tests/unit/fusion/test_part_detail_ids.py`. Alternative inside storage: make `created_at` strictly monotonic per process.
+- Status: OPEN.
+
+## 2026-09-30 Lead-as-P5 - RESOLVED: flaky test_analysis_run_id_matches_the_latest_of_two_runs (tied created_at)
+- Cause: `fusion/router.py` `max(matches, key=created_at)` returns the FIRST maximal element, so two runs with identical `created_at` (coarse clock) resolved to the older run. Same pattern found and fixed in `capa/logic.py::find_latest_run_for_component`, `fusion/router.py::_staleness_note_for` (latest sign-off) and `report/data.py::_trigger_for_run` (latest trigger event).
+- Fix: `max(enumerate(xs), key=(timestamp, index))` - later insertion wins; inputs are in insertion order thanks to the rowid tie-break in `storage/repository.py`.
+- Evidence: frozen-clock tests failed before, pass after (`tests/unit/fusion/test_part_detail_ids.py`, `test_tie_latest_signoff.py`, `tests/unit/capa/test_tie_latest_run.py`, `tests/unit/report/test_tie_trigger.py`); flaky test looped 30/30 passes.
+- Status: RESOLVED (supersedes the OPEN entry above, which stays as history).
 ## 2026-09-30 P1 - RESOLVED: Lot Dashboard metadata fields (Block 5F Part 1e)
 - Resolves the Block 5E entry "ProjectSummary has no manufacturer, date code or test date".
 - Status: RESOLVED (2026-09-30, Block 5F) - `ProjectSummary` now carries nullable `manufacturer`, `date_code`, `test_date` (merged from develop `aa7ec74`). The Lot Dashboard panel shows Part Number, Manufacturer, Date Code and Test Date (date part, via `formatUtc`) only when present; null or empty fields are left out.

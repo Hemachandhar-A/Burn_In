@@ -78,7 +78,7 @@ def find_latest_run_for_component(
                 matches.append((project, row, results))
     if not matches:
         return None
-    return max(matches, key=lambda m: m[1].created_at)
+    return max(enumerate(matches), key=lambda t: (t[1][1].created_at, t[0]))[1]  # ties: later insert wins
 
 
 # ---------------------------------------------------------------------------

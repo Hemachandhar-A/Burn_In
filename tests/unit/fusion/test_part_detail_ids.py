@@ -95,3 +95,20 @@ def test_five_ids_present_for_a_pass_part_too(client, auth_headers):
     assert body["project_id"] == "proj1"
     assert body["analysis_run_id"] == run.analysis_run_id
     assert body["verdict"] == "PASS"
+
+
+def test_analysis_run_id_is_latest_insert_when_two_runs_share_a_timestamp(client, auth_headers, monkeypatch):
+    """Deterministic twin of the test above: identical created_at (coarse clock) must still
+    resolve to the run inserted last."""
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 8, 1, 12, 0, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(repository, "datetime", _Frozen)
+    save_project("proj1", "lot_001", "PN123", datetime.now(UTC), "account1")
+    save_analysis_run("proj1", {}, _results(verdict="PASS"))
+    run2 = save_analysis_run("proj1", {}, _results(verdict="REJECT"))
+
+    body = client.get("/parts/comp1", headers=auth_headers).json()
+    assert body["analysis_run_id"] == run2.analysis_run_id

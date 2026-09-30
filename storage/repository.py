@@ -23,6 +23,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
+from sqlalchemy import literal_column
 
 from contracts import (
     Account,
@@ -84,7 +85,7 @@ def query_projects() -> list[Project]:
     with SessionLocal() as session:
         return list(
             session.query(Project)
-            .order_by(Project.created_at.desc(), Project.project_id.desc())
+            .order_by(Project.created_at.desc(), literal_column("projects.rowid").desc())
             .all()
         )
 
@@ -107,7 +108,7 @@ def query_readings_by_part_number(part_number: str, *, exclude_lot_id: str | Non
             latest = (
                 session.query(ProjectData)
                 .filter(ProjectData.project_id == project.project_id)
-                .order_by(ProjectData.created_at.desc())
+                .order_by(ProjectData.created_at.desc(), literal_column("project_data.rowid").desc())
                 .first()
             )
             if latest is None:
@@ -156,7 +157,7 @@ def save_analysis_run(project_id: str, raw_data: dict, results: AnalysisResults)
         prior = (
             session.query(ProjectData)
             .filter(ProjectData.project_id == project_id)
-            .order_by(ProjectData.created_at.desc())
+            .order_by(ProjectData.created_at.desc(), literal_column("project_data.rowid").desc())
             .first()
         )
         diff = None
@@ -189,7 +190,7 @@ def query_project_data(project_id: str) -> list[ProjectData]:
         rows = (
             session.query(ProjectData)
             .filter(ProjectData.project_id == project_id)
-            .order_by(ProjectData.created_at.asc())
+            .order_by(ProjectData.created_at.asc(), literal_column("project_data.rowid").asc())
             .all()
         )
         for row in rows:
@@ -230,7 +231,7 @@ def query_events(project_id: str | None = None) -> list[Event]:
         query = session.query(Event)
         if project_id is not None:
             query = query.filter(Event.project_id == project_id)
-        rows = list(query.order_by(Event.timestamp.asc()).all())
+        rows = list(query.order_by(Event.timestamp.asc(), literal_column("events.rowid").asc()).all())
         for row in rows:
             row.payload = json.loads(row.payload)
         return rows
@@ -271,7 +272,7 @@ def query_disposition_signoffs(
             query = query.filter(DispositionSignoff.project_id == project_id)
         if component_id is not None:
             query = query.filter(DispositionSignoff.component_id == component_id)
-        return list(query.order_by(DispositionSignoff.timestamp.asc()).all())
+        return list(query.order_by(DispositionSignoff.timestamp.asc(), literal_column("disposition_signoffs.rowid").asc()).all())
 
 
 def save_confirmed_outcome(
@@ -308,4 +309,4 @@ def query_confirmed_outcomes(project_id: str | None = None) -> list[ConfirmedOut
         query = session.query(ConfirmedOutcome)
         if project_id is not None:
             query = query.filter(ConfirmedOutcome.project_id == project_id)
-        return list(query.order_by(ConfirmedOutcome.recorded_at.asc()).all())
+        return list(query.order_by(ConfirmedOutcome.recorded_at.asc(), literal_column("confirmed_outcomes.rowid").asc()).all())
