@@ -3,6 +3,7 @@ import math
 from contracts import (
     LotDataset, ScreeningConfig, AnalysisResults, RiskAssessment, LotDisposition, to_module_b_input,
     PartExplanation, ShapContributionRow, MCDContributionRow, EcodDimensionRow, ZScoreTableRow,
+    FeatureFrame, TrajectoryPoint,
 )
 from features.compute import compute
 from module_a.detect import detect as module_a_detect
@@ -18,6 +19,29 @@ from explain.text import (
     explanation_sentence, confidence_qualifier, explanation_summary as build_explanation_summary,
     severity_cap_note, unavailable_forecast_note,
 )
+
+def _build_trajectory(frame: FeatureFrame) -> list[TrajectoryPoint]:
+    """Block 4c Part 3b: one TrajectoryPoint per MEASURED checkpoint of `frame` (its own worst
+    parameter's frame) - 0h/24h always attempted, 96h/168h only when the frame actually carries a
+    value (value_168h is populated only on a COMPLETE lot). Skips an absent (None) or non-finite
+    value rather than emitting one (rule 7 / the earlier SHAP null bug's own lesson: never let a NaN
+    reach a stored/serialized field). lot_median is read from the frame's own lot_median_0h/24h
+    fields when the checkpoint has one; FeatureFrame carries no lot_median_96h/168h field at all, so
+    those points get lot_median=None rather than a computed guess."""
+    candidates: list[tuple[int, float | None, float | None]] = [
+        (0, frame.value_0h, frame.lot_median_0h),
+        (24, frame.value_24h, frame.lot_median_24h),
+        (96, frame.value_96h, None),
+        (168, frame.value_168h, None),
+    ]
+    points = []
+    for hour, value, median in candidates:
+        if value is None or not math.isfinite(value):
+            continue
+        median_value = median if (median is not None and math.isfinite(median)) else None
+        points.append(TrajectoryPoint(checkpoint_hour=hour, value=value, lot_median=median_value))
+    return points
+
 
 def run_full_pipeline(
     lot: LotDataset, config: ScreeningConfig, *, _explain_cache: bool = True,
@@ -238,6 +262,9 @@ def run_full_pipeline(
             cid, zscore_row=zscore_sentence_row, module_b=b_res_for_explain, shap=shap_exp
         )
 
+        worst_parameter_frame = next((f for f in comp_frames if f.parameter == worst_parameter), None)
+        trajectory = _build_trajectory(worst_parameter_frame) if worst_parameter_frame is not None else []
+
         part_explanations[cid] = PartExplanation(
             shap_contributions=[
                 ShapContributionRow(
@@ -262,6 +289,7 @@ def run_full_pipeline(
             confidence_qualifier=confidence_qualifier(b_res_for_explain),
             severity_cap_note=severity_cap_note(cap_reason_by_cid.get(cid), assessment.verdict),
             unavailable_forecast_note=unavailable_forecast_note(b_res_for_explain),
+            trajectory=trajectory,
         )
 
     explanation_summary = build_explanation_summary(assessments, insufficient_data_components)

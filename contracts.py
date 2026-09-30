@@ -335,6 +335,16 @@ class ZScoreTableRow(BaseModel):
     z: float
 
 
+class TrajectoryPoint(BaseModel):
+    """Block 4c Part 3b: one measured checkpoint of a part's worst parameter over burn-in - built at
+    analysis time from the stored FeatureFrame, one point per checkpoint that actually has a value
+    (never a guessed/NaN one - rule 7, and the same discipline the earlier SHAP null bug required)."""
+
+    checkpoint_hour: int
+    value: float
+    lot_median: float | None = None  # only 0h/24h frames carry a lot_median field; None at 96h/168h
+
+
 class PartExplanation(BaseModel):
     """Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the
     text/notes for that one part. Every field optional/defaulted - a PASS part gets none of this
@@ -348,6 +358,9 @@ class PartExplanation(BaseModel):
     confidence_qualifier: str | None = None
     severity_cap_note: str | None = None
     unavailable_forecast_note: str | None = None
+    # Additive (Block 4c Part 3b, CONTRACT_CHANGES.md 2026-09-30): default [] so a pre-Block-4c stored
+    # row still parses.
+    trajectory: list[TrajectoryPoint] = []
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +455,17 @@ class PartDetailResponse(BaseModel):
     # Additive (Block 3B, CONTRACT_CHANGES.md 2026-09-30): the chart-bearing counterpart to the flat
     # text fields above, which predate this block and stay as-is for backward compatibility.
     explanation: PartExplanation | None = None
+    # Additive (Block 4c Part 3a, CONTRACT_CHANGES.md 2026-09-30, Lead ruling D79): the five
+    # identifiers a disposition round trip needs (POST /parts/{component_id}/disposition takes
+    # project_id/analysis_run_id as query params, not derived from anywhere else) - previously the
+    # caller had no way to get these from GET /parts/{component_id} itself. Optional with a None
+    # default so an old stored/cached response still parses; fusion/router.py::get_part_detail fills
+    # all five on every response for a found part - never None in practice.
+    component_id: str | None = None
+    lot_id: str | None = None
+    project_id: str | None = None
+    analysis_run_id: str | None = None
+    verdict: Literal["PASS", "WATCH", "REJECT"] | None = None
 
 
 class DispositionRequest(BaseModel):
