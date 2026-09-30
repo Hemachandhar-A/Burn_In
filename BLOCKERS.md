@@ -156,3 +156,7 @@ Entry format:
 ## 2026-09-30 Lead-as-P5 - OPEN: Module B has a single threshold (PASS or REJECT only)
 - Blocked on: nothing is blocked - a disclosure. `fusion/gate.py` never gives Module B a REVIEW tier, so WATCH comes from Module A only and E12's table rows needing Module B at REVIEW are unreachable.
 - Status: OPEN (disclosed in user-facing material, not fixed).
+
+## 2026-09-30 P1 - RESOLVED: Lot Dashboard metadata fields (Block 5F Part 1e)
+- Resolves the Block 5E entry "ProjectSummary has no manufacturer, date code or test date".
+- Status: RESOLVED (2026-09-30, Block 5F) - `ProjectSummary` now carries nullable `manufacturer`, `date_code`, `test_date` (merged from develop `aa7ec74`). The Lot Dashboard panel shows Part Number, Manufacturer, Date Code and Test Date (date part, via `formatUtc`) only when present; null or empty fields are left out.

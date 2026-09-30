@@ -354,6 +354,39 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
       expect(screen.getAllByText('LOT-2024-8841').length).toBeGreaterThan(0)
     })
 
+    test('shows manufacturer, date code and test date next to the part number when present', async () => {
+      render({
+        body: {
+          ...PROJECT,
+          manufacturer: 'Analog Devices',
+          date_code: '2603',
+          test_date: '2026-03-14T00:00:00',
+        },
+      })
+      expect(await screen.findByText('Analog Devices')).toBeInTheDocument()
+      expect(screen.getByText('Manufacturer')).toBeInTheDocument()
+      expect(screen.getByText('2603')).toBeInTheDocument()
+      expect(screen.getByText('Date Code')).toBeInTheDocument()
+      expect(screen.getByText('2026-03-14')).toBeInTheDocument()
+      expect(screen.getByText('Test Date')).toBeInTheDocument()
+    })
+
+    test('missing metadata fields are left out, not shown as null or undefined', async () => {
+      render({ body: { ...PROJECT, manufacturer: null, date_code: '2603', test_date: null } })
+      expect(await screen.findByText('2603')).toBeInTheDocument()
+      expect(screen.queryByText('Manufacturer')).toBeNull()
+      expect(screen.queryByText('Test Date')).toBeNull()
+      expect(document.body.textContent).not.toMatch(/undefined|null/)
+    })
+
+    test('no optional metadata at all leaves just the part number', async () => {
+      render({ body: PROJECT })
+      await screen.findByText('AD590-JH')
+      expect(screen.queryByText('Manufacturer')).toBeNull()
+      expect(screen.queryByText('Date Code')).toBeNull()
+      expect(screen.queryByText('Test Date')).toBeNull()
+    })
+
     test('a project without a part number leaves that field out, with no undefined text', async () => {
       render({ body: { ...PROJECT, part_number: '' } })
       await screen.findByText('PDA: 5.19%')

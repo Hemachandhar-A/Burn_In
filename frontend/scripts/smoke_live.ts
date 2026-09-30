@@ -10,9 +10,16 @@
 import { login } from '../src/api/auth'
 import { createApiClient } from '../src/api/client'
 import { ApiError } from '../src/api/errors'
-import { listEvents } from '../src/api/history'
-import { generateDpaWorkOrder, getLotSummary } from '../src/api/lotDetail'
-import { loadDemoLot, uploadLot, type LotMetadata } from '../src/api/lots'
+import { listDispositionSignoffs, listEvents } from '../src/api/history'
+import { downloadReport, generateDpaWorkOrder, getLotSummary } from '../src/api/lotDetail'
+import {
+  getProject,
+  listProjects,
+  loadDemoLot,
+  uploadCheckpoint,
+  uploadLot,
+  type LotMetadata,
+} from '../src/api/lots'
 import { getPartDetail, submitConfirmedOutcome, submitDisposition } from '../src/api/parts'
 import { getCorrectiveStatus, getSettings, getWorklist } from '../src/api/settings'
 
@@ -25,16 +32,16 @@ const BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8001'
 
 let token: string | null = null
 /**
- * Node's fetch reuses a keep-alive socket that uvicorn (5s keep-alive) may have just closed after a
- * slow call such as loadDemoLot, which fails a GET with "fetch failed" before it reaches the
- * server. One retry, GET only (idempotent), for that race - never for a write.
+ * Node's fetch reuses a keep-alive socket that uvicorn may have just closed, which fails a request
+ * with "fetch failed" before it reaches the server (checked: the server log has no line for it).
+ * One retry for that connection-level failure only; an HTTP error response is never retried.
  */
 async function retryingFetch(request: Request): Promise<Response> {
-  const retry = request.method === 'GET' ? request.clone() : null
+  const retry = request.clone()
   try {
     return await fetch(request)
   } catch (error) {
-    if (!retry) throw error
+    if (!(error instanceof TypeError)) throw error
     return fetch(retry)
   }
 }
@@ -90,6 +97,29 @@ async function main() {
   console.log(
     `  assessments=${summary.assessments.length} explanation_summary="${summary.explanation_summary}"`,
   )
+
+  // Auth check: the same two routes WITHOUT a token must answer 401 (raw fetch, these two only).
+  await step('GET /lots/<id> without a token returns 401', async () => {
+    const res = await fetch(`${BASE_URL}/lots/${encodeURIComponent(upload.lot_id)}`)
+    assert(res.status === 401, `GET /lots/<id> without a token gave ${res.status}, not 401`)
+  })
+  await step('POST /lots without a token returns 401', async () => {
+    const res = await fetch(`${BASE_URL}/lots`, { method: 'POST', body: new FormData() })
+    assert(res.status === 401, `POST /lots without a token gave ${res.status}, not 401`)
+  })
+
+  const projects = await step('listProjects', () => listProjects(client))
+  assert(projects.some((p) => p.lot_id === upload.lot_id), 'the demo lot is not in listProjects')
+  const project = await step('getProject (lot metadata)', () => getProject(client, upload.lot_id))
+  assert(project.project_id === upload.lot_id, 'project_id does not equal lot_id')
+  console.log(
+    `  part_number=${project.part_number} manufacturer=${project.manufacturer ?? 'null'} date_code=${project.date_code ?? 'null'} test_date=${project.test_date ?? 'null'}`,
+  )
+  const report = await step('downloadReport (blob)', () => downloadReport(client, upload.lot_id))
+  assert(report.blob.size > 0, 'report blob is empty')
+  console.log(`  ${report.filename} ${report.blob.size} bytes`)
+  const signoffs = await step('listDispositionSignoffs', () => listDispositionSignoffs(client))
+  console.log(`  signoffs=${signoffs.length}`)
 
   const events = await step('listEvents', () => listEvents(client))
   assert(
@@ -206,6 +236,21 @@ async function main() {
   )
   assert(inProgressUpload.status === 'IN_PROGRESS', `expected IN_PROGRESS, got ${inProgressUpload.status}`)
   console.log(`  lot_id=${inProgressUpload.lot_id} status=${inProgressUpload.status}`)
+  const checkpointCsv = [
+    'component_id,parameter,checkpoint_hour,value,unit',
+    'c1,iddq,96,4.1,uA',
+    'c2,iddq,96,1.2,uA',
+    '',
+  ].join('\n')
+  const checkpoint = await step('uploadCheckpoint (96h on the in-progress lot)', () =>
+    uploadCheckpoint(
+      client,
+      inProgressUpload.lot_id,
+      new File([checkpointCsv], 'checkpoint.csv', { type: 'text/csv' }),
+      session.account_id,
+    ),
+  )
+  console.log(`  lot_id=${checkpoint.lot_id} status=${checkpoint.status}`)
 
   const c1Detail = await step("getPartDetail('c1') on the in-progress lot", () =>
     getPartDetail(client, 'c1', inProgressUpload.lot_id),

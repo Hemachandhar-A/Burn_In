@@ -9,10 +9,11 @@ import {
   getLotSummary,
   type DPAWorkOrderResponse,
 } from '../api/lotDetail'
-import { getProject } from '../api/lots'
+import { getProject, type ProjectSummary } from '../api/lots'
 import type { components } from '../api/schema'
 import { BarChartIcon, ClipboardIcon, DownloadIcon, TrendUpIcon } from '../shell/icons'
 import { pathToPart } from './registry'
+import { formatUtc } from './settingsFormat'
 import { VerdictBadge } from './VerdictBadge'
 
 type LotSummaryResponse = components['schemas']['LotSummaryResponse']
@@ -108,6 +109,23 @@ function DpaResultPanel({ result }: { result: DPAWorkOrderResponse }) {
         ))}
       </ul>
     </section>
+  )
+}
+
+/** The project metadata that is present, in display order; a null or empty field is left out. */
+function metadataFields(
+  project: ProjectSummary | undefined,
+): { label: string; value: string }[] {
+  if (!project) return []
+  const fields: [string, string | null | undefined][] = [
+    ['Part Number', project.part_number],
+    ['Manufacturer', project.manufacturer],
+    ['Date Code', project.date_code],
+    // A test date, not a timestamp: the date part only.
+    ['Test Date', project.test_date ? formatUtc(project.test_date).slice(0, 10) : null],
+  ]
+  return fields.flatMap(([label, value]) =>
+    value !== null && value !== undefined && value.trim() !== '' ? [{ label, value }] : [],
   )
 }
 
@@ -274,12 +292,12 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
                 <p className="summary-label">Lot ID</p>
                 <p className="mono summary-value">{lotId}</p>
               </div>
-              {project.data?.part_number && (
-                <div>
-                  <p className="summary-label">Part Number</p>
-                  <p className="mono summary-value">{project.data.part_number}</p>
+              {metadataFields(project.data).map((f) => (
+                <div key={f.label}>
+                  <p className="summary-label">{f.label}</p>
+                  <p className="mono summary-value">{f.value}</p>
                 </div>
-              )}
+              ))}
               <div>
                 <p className="summary-label">Overall Verdict</p>
                 <p className="summary-value">
