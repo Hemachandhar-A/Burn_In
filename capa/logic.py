@@ -1,9 +1,17 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
+from pydantic import ValidationError
+
+from contracts import AnalysisResults, Project, ProjectData
 from capa.models import TEMP_CapaRecord
-from storage.repository import query_events, log_event, query_disposition_signoffs
+from storage.repository import (
+    query_events, log_event, query_disposition_signoffs, query_project_data, query_projects,
+)
+
+logger = logging.getLogger(__name__)
 
 def evaluate_capa_trigger(project_id: str):
     # Check how many REJECT verdicts exist for this lot/project
@@ -32,6 +40,42 @@ def evaluate_capa_trigger(project_id: str):
                     "owner_account_id": None
                 }
             )
+
+# ---------------------------------------------------------------------------
+# E13 step 1 (Block 4a Part 1) - locating the run a confirmed outcome links to. Mirrors
+# fusion/router.py::_matching_runs's selection rule (the latest stored run containing component_id,
+# optionally restricted to one lot) without importing fusion's own private helper - capa/ and fusion/
+# are separately-owned P5 directories for this session (AGENTS.md rule 2: call an exposed function,
+# never reach into another module's private internals).
+# ---------------------------------------------------------------------------
+
+
+def find_latest_run_for_component(
+    component_id: str, lot_id: str | None = None
+) -> tuple[Project, ProjectData, AnalysisResults] | None:
+    """The (project, ProjectData row, parsed AnalysisResults) for the most recent stored analysis run
+    whose assessments contain component_id, across every matching lot when lot_id is None or within
+    the one named lot when given. None if no such run exists. A row that fails AnalysisResults
+    validation is skipped (logged), not a 500 - same discipline as fusion/router.py::_matching_runs."""
+    matches: list[tuple[Project, ProjectData, AnalysisResults]] = []
+    for project in query_projects():
+        if lot_id is not None and project.lot_id != lot_id:
+            continue
+        for row in query_project_data(project.project_id):
+            try:
+                results = AnalysisResults.model_validate_json(row.results_json)
+            except ValidationError as exc:
+                logger.warning(
+                    "skipping stored analysis run %s (project %s) - failed AnalysisResults validation: %s",
+                    row.analysis_run_id, project.project_id, exc,
+                )
+                continue
+            if any(a.component_id == component_id for a in results.assessments):
+                matches.append((project, row, results))
+    if not matches:
+        return None
+    return max(matches, key=lambda m: m[1].created_at)
+
 
 # ---------------------------------------------------------------------------
 # E13 step 2/3 (Block 4a Part 2, Lead ruling D70.2) - the confirmed-outcome vs. verdict-tier match

@@ -4,13 +4,61 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
 from typing import List
 
-from contracts import Account
+from contracts import Account, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest
 from identity.auth import get_current_account
 from capa.models import TEMP_CapaRecord, TEMP_ResolveRequest
-from capa.logic import get_all_capas
-from storage.repository import log_event, query_events
+from capa.logic import find_latest_run_for_component, get_all_capas
+from storage.repository import log_event, query_events, save_confirmed_outcome
 
 router = APIRouter(tags=["CAPA", "Audit"])
+
+# Block 4a: the four E13 routes IMPLEMENTATION_PLAN.md Part 5.6's route table actually names for
+# capa/router.py. Kept on a separate router object from `router` above (which carries this file's
+# three pre-existing, unplanned TEMP_ routes - GET /capa, POST /capa/{id}/resolve, GET /audit/export -
+# never in the plan's route table) so api/main.py can register only what the plan specifies, per this
+# session's Part 6a, without touching the TEMP_ routes' own existing tests (tests/unit/capa/test_capa.py
+# imports `router` directly and still exercises them).
+planned_router = APIRouter(tags=["CAPA"])
+
+
+@planned_router.post("/parts/{component_id}/confirmed-outcome", response_model=ConfirmedOutcomeRecord)
+def create_confirmed_outcome(
+    component_id: str,
+    request: ConfirmedOutcomeRequest,
+    lot_id: str | None = None,
+    account: Account = Depends(get_current_account),
+) -> ConfirmedOutcomeRecord:
+    """E13 step 1: records a confirmed real-world outcome for a part, linked to the analysis_run_id
+    of the latest stored run containing it (never the disposition itself - this measures whether the
+    model's verdict tier was right, a different question from whether the human's disposition was).
+    Append-only: never touches disposition_signoffs. No event is logged - see CONTRACT_CHANGES.md,
+    this block: none of the five event_type literal values fits this action, and AGENTS.md rule 3
+    forbids inventing a new one here."""
+    match = find_latest_run_for_component(component_id, lot_id)
+    if match is None:
+        detail = f"component '{component_id}' not found"
+        if lot_id is not None:
+            detail += f" in lot '{lot_id}'"
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+    project, row, _results = match
+
+    outcome = save_confirmed_outcome(
+        project_id=project.project_id,
+        component_id=component_id,
+        analysis_run_id=row.analysis_run_id,
+        account_id=account.account_id,
+        confirmed_outcome=request.confirmed_outcome,
+        note=request.note,
+    )
+    return ConfirmedOutcomeRecord(
+        project_id=outcome.project_id,
+        component_id=outcome.component_id,
+        account_id=outcome.account_id,
+        confirmed_outcome=outcome.confirmed_outcome,
+        note=outcome.note,
+        recorded_at=outcome.recorded_at,
+        analysis_run_id=outcome.analysis_run_id,
+    )
 
 @router.get("/capa", response_model=List[TEMP_CapaRecord])
 def list_capas(account: Account = Depends(get_current_account)):
