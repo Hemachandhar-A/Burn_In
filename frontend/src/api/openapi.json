@@ -197,12 +197,26 @@
             "type": "integer"
           },
           "fn_rate": {
-            "title": "Fn Rate",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fn Rate"
           },
           "fp_rate": {
-            "title": "Fp Rate",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fp Rate"
           },
           "status": {
             "enum": [
@@ -215,8 +229,6 @@
           }
         },
         "required": [
-          "fn_rate",
-          "fp_rate",
           "confirmed_outcome_count",
           "status"
         ],

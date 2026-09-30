@@ -509,9 +509,9 @@ export interface components {
             /** Confirmed Outcome Count */
             confirmed_outcome_count: number;
             /** Fn Rate */
-            fn_rate: number;
+            fn_rate?: number | null;
             /** Fp Rate */
-            fp_rate: number;
+            fp_rate?: number | null;
             /**
              * Status
              * @enum {string}
