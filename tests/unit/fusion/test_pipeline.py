@@ -657,3 +657,51 @@ def test_module_a_results_empty_on_in_progress_lot_module_b_still_populated():
     result = run_full_pipeline(lot, ScreeningConfig())
     assert result.module_a_results == {}
     assert set(result.module_b_results.keys()) == {'C1'}
+
+
+def test_stored_shap_rows_survive_round_trip_on_an_in_progress_lot(tmp_path, monkeypatch):
+    """B6a: an in-progress lot (2 components, 0h+24h CSV, through POST /lots) whose worst part
+    exceeds Module B's safety slope reaches explain.shap_b with no 96h data - module_b/model.py's
+    delta_96h and elapsed_96h features are NaN by design when 96h is absent (native LightGBM missing
+    handling), so ShapContributionRow.value carries a non-finite float. pydantic serializes that NaN
+    to JSON `null`, and ShapContributionRow.value: float then rejects it on reload -
+    AnalysisResults.model_validate_json(results.model_dump_json()) must succeed on the pipeline's own
+    output for this lot; today it does not."""
+    import importlib
+    import io
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test_b6a.db'}")
+    from storage import database
+    importlib.reload(database)
+    from storage import repository
+    importlib.reload(repository)
+    repository.init_db()
+
+    from ingestion import store
+    from ingestion.router import router as ingestion_router
+    store.clear()
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(ingestion_router)
+    client = TestClient(app)
+
+    csv = (
+        "component_id,parameter,checkpoint_hour,value,unit\n"
+        "c1,iddq,0,1.0,uA\n"
+        "c1,iddq,24,500.0,uA\n"
+        "c2,iddq,0,1.0,uA\n"
+        "c2,iddq,24,1.1,uA\n"
+    )
+    files = {"file": ("lot.csv", io.BytesIO(csv.encode()), "text/csv")}
+    data = {"lot_id": "L-B6A", "part_number": "PN-B6A", "manufacturer": "ACME", "date_code": "2601",
+            "account_id": "a.sharma"}
+    resp = client.post("/lots", files=files, data=data)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "IN_PROGRESS"
+
+    stored = repository.query_latest_project_data("L-B6A")
+    assert stored is not None
+    AnalysisResults.model_validate_json(stored.results_json)  # GOLDEN-B6a: must not raise

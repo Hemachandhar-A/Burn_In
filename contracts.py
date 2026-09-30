@@ -311,7 +311,10 @@ class ConfirmedOutcome(Base):
 
 class ShapContributionRow(BaseModel):
     feature: str
-    value: float
+    # Nullable (Block 3C, CONTRACT_CHANGES.md 2026-09-30): None means the feature itself is absent for
+    # this part (e.g. delta_96h/elapsed_96h before a 96h reading exists, module_b/model.py:32,37's
+    # native-missing NaN) - not a guessed value. shap_value stays a finite float regardless.
+    value: float | None = None
     shap_value: float
 
 
