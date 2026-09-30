@@ -1141,9 +1141,31 @@
             "title": "Created By",
             "type": "string"
           },
+          "date_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Code"
+          },
           "lot_id": {
             "title": "Lot Id",
             "type": "string"
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manufacturer"
           },
           "part_number": {
             "title": "Part Number",
@@ -1152,6 +1174,18 @@
           "project_id": {
             "title": "Project Id",
             "type": "string"
+          },
+          "test_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Date"
           }
         },
         "required": [
@@ -1602,6 +1636,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get All Disposition Signoffs",
         "tags": [
           "storage"
@@ -1628,6 +1667,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get All Events",
         "tags": [
           "storage"
@@ -1694,6 +1738,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Upload Lot",
         "tags": [
           "ingestion"
@@ -1736,6 +1785,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Load Demo Lot",
         "tags": [
           "ingestion"
@@ -1778,6 +1832,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Lot Summary",
         "tags": [
           "fusion"
@@ -1830,6 +1889,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Upload Checkpoint",
         "tags": [
           "ingestion"
@@ -1926,6 +1990,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Quality Flags",
         "tags": [
           "ingestion"
@@ -1966,6 +2035,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Generate Report",
         "tags": [
           "report"
@@ -2205,6 +2279,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Projects",
         "tags": [
           "storage"
@@ -2247,6 +2326,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Project",
         "tags": [
           "storage"
@@ -2309,6 +2393,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Disposition Signoffs",
         "tags": [
           "storage"
@@ -2355,6 +2444,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Project Events",
         "tags": [
           "storage"
