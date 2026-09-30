@@ -89,8 +89,9 @@ def test_jwt_invalid_signature():
         "iat": now,
         "exp": now + timedelta(minutes=60),
     }
-    # Sign with wrong secret
-    token = jwt.encode(payload, "WRONG_SECRET", algorithm=JWT_ALGORITHM)
+    # Sign with wrong secret - >= 32 bytes so this test itself doesn't trigger
+    # PyJWT's InsecureKeyLengthWarning (B3, unrelated to identity.auth's own default secret).
+    token = jwt.encode(payload, "WRONG_SECRET_but_at_least_32_bytes_long", algorithm=JWT_ALGORITHM)
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
     with pytest.raises(HTTPException) as exc:
