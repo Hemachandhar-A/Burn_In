@@ -9,6 +9,7 @@ from module_a.detect import detect as module_a_detect
 from module_b.predictor import predict as module_b_predict, synthetic_models as module_b_synthetic_models, TRAINED_PARAMETERS
 from fusion.gate import compute_part_verdict
 from ingestion.quality import check_missing_checkpoints
+from explain.cache import ExplainCache
 from explain.zscore import build_zscore_table
 from explain.mcd import explain_mcd
 from explain.ecod import explain_ecod
@@ -18,7 +19,17 @@ from explain.text import (
     severity_cap_note, unavailable_forecast_note,
 )
 
-def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResults:
+def run_full_pipeline(
+    lot: LotDataset, config: ScreeningConfig, *, _explain_cache: bool = True,
+) -> AnalysisResults:
+    """`_explain_cache` (Block 4c Part 2, keyword-only, underscore-prefixed - not part of the public
+    signature Part 5.7 froze): defaults to True, building a fresh ExplainCache() below and passing it
+    to every per-part explain_mcd/explain_ecod/explain_module_b call so fit_mcd/fit_ecod/
+    TreeExplainer construction are each done once per (lot, checkpoint)/(lot, parameter)/fitted-model
+    instead of once per flagged part. False disables it (cache=None passed to every call instead,
+    reproducing the exact pre-optimization behavior) - a test-only hook
+    (tests/unit/fusion/test_explain_cache.py) proving the cached and uncached paths produce
+    numerically identical part_explanations, not a knob any real caller should ever need."""
     is_complete = lot.status == "COMPLETE"
     is_forecast = not is_complete
 
@@ -171,6 +182,11 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
     # Part 3g (Block 3B): E4's explanation mechanisms, one PartExplanation per non-PASS assessment.
     # PASS parts get no entry (not an empty one) - explain/text.py's functions all already return
     # None/[] for a module that did not compute something, so nothing here fabricates data.
+    # Block 4c Part 2: a per-run explain_cache (never module-level state - fresh every call) so
+    # fit_mcd/fit_ecod/TreeExplainer construction are each done once per (lot, checkpoint)/
+    # (lot, parameter)/fitted-model and reused across every flagged part below, instead of refit once
+    # per part (profiling: CONTRACT_CHANGES.md 2026-09-30 - this loop was ~92% of a warm upload's time).
+    explain_cache = ExplainCache() if _explain_cache else None
     part_explanations: dict[str, PartExplanation] = {}
     for assessment in assessments:
         if assessment.verdict == "PASS":
@@ -194,13 +210,13 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
 
         mcd_contributions = []
         try:
-            mcd_contributions = explain_mcd(frames, "24h", cid).contributions
+            mcd_contributions = explain_mcd(frames, "24h", cid, cache=explain_cache).contributions
         except ValueError:
             mcd_contributions = []
 
         ecod_dimensions = []
         try:
-            ecod_dimensions = explain_ecod(frames, worst_parameter, cid).contributions
+            ecod_dimensions = explain_ecod(frames, worst_parameter, cid, cache=explain_cache).contributions
         except ValueError:
             ecod_dimensions = []
 
@@ -214,7 +230,7 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
             b_input = b_input_by_key.get((cid, worst_parameter))
             if model is not None and b_input is not None:
                 try:
-                    shap_exp = explain_module_b(b_input, model)
+                    shap_exp = explain_module_b(b_input, model, cache=explain_cache)
                 except KeyError:
                     shap_exp = None
 

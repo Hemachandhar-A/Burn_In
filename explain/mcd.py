@@ -12,16 +12,29 @@ form, not a percentage split); they sum to the same d^2 mcd.mahalanobis([x]) ret
 import numpy as np
 
 from contracts import FeatureFrame
+from explain.cache import ExplainCache
 from explain.models import MCDExplanation, ParameterContribution
 from module_a.detect import fit_mcd
 
 
-def explain_mcd(frames: list[FeatureFrame], checkpoint: str, component_id: str) -> MCDExplanation:
+def explain_mcd(
+    frames: list[FeatureFrame], checkpoint: str, component_id: str, cache: ExplainCache | None = None,
+) -> MCDExplanation:
     """Per-parameter squared-Mahalanobis-distance decomposition for one part at one checkpoint.
     Raises ValueError if MCD did not run for this lot/checkpoint (below the lot-size floor, too few
     qualifying components, or a singular covariance - module_a.detect.fit_mcd's own None cases) or if
-    `component_id` did not qualify for the fitted matrix (missing a parameter at this checkpoint)."""
-    fitted = fit_mcd(frames, checkpoint)
+    `component_id` did not qualify for the fitted matrix (missing a parameter at this checkpoint).
+
+    `cache` (Block 4c Part 2): when given, fit_mcd(frames, checkpoint) is reused for every call
+    sharing the same checkpoint instead of refit - numerically identical (fit_mcd's random_state is
+    fixed), only the redundant computation is removed. Default None reproduces the exact
+    pre-optimization behavior (a fresh fit on every call)."""
+    if cache is not None:
+        if checkpoint not in cache.mcd_fits:
+            cache.mcd_fits[checkpoint] = fit_mcd(frames, checkpoint)
+        fitted = cache.mcd_fits[checkpoint]
+    else:
+        fitted = fit_mcd(frames, checkpoint)
     if fitted is None:
         raise ValueError(f"MCD did not run for checkpoint {checkpoint!r} on this lot")
     component_ids, parameters, mcd = fitted
