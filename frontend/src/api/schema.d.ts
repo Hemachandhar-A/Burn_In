@@ -847,12 +847,18 @@ export interface components {
             created_at: string;
             /** Created By */
             created_by: string;
+            /** Date Code */
+            date_code?: string | null;
             /** Lot Id */
             lot_id: string;
+            /** Manufacturer */
+            manufacturer?: string | null;
             /** Part Number */
             part_number: string;
             /** Project Id */
             project_id: string;
+            /** Test Date */
+            test_date?: string | null;
         };
         /** RiskAssessment */
         RiskAssessment: {

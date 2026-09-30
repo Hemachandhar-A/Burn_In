@@ -56,7 +56,8 @@ def query_account(account_id: str) -> Account | None:
 
 
 def save_project(
-    project_id: str, lot_id: str, part_number: str, test_date: datetime, created_by: str
+    project_id: str, lot_id: str, part_number: str, test_date: datetime, created_by: str,
+    manufacturer: str | None = None, date_code: str | None = None,
 ) -> Project:
     with SessionLocal() as session:
         project = Project(
@@ -66,6 +67,8 @@ def save_project(
             test_date=test_date,
             created_at=datetime.now(UTC),
             created_by=created_by,
+            manufacturer=manufacturer,
+            date_code=date_code,
         )
         session.add(project)
         session.commit()

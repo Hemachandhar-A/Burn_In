@@ -2,12 +2,12 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from contracts import (
     LoginRequest, TokenResponse, DispositionRequest, DispositionRecord,
     SettingsResponse, SettingsProposalRequest, SettingsSignoffRequest, Account,
-    PendingSettingChange, ScreeningConfig
+    PendingSettingChange, ScreeningConfig, AnalysisResults
 )
 from identity.auth import create_access_token, verify_pin, get_current_account
 from storage.repository import (
     query_account, save_disposition_signoff, query_disposition_signoffs,
-    log_event, query_events
+    log_event, query_events, query_project, query_project_data
 )
 from datetime import datetime, UTC
 import threading
@@ -46,6 +46,21 @@ def create_disposition(
     request: DispositionRequest,
     account: Account = Depends(get_current_account)
 ):
+    # Validate what the sign-off points at BEFORE anything is written (G5 finding 2).
+    if query_project(project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"project '{project_id}' not found")
+    run = next((r for r in query_project_data(project_id) if r.analysis_run_id == analysis_run_id), None)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"analysis run '{analysis_run_id}' not found for project '{project_id}'",
+        )
+    if component_id not in {a.component_id for a in AnalysisResults.model_validate_json(run.results_json).assessments}:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"component '{component_id}' not found in analysis run '{analysis_run_id}'",
+        )
+
     with disposition_lock:
         signoffs = query_disposition_signoffs(project_id=project_id, component_id=component_id)
         
