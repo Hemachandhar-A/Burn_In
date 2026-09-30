@@ -56,6 +56,24 @@ def test_non_numeric_value_raises_a_line_specific_error():
     assert any("line 2" in e and "value" in e for e in exc_info.value.errors)
 
 
+@pytest.mark.parametrize("bad_value", ["nan", "NaN", "NAN", "inf", "Infinity", "-inf", "-Infinity"])
+def test_non_finite_value_raises_a_line_specific_error_not_a_pydantic_error(bad_value):
+    # B2 (Lead-as-P2): Reading rejects non-finite value/checkpoint_hour at contracts.py:66, but a
+    # bare float() happily parses "nan"/"inf" - must be caught here, never a raw pydantic ValidationError.
+    csv_text = f"component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,0,{bad_value},uA\n"
+    with pytest.raises(IngestionValidationError) as exc_info:
+        parse_lot_csv(_csv(csv_text), **METADATA)
+    assert any("line 2" in e and "value" in e for e in exc_info.value.errors)
+
+
+@pytest.mark.parametrize("bad_hour", ["nan", "inf", "-inf"])
+def test_non_finite_checkpoint_hour_raises_a_line_specific_error(bad_hour):
+    csv_text = f"component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,{bad_hour},1.2,uA\n"
+    with pytest.raises(IngestionValidationError) as exc_info:
+        parse_lot_csv(_csv(csv_text), **METADATA)
+    assert any("line 2" in e and "checkpoint_hour" in e for e in exc_info.value.errors)
+
+
 def test_duplicate_reading_in_one_file_raises_a_specific_error():
     csv_text = (
         "component_id,parameter,checkpoint_hour,value,unit\n"
@@ -141,3 +159,18 @@ def test_wide_format_unrecognized_value_column_raises_a_specific_error():
     with pytest.raises(IngestionValidationError) as exc_info:
         parse_wide_lot_csv(_csv(csv_text), **METADATA)
     assert any("garbage" in e for e in exc_info.value.errors)
+
+
+@pytest.mark.parametrize("bad_value", ["nan", "NaN", "inf", "-Infinity"])
+def test_wide_format_non_finite_value_raises_a_line_specific_error(bad_value):
+    csv_text = f"component_id,checkpoint_hour,iddq_uA\nc1,0,{bad_value}\n"
+    with pytest.raises(IngestionValidationError) as exc_info:
+        parse_wide_lot_csv(_csv(csv_text), **METADATA)
+    assert any("line 2" in e and "iddq_uA" in e for e in exc_info.value.errors)
+
+
+def test_wide_format_non_finite_checkpoint_hour_raises_a_line_specific_error():
+    csv_text = "component_id,checkpoint_hour,iddq_uA\nc1,nan,1.2\n"
+    with pytest.raises(IngestionValidationError) as exc_info:
+        parse_wide_lot_csv(_csv(csv_text), **METADATA)
+    assert any("line 2" in e and "checkpoint_hour" in e for e in exc_info.value.errors)

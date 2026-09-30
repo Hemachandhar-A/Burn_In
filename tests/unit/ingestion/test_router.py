@@ -68,6 +68,23 @@ def test_post_lots_returns_422_with_specific_errors_on_bad_csv():
     assert any("checkpoint_hour" in e for e in response.json()["detail"])
 
 
+def test_post_lots_returns_422_not_500_on_a_nan_cell():
+    # B2 (Lead-as-P2): a bare float() parses "nan" successfully; without the parser-level check
+    # this would reach Reading's pydantic validator (contracts.py:66) as an unhandled 500.
+    bad_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,0,nan,uA\n"
+    response = client.post("/lots", files=_csv_file(bad_csv), data=METADATA)
+    assert response.status_code == 422
+    assert any("value" in e for e in response.json()["detail"])
+
+
+def test_post_lots_checkpoints_returns_422_not_500_on_an_inf_cell():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    bad_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,inf,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(bad_csv), data={"account_id": "a.sharma"})
+    assert response.status_code == 422
+    assert any("value" in e for e in response.json()["detail"])
+
+
 def test_post_lots_rejects_a_second_upload_for_the_same_lot_id():
     client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
     response = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
