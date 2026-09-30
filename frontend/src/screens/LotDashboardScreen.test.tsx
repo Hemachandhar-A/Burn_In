@@ -329,4 +329,44 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
     await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('LOT-OTHER'))
     expect(screen.queryByText('Report generation failed')).toBeNull()
   })
+
+  describe('lot metadata panel', () => {
+    const PROJECT = {
+      project_id: 'LOT-2024-8841',
+      lot_id: 'LOT-2024-8841',
+      part_number: 'AD590-JH',
+      created_at: '2026-09-11T09:15:30Z',
+      created_by: 'r.mehta',
+    }
+    const render = (project: FakeReply) => {
+      const server = fakeServer({
+        ...lotSummaryRoute({ body: SUMMARY() }),
+        'GET /projects/LOT-2024-8841': project,
+      })
+      renderWithApi(routed(), { fetch: server.fetch, path: '/lots/LOT-2024-8841' })
+      return server
+    }
+
+    test('shows the part number from the project alongside the lot id', async () => {
+      render({ body: PROJECT })
+      expect(await screen.findByText('AD590-JH')).toBeInTheDocument()
+      expect(screen.getByText('Part Number')).toBeInTheDocument()
+      expect(screen.getAllByText('LOT-2024-8841').length).toBeGreaterThan(0)
+    })
+
+    test('a project without a part number leaves that field out, with no undefined text', async () => {
+      render({ body: { ...PROJECT, part_number: '' } })
+      await screen.findByText('PDA: 5.19%')
+      expect(screen.queryByText('Part Number')).toBeNull()
+      expect(document.body.textContent).not.toMatch(/undefined|null/)
+    })
+
+    test('a failed metadata request degrades the panel only; the rest still renders', async () => {
+      render({ status: 500, body: { detail: 'boom' } })
+      await screen.findByText('PDA: 5.19%')
+      expect(screen.queryByText('Part Number')).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.getByText('By Outlier Severity')).toBeInTheDocument()
+    })
+  })
 })

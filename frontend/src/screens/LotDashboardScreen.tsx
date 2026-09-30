@@ -9,6 +9,7 @@ import {
   getLotSummary,
   type DPAWorkOrderResponse,
 } from '../api/lotDetail'
+import { getProject } from '../api/lots'
 import type { components } from '../api/schema'
 import { BarChartIcon, ClipboardIcon, DownloadIcon, TrendUpIcon } from '../shell/icons'
 import { pathToPart } from './registry'
@@ -139,6 +140,12 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
     queryFn: () => getLotSummary(client, lotId),
   })
 
+  // Lot metadata is secondary: if this request is slow or fails, the panel just omits it.
+  const project = useQuery({
+    queryKey: ['project', lotId],
+    queryFn: () => getProject(client, lotId),
+  })
+
   const report = useMutation({
     mutationFn: () => downloadReport(client, lotId),
     onSuccess: ({ blob, filename }) => {
@@ -267,6 +274,12 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
                 <p className="summary-label">Lot ID</p>
                 <p className="mono summary-value">{lotId}</p>
               </div>
+              {project.data?.part_number && (
+                <div>
+                  <p className="summary-label">Part Number</p>
+                  <p className="mono summary-value">{project.data.part_number}</p>
+                </div>
+              )}
               <div>
                 <p className="summary-label">Overall Verdict</p>
                 <p className="summary-value">

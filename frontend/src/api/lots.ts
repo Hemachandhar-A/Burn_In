@@ -97,6 +97,17 @@ export async function listProjects(client: ApiClient): Promise<ProjectSummary[]>
 }
 
 /**
+ * `GET /projects/{project_id}`: one project's metadata (`ProjectSummary`). `project_id` equals
+ * `lot_id` for every lot the ingestion routes create (ingestion/router.py saves the project and
+ * its events with `project_id=dataset.lot_id`), so the Lot Dashboard passes its lot id.
+ */
+export async function getProject(client: ApiClient, projectId: string): Promise<ProjectSummary> {
+  return unwrap(
+    await client.GET('/projects/{project_id}', { params: { path: { project_id: projectId } } }),
+  )
+}
+
+/**
  * Why a lot id can't be used, or null. Every later call addresses a lot by URL path
  * (`/lots/{lot_id}/...`). Starlette decodes `%2F` back to `/` before routing, and browsers
  * collapse `.`/`..` path segments, so such a lot could be created and then never reached again

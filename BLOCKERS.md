@@ -128,3 +128,9 @@ Entry format:
 - Blocked on: `POST /parts/{component_id}/disposition` needing `project_id`/`analysis_run_id`.
 - What was tried: hand-typed mock per the Part Detail screen.
 - Status: RESOLVED (2026-09-30, Block 5D Part 2) - `MOCK_submitDisposition` deleted. `submitDisposition` in `api/parts.ts` calls the real route with the ids from the fetched `PartDetailResponse` (Block 4c Part 3a). `mocks.ts` now holds only fixture data.
+
+## 2026-09-30 P1 - Lot Dashboard metadata: ProjectSummary has no manufacturer, date code or test date (Block 5E Part 1)
+- Blocked on: `GET /projects/{project_id}` returns `ProjectSummary` = `project_id, lot_id, part_number, created_at, created_by` only. `manufacturer`, `date_code` and `test_date` (entered on the Ingest form and sent in `LotMetadata`) are not returned by any read route, so the Lot Summary panel cannot show them.
+- What was tried: the panel shows lot id and part number (from `getProject`, `project_id == lot_id` per `ingestion/router.py`); the other three are left out, not invented.
+- Smallest backend change: add optional `manufacturer: str | None`, `date_code: str | None`, `test_date: datetime | None` to `ProjectSummary` and fill them in `storage/router.py::_project_summary` (the `Project` row already stores `test_date`; manufacturer/date code would need persisting at `save_project`). Needs a Lead contract ruling.
+- Status: OPEN
