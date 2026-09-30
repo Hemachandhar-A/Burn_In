@@ -90,3 +90,9 @@ Entry format:
 ## 2026-09-30 Lead-as-P5 - OPEN: Module B has a single threshold (PASS or REJECT only)
 - Blocked on: nothing is blocked - a disclosure. `fusion/gate.py` never gives Module B a REVIEW tier, so WATCH comes from Module A only and E12's table rows needing Module B at REVIEW are unreachable.
 - Status: OPEN (disclosed in user-facing material, not fixed).
+
+## 2026-09-30 Lead-as-P2 - OPEN: flaky test_analysis_run_id_matches_the_latest_of_two_runs (real cause is fusion/router.py, not SQL ordering)
+- Blocked on: `fusion/router.py:78` picks the run with `max(matches, key=lambda m: m[1].created_at)`. Python's `max` returns the FIRST maximal element, so when two runs share a `created_at` (coarse Windows clock) it returns the OLDER run. Reproduced deterministically by freezing the clock in `storage.repository`: run1 returned, every time.
+- Done (`storage/repository.py`): every timestamp-ordered query now has a rowid tie-break (insertion order among ties); SQLite already returned insertion order in practice, so those tests pass before and after - it is a guarantee, not a repro.
+- Needs (outside P2's directories): in `fusion/router.py` pick the last max, e.g. `max(reversed(matches), key=...)` (matches are built in query order, ascending by created_at then rowid), plus a frozen-clock twin test in `tests/unit/fusion/test_part_detail_ids.py`. Alternative inside storage: make `created_at` strictly monotonic per process.
+- Status: OPEN.
