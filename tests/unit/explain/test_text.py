@@ -376,3 +376,49 @@ def test_staleness_note_empty_diff_still_names_a_newer_run():
     diff = {"newly_activated_modules": {}, "resolved_forecasts": {}, "verdict_changes": {}}
     note = staleness_note("run-1", "run-2", "run-1", diff)
     assert note == "A newer analysis run exists since this disposition was signed off, with no tracked changes."
+
+
+# --- G5 Part C (D82 puzzle 2): the sentence quotes Module A's own robust_z and its checkpoint ------
+
+
+def _module_a_result(robust_z: float, direction: str = "above_median"):
+    from contracts import ModuleAResult
+
+    return ModuleAResult(
+        component_id="C1", lot_id="L1", parameter="leakage", robust_z=robust_z, mcd_distance=None,
+        isolation_forest_score=None, ecod_score=0.0,
+        explainable_tags={"robust_z": True, "mcd": False, "isolation_forest": False, "ecod": False},
+        direction=direction, severity_tier="REJECT", severity_cap_reason=None, combined_severity=1.0,
+        explainable_corroboration=True,
+    )
+
+
+def test_sentence_quotes_module_a_robust_z_not_the_table_row_and_names_its_checkpoint():
+    from explain.models import ZScoreRow
+
+    # Module A's worst-checkpoint z (0h) is 15.75; the 24h table row says 15.53 - the sentence must
+    # quote Module A's number and the checkpoint that produced it, never the row's own z at "24h".
+    zrow = ZScoreRow(parameter="leakage", value=15.0, lot_median=10.0, z=15.53)
+    sentence = explanation_sentence(
+        "C1", zscore_row=zrow, module_a=_module_a_result(15.75), module_a_checkpoint="0h",
+    )
+    assert "leakage at 0h is 15.8 robust-sigma above lot median" in sentence
+    assert "15.5" not in sentence and "at 24h" not in sentence
+    assert "median = 10" in sentence and "value = 15" in sentence
+
+
+def test_sentence_module_a_direction_comes_from_module_a_result():
+    sentence = explanation_sentence(
+        "C1", module_a=_module_a_result(3.14, "below_median"), module_a_checkpoint="168h",
+    )
+    # No median/value clause when no row exists for that checkpoint (FeatureFrame has no 96h/168h median).
+    assert sentence == "Part C1: leakage at 168h is 3.1 robust-sigma below lot median."
+
+
+def test_sentence_without_module_a_is_unchanged_module_b_only_part():
+    from explain.models import ZScoreRow
+
+    zrow = ZScoreRow(parameter="leakage", value=45.0, lot_median=10.0, z=4.2)
+    with_row = explanation_sentence("C1", zscore_row=zrow)
+    assert with_row == "Part C1: leakage at 24h is 4.2 robust-sigma above lot median (median = 10, value = 45)."
+    assert explanation_sentence("C1") == "Part C1:"

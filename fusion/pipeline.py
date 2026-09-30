@@ -227,10 +227,23 @@ def run_full_pipeline(
         except ValueError:
             zscore_rows = []
         # The sentence's z-score clause only claims Module A's own worst-parameter result - never a
-        # table lookup for a parameter Module A did not flag here.
+        # table lookup for a parameter Module A did not flag here. G5 Part C: it quotes
+        # ModuleAResult.robust_z itself and the checkpoint that number came from - the same
+        # max-|z| rule module_a/detect.py applies to frame.robust_z (Step 1) - not the 24h-only
+        # zscore_table row, which can carry a different checkpoint's (smaller) z. The optional
+        # "(median, value)" detail is only available for 0h/24h (FeatureFrame has no 96h/168h median).
         zscore_sentence_row = None
+        sentence_checkpoint = "24h"
         if a_res_for_explain is not None:
-            zscore_sentence_row = next((r for r in zscore_rows if r.parameter == worst_parameter), None)
+            worst_frame = next((f for f in comp_frames if f.parameter == worst_parameter), None)
+            if worst_frame is not None and worst_frame.robust_z:
+                sentence_checkpoint = max(worst_frame.robust_z, key=lambda k: abs(worst_frame.robust_z[k]))
+            if sentence_checkpoint in ("0h", "24h"):
+                try:
+                    checkpoint_rows = build_zscore_table(comp_frames, sentence_checkpoint).rows
+                except ValueError:
+                    checkpoint_rows = []
+                zscore_sentence_row = next((r for r in checkpoint_rows if r.parameter == worst_parameter), None)
 
         mcd_contributions = []
         try:
@@ -259,7 +272,8 @@ def run_full_pipeline(
                     shap_exp = None
 
         sentence = explanation_sentence(
-            cid, zscore_row=zscore_sentence_row, module_b=b_res_for_explain, shap=shap_exp
+            cid, zscore_row=zscore_sentence_row, module_b=b_res_for_explain, shap=shap_exp,
+            module_a=a_res_for_explain, module_a_checkpoint=sentence_checkpoint,
         )
 
         worst_parameter_frame = next((f for f in comp_frames if f.parameter == worst_parameter), None)

@@ -9,7 +9,7 @@ clause is unitless by construction.
 """
 from collections import Counter
 
-from contracts import ModuleBResult, RiskAssessment
+from contracts import ModuleAResult, ModuleBResult, RiskAssessment
 from explain.models import ShapExplanation, ZScoreRow
 from module_b.model import FEATURE_NAMES
 
@@ -52,15 +52,33 @@ def explanation_sentence(
     zscore_row: ZScoreRow | None = None,
     module_b: ModuleBResult | None = None,
     shap: ShapExplanation | None = None,
+    module_a: ModuleAResult | None = None,
+    module_a_checkpoint: str = "24h",
 ) -> str:
-    """E4 step 5's sentence template. The z-score clause appears only when `zscore_row` is given
-    (Module A ran for this part); the drift-forecast clause only when `module_b` is given, not
-    unavailable, and carries a usable drift_rate/safety_slope pair - a module that did not compute
-    something is never claimed to have. `shap`'s top contribution (already sorted by |shap_value|
-    descending, explain/shap_b.py) names the primary driver, shown only alongside the drift clause."""
+    """E4 step 5's sentence template. The z-score clause appears only when Module A ran for this
+    part (`module_a` given) or, for callers that predate that, `zscore_row` is given; the
+    drift-forecast clause only when `module_b` is given, not unavailable, and carries a usable
+    drift_rate/safety_slope pair - a module that did not compute something is never claimed to have.
+    `shap`'s top contribution (already sorted by |shap_value| descending, explain/shap_b.py) names
+    the primary driver, shown only alongside the drift clause.
+
+    G5 Part C: when `module_a` is given, the clause quotes ModuleAResult.robust_z (Module A's own
+    worst-checkpoint number) and direction, and names `module_a_checkpoint` - the checkpoint that
+    number came from - never a different checkpoint's z. `zscore_row` then only supplies the
+    optional "(median = X, value = Y)" detail, and must be the row for that same checkpoint (or
+    None: FeatureFrame carries a lot median only for 0h/24h)."""
     clauses = [f"Part {component_id}:"]
 
-    if zscore_row is not None:
+    if module_a is not None:
+        direction_word = "below" if module_a.direction == "below_median" else "above"
+        clause = (
+            f"{module_a.parameter} at {module_a_checkpoint} is {module_a.robust_z:.1f} robust-sigma "
+            f"{direction_word} lot median"
+        )
+        if zscore_row is not None:
+            clause += f" (median = {zscore_row.lot_median:g}, value = {zscore_row.value:g})"
+        clauses.append(clause + ".")
+    elif zscore_row is not None:
         direction_word = "above" if zscore_row.z >= 0 else "below"
         clauses.append(
             f"{zscore_row.parameter} at 24h is {abs(zscore_row.z):.1f} robust-sigma {direction_word} "
