@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -11,8 +12,19 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from contracts import Account
 from storage.repository import query_account
 
-# Load from environment or fallback for tests/dev
-JWT_SECRET = os.environ.get("JWT_SECRET", "test-secret-key")
+logger = logging.getLogger(__name__)
+
+# Dev-only fallback, >= 32 bytes so PyJWT never raises InsecureKeyLengthWarning for HS256 (RFC
+# 7518 3.2). Never used when JWT_SECRET is set - real deployments must set it.
+_DEV_DEFAULT_JWT_SECRET = "dev-only-insecure-default-jwt-secret-min-32-bytes-not-for-prod"
+
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if JWT_SECRET is None:
+    JWT_SECRET = _DEV_DEFAULT_JWT_SECRET
+    logger.warning(
+        "JWT_SECRET is not set - falling back to an insecure dev-only default. "
+        "Set the JWT_SECRET environment variable before running in production."
+    )
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = int(os.environ.get("JWT_EXPIRY_MINUTES", "60"))
 

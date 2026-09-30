@@ -51,8 +51,9 @@ METADATA = {"lot_id": "L1", "part_number": "PN-1", "manufacturer": "ACME", "date
 def test_post_lots_parses_and_stores_a_real_upload():
     response = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
     assert response.status_code == 200
+    # VALID_CSV is 0h-only for both components - both are INSUFFICIENT_DATA (R7: never a silent drop).
     assert response.json() == {"lot_id": "L1", "part_number": "PN-1", "status": "IN_PROGRESS", "reading_count": 2,
-        "insufficient_data_components": []}
+        "insufficient_data_components": ["c1", "c2"]}
 
 
 def test_post_lots_requires_metadata_fields():
@@ -65,6 +66,23 @@ def test_post_lots_returns_422_with_specific_errors_on_bad_csv():
     response = client.post("/lots", files=_csv_file(bad_csv), data=METADATA)
     assert response.status_code == 422
     assert any("checkpoint_hour" in e for e in response.json()["detail"])
+
+
+def test_post_lots_returns_422_not_500_on_a_nan_cell():
+    # B2 (Lead-as-P2): a bare float() parses "nan" successfully; without the parser-level check
+    # this would reach Reading's pydantic validator (contracts.py:66) as an unhandled 500.
+    bad_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,0,nan,uA\n"
+    response = client.post("/lots", files=_csv_file(bad_csv), data=METADATA)
+    assert response.status_code == 422
+    assert any("value" in e for e in response.json()["detail"])
+
+
+def test_post_lots_checkpoints_returns_422_not_500_on_an_inf_cell():
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    bad_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,inf,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(bad_csv), data={"account_id": "a.sharma"})
+    assert response.status_code == 422
+    assert any("value" in e for e in response.json()["detail"])
 
 
 def test_post_lots_rejects_a_second_upload_for_the_same_lot_id():
@@ -189,6 +207,44 @@ def test_post_lots_applies_tester_offset_correction_from_reference_parts():
     record = store.get("L1")
     c1 = next(r for r in record.dataset.readings if r.component_id == "c1")
     assert c1.value == pytest.approx(11.0)
+
+
+# B1 (Lead-as-P2): insufficient_data_components (R7) - populated from ingestion.quality's existing
+# INSUFFICIENT_DATA flag, never a new rejection or change to what is stored/analysed.
+
+
+def test_post_lots_insufficient_data_components_lists_only_the_incomplete_component():
+    csv_text = (
+        "component_id,parameter,checkpoint_hour,value,unit\n"
+        "x,iddq,0,1.2,uA\n"
+        "y,iddq,0,1.1,uA\n"
+        "y,iddq,24,1.15,uA\n"
+    )
+    response = client.post("/lots", files=_csv_file(csv_text), data=METADATA)
+    assert response.json()["insufficient_data_components"] == ["x"]
+
+
+def test_post_lots_insufficient_data_components_empty_when_both_complete():
+    response = client.post("/lots", files=_csv_file(VALID_IN_PROGRESS_CSV), data=METADATA)
+    assert response.json()["insufficient_data_components"] == []
+
+
+def test_post_lots_checkpoints_insufficient_data_components_becomes_empty_after_merge():
+    # Incremental: 0h-only upload lists both components; the 24h checkpoint completes them, and the
+    # list must be recomputed over the MERGED dataset, not just the newly-uploaded checkpoint file.
+    first = client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    assert first.json()["insufficient_data_components"] == ["c1", "c2"]
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\nc2,iddq,24,1.2,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    assert response.json()["insufficient_data_components"] == []
+
+
+def test_post_lots_checkpoints_insufficient_data_components_lists_the_still_incomplete_component():
+    # Only c1 gets a checkpoint; c2 stays 0h-only and must still be listed after the merge.
+    client.post("/lots", files=_csv_file(VALID_CSV), data=METADATA)
+    checkpoint_csv = "component_id,parameter,checkpoint_hour,value,unit\nc1,iddq,24,1.3,uA\n"
+    response = client.post("/lots/L1/checkpoints", files=_csv_file(checkpoint_csv), data={"account_id": "a.sharma"})
+    assert response.json()["insufficient_data_components"] == ["c2"]
 
 
 def test_post_lots_demo_returns_a_complete_synthetic_lot():

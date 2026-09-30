@@ -7,7 +7,11 @@ If P2's signature differs, adjust the one call in `seed()` - nothing else depend
 
 SQLite is a local file per machine, so EVERY developer runs this once during their own setup:
 
-    uv run python scripts/seed.py
+    python -m scripts.seed
+
+(run as a module, from the project root - `python scripts/seed.py` puts `scripts/` on
+sys.path instead of the project root, so `from storage.repository import ...` fails with
+"No module named 'storage'"; confirmed by the Lead, 2026-09-30, BLOCKERS.md.)
 
 PINs are a deterrence/auditability speed bump, not security (context.md Part 8.1). They are
 demo values, hashed with Argon2id before storage; the raw PIN is never stored.

@@ -40,7 +40,7 @@ from ingestion import store
 from ingestion.merge import compute_status, merge_checkpoint
 from ingestion.offset import apply_tester_offset_correction
 from ingestion.parsing import IngestionValidationError, parse_lot_csv
-from ingestion.quality import QualityFlag, run_quality_checks
+from ingestion.quality import QualityFlag, check_missing_checkpoints, run_quality_checks
 from ingestion.units import normalize_readings
 from storage import repository
 
@@ -158,6 +158,7 @@ async def upload_lot(
     return LotUploadResponse(
         lot_id=dataset.lot_id, part_number=dataset.part_number, status=dataset.status,
         reading_count=len(dataset.readings),
+        insufficient_data_components=_insufficient_data_components(dataset.readings),
     )
 
 
@@ -191,6 +192,7 @@ async def upload_checkpoint(
     return LotUploadResponse(
         lot_id=merged.lot_id, part_number=merged.part_number, status=merged.status,
         reading_count=len(merged.readings),
+        insufficient_data_components=_insufficient_data_components(merged.readings),
     )
 
 
@@ -204,6 +206,15 @@ async def get_quality_flags(lot_id: str) -> list[dict]:
         raise HTTPException(status_code=404, detail=f"lot '{lot_id}' not found")
     flags = run_quality_checks(record.dataset.readings)
     return [_flag_to_dict(flag) for flag in flags]
+
+
+def _insufficient_data_components(readings: list) -> list[str]:
+    """R7 (AGENTS.md): components missing 0h or 24h for some parameter, never a silent drop.
+    Only populates LotUploadResponse.insufficient_data_components - never rejects or changes what
+    is stored or analysed. Callers pass the full (merged, for checkpoints) reading set so a
+    completed component drops off the list rather than staying flagged from a prior upload."""
+    flags = check_missing_checkpoints(readings)
+    return sorted({flag.component_id for flag in flags if flag.flag_type == "INSUFFICIENT_DATA"})
 
 
 def _flag_to_dict(flag: QualityFlag) -> dict:
