@@ -428,8 +428,10 @@ class ConfirmedOutcomeRecord(BaseModel):
 
 
 class PartDetailResponse(BaseModel):
-    module_a: ModuleAResult
-    module_b: ModuleBResult
+    # Optional (Block 3C, CONTRACT_CHANGES.md 2026-09-30): None on an in-progress part - Module A
+    # never runs before COMPLETE (documented gap, unchanged); the fused ruling itself is unaffected.
+    module_a: ModuleAResult | None = None
+    module_b: ModuleBResult | None = None
     explanation_sentence: str
     confidence_qualifier: str  # E4 steps 5-6
     severity_cap_note: str | None  # E4 step 8 - worded per which capping reason applied

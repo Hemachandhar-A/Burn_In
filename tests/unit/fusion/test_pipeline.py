@@ -705,3 +705,100 @@ def test_stored_shap_rows_survive_round_trip_on_an_in_progress_lot(tmp_path, mon
     stored = repository.query_latest_project_data("L-B6A")
     assert stored is not None
     AnalysisResults.model_validate_json(stored.results_json)  # GOLDEN-B6a: must not raise
+
+
+def test_every_reader_of_the_stored_row_survives_the_in_progress_lot(tmp_path, monkeypatch):
+    """B6d hardening: every reader of `project_data.results_json` that serves the API - GET
+    /lots/{lot_id}, GET /parts/{component_id}, the report data path (POST /lots/{lot_id}/report),
+    and the storage routes - must return 200 on the same in-progress lot as B6a, not just the raw
+    model_validate_json call. Storage routes (storage/router.py) never actually parse results_json
+    (its own docstring: no project_data/results route exists yet) - included anyway to confirm that
+    stays true and the project is still visible. Also asserts MCD/ECOD/z-table rows carry no
+    non-finite numbers on this lot (only SHAP's 96h-derived features are ever absent)."""
+    import importlib
+    import io
+    import math
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test_b6d.db'}")
+    from storage import database
+    importlib.reload(database)
+    from storage import repository
+    importlib.reload(repository)
+    repository.init_db()
+
+    from ingestion import store
+    from ingestion.router import router as ingestion_router
+    store.clear()
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from fusion.router import router as fusion_router
+    from identity.router import router as identity_router
+    from identity.auth import create_access_token
+    from report.router import router as report_router
+    from storage.router import router as storage_router
+
+    app = FastAPI()
+    app.include_router(ingestion_router)
+    app.include_router(fusion_router)
+    app.include_router(identity_router)
+    app.include_router(report_router)
+    app.include_router(storage_router)
+    client = TestClient(app)
+
+    csv = (
+        "component_id,parameter,checkpoint_hour,value,unit\n"
+        "c1,iddq,0,1.0,uA\n"
+        "c1,iddq,24,500.0,uA\n"
+        "c2,iddq,0,1.0,uA\n"
+        "c2,iddq,24,1.1,uA\n"
+    )
+    files = {"file": ("lot.csv", io.BytesIO(csv.encode()), "text/csv")}
+    data = {"lot_id": "L-B6D", "part_number": "PN-B6D", "manufacturer": "ACME", "date_code": "2601",
+            "account_id": "a.sharma"}
+    resp = client.post("/lots", files=files, data=data)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "IN_PROGRESS"
+
+    repository.save_account("a.sharma", "A Sharma", "Quality Engineer", "hash")
+    auth_headers = {"Authorization": f"Bearer {create_access_token('a.sharma', 'Quality Engineer')}"}
+
+    # Reader 1: GET /lots/{lot_id}
+    lot_resp = client.get("/lots/L-B6D")
+    assert lot_resp.status_code == 200
+    lot_body = lot_resp.json()
+    assert {a["component_id"] for a in lot_body["assessments"]} == {"c1", "c2"}
+    assert lot_body["disposition"]["is_forecast"] is True
+
+    # Reader 2: GET /parts/{component_id} - c1 is the flagged part whose explanation carries the
+    # None-mapped 96h-derived SHAP features.
+    part_resp = client.get("/parts/c1", headers=auth_headers)
+    assert part_resp.status_code == 200
+    explanation = part_resp.json()["explanation"]
+    shap_by_feature = {row["feature"]: row["value"] for row in explanation["shap_contributions"]}
+    assert shap_by_feature["delta_96h"] is None
+    assert shap_by_feature["elapsed_96h"] is None
+
+    def _assert_all_finite(rows, *keys):
+        for row in rows:
+            for key in keys:
+                value = row[key]
+                assert value is None or math.isfinite(value), f"non-finite {key} in {row}"
+
+    _assert_all_finite(explanation["mcd_contributions"], "contribution")
+    _assert_all_finite(explanation["ecod_dimensions"], "score")
+    _assert_all_finite(explanation["zscore_table"], "value", "lot_median", "z")
+
+    # Reader 3: the report data path.
+    report_resp = client.post("/lots/L-B6D/report", headers={"Accept": "application/json"})
+    assert report_resp.status_code == 200
+    report_body = report_resp.json()
+    assert report_body["quantity_screened"] == 2
+    assert report_body["is_forecast"] is True
+
+    # Reader 4: the storage routes - GET /projects must still see the project (this router never
+    # parses results_json itself, so this confirms only that it stays unaffected).
+    projects_resp = client.get("/projects")
+    assert projects_resp.status_code == 200
+    assert any(p["lot_id"] == "L-B6D" for p in projects_resp.json())

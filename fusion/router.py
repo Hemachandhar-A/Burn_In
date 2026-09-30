@@ -80,15 +80,10 @@ def get_part_detail(
     assessment = next(a for a in results.assessments if a.component_id == component_id)
     module_a = results.module_a_results.get(component_id)
     module_b = results.module_b_results.get(component_id)
-    if module_a is None or module_b is None:
-        # Documented gap (CONTRACT_CHANGES.md 2026-09-30): Module A never runs on an IN_PROGRESS
-        # lot, so a component whose only stored run is still in progress has no ModuleAResult to
-        # serve - PartDetailResponse.module_a/module_b are required fields, so this 404s rather
-        # than fabricating one (rule 7).
-        raise HTTPException(
-            status_code=404,
-            detail=f"component '{component_id}' has no stored Module A/B result yet (lot in progress)",
-        )
+    # Documented gap (CONTRACT_CHANGES.md 2026-09-30): Module A never runs on an IN_PROGRESS lot, so
+    # a component whose only stored run is still in progress has no ModuleAResult - module_a/module_b
+    # are Optional (Block 3C) precisely for this case, never fabricated (rule 7). 404 is reserved for
+    # a genuinely unknown component_id, handled by the `not matches` check above.
 
     explanation = results.part_explanations.get(component_id)
     if explanation is not None:
