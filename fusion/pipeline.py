@@ -1,13 +1,33 @@
-from contracts import LotDataset, ScreeningConfig, AnalysisResults, RiskAssessment, LotDisposition, to_module_b_input
+from contracts import (
+    LotDataset, ScreeningConfig, AnalysisResults, RiskAssessment, LotDisposition, to_module_b_input,
+    PartExplanation, ShapContributionRow, MCDContributionRow, EcodDimensionRow, ZScoreTableRow,
+)
 from features.compute import compute
 from module_a.detect import detect as module_a_detect
-from module_b.predictor import predict as module_b_predict
+from module_b.predictor import predict as module_b_predict, synthetic_models as module_b_synthetic_models, TRAINED_PARAMETERS
 from fusion.gate import compute_part_verdict
+from ingestion.quality import check_missing_checkpoints
+from explain.zscore import build_zscore_table
+from explain.mcd import explain_mcd
+from explain.ecod import explain_ecod
+from explain.shap_b import explain_module_b
+from explain.text import (
+    explanation_sentence, confidence_qualifier, explanation_summary as build_explanation_summary,
+    severity_cap_note, unavailable_forecast_note,
+)
 
 def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResults:
     is_complete = lot.status == "COMPLETE"
     is_forecast = not is_complete
-    
+
+    # Part 1a (Block 3B): single source of the INSUFFICIENT_DATA rule - computed here, not
+    # reimplemented, so AnalysisResults.insufficient_data_components carries it on every path
+    # (live GET /lots/{lot_id} and a stored reload alike), not just the ingestion upload response.
+    quality_flags = check_missing_checkpoints(lot.readings)
+    insufficient_data_components = sorted(
+        {f.component_id for f in quality_flags if f.flag_type == "INSUFFICIENT_DATA"}
+    )
+
     frames = compute(lot)
     
     a_results = []
@@ -64,12 +84,22 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
     component_ids = set()
     for frame in frames:
         component_ids.add(frame.component_id)
-        
+
+    # Part 3g (Block 3B): lookups keyed by (component_id, parameter) - a_by_comp/b_by_comp above are
+    # each module's own per-component "worst" pick (by that module's own ranking), which may not be
+    # the SAME parameter as the assessment's eventual worst_parameter. Explanations must describe
+    # whatever worst_parameter actually is, using that exact parameter's own module result - never a
+    # different parameter's numbers attributed to it.
+    a_results_by_key = {(r.component_id, r.parameter): r for r in a_results}
+    b_results_by_key = {(r.component_id, r.parameter): r for r in b_results}
+    b_input_by_key = {(f.component_id, f.parameter): b_inputs[i] for i, f in enumerate(frames)}
+    cap_reason_by_cid: dict[str, str | None] = {}
+
     assessments = []
     failures = 0
     lower_bound_failures = 0
     total_parts = len(component_ids)
-    
+
     for cid in sorted(component_ids):
         # find the frame with the worst parameter?
         # we can just use the first frame's parameter if it's PASS, else worst parameter from module_a/b
@@ -77,9 +107,10 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         comp_frames = [f for f in frames if f.component_id == cid]
         a_res = a_by_comp.get(cid)
         b_res = b_by_comp.get(cid)
-        
-        verdict, _, _ = compute_part_verdict(a_res, b_res)
-        
+
+        verdict, cap_reason, _ = compute_part_verdict(a_res, b_res)
+        cap_reason_by_cid[cid] = cap_reason
+
         if verdict == "REJECT" or (b_res and b_res.exceeds_safety_slope):
             failures += 1
             
@@ -120,7 +151,99 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
             explanation_sentence=None,
         )
         assessments.append(assessment)
-        
+
+    # Part 4 (Block 3B, CONTRACT_CHANGES.md 2026-09-30): GET /parts/{component_id} needs the full
+    # ModuleAResult/ModuleBResult for every analysed component (not just non-PASS ones), stored
+    # rather than re-run - one entry per component, for that component's own worst_parameter. Module
+    # A is absent entirely on an in-progress lot (a_results_by_key is empty), a documented gap.
+    module_a_results: dict[str, object] = {}
+    module_b_results: dict[str, object] = {}
+    for assessment in assessments:
+        a_for_detail = a_results_by_key.get((assessment.component_id, assessment.worst_parameter))
+        if a_for_detail is not None:
+            module_a_results[assessment.component_id] = a_for_detail
+        b_for_detail = b_results_by_key.get((assessment.component_id, assessment.worst_parameter))
+        if b_for_detail is not None:
+            module_b_results[assessment.component_id] = b_for_detail
+
+    # Part 3g (Block 3B): E4's explanation mechanisms, one PartExplanation per non-PASS assessment.
+    # PASS parts get no entry (not an empty one) - explain/text.py's functions all already return
+    # None/[] for a module that did not compute something, so nothing here fabricates data.
+    part_explanations: dict[str, PartExplanation] = {}
+    for assessment in assessments:
+        if assessment.verdict == "PASS":
+            continue
+        cid = assessment.component_id
+        worst_parameter = assessment.worst_parameter
+        comp_frames = [f for f in frames if f.component_id == cid]
+        a_res_for_explain = a_results_by_key.get((cid, worst_parameter))
+        b_res_for_explain = b_results_by_key.get((cid, worst_parameter))
+
+        zscore_rows = []
+        try:
+            zscore_rows = build_zscore_table(comp_frames, "24h").rows
+        except ValueError:
+            zscore_rows = []
+        # The sentence's z-score clause only claims Module A's own worst-parameter result - never a
+        # table lookup for a parameter Module A did not flag here.
+        zscore_sentence_row = None
+        if a_res_for_explain is not None:
+            zscore_sentence_row = next((r for r in zscore_rows if r.parameter == worst_parameter), None)
+
+        mcd_contributions = []
+        try:
+            mcd_contributions = explain_mcd(frames, "24h", cid).contributions
+        except ValueError:
+            mcd_contributions = []
+
+        ecod_dimensions = []
+        try:
+            ecod_dimensions = explain_ecod(frames, worst_parameter, cid).contributions
+        except ValueError:
+            ecod_dimensions = []
+
+        shap_exp = None
+        if (
+            worst_parameter in TRAINED_PARAMETERS
+            and b_res_for_explain is not None
+            and not b_res_for_explain.forecast_unavailable
+        ):
+            model = module_b_synthetic_models(lot.part_number).get((lot.part_number, worst_parameter))
+            b_input = b_input_by_key.get((cid, worst_parameter))
+            if model is not None and b_input is not None:
+                try:
+                    shap_exp = explain_module_b(b_input, model)
+                except KeyError:
+                    shap_exp = None
+
+        sentence = explanation_sentence(
+            cid, zscore_row=zscore_sentence_row, module_b=b_res_for_explain, shap=shap_exp
+        )
+
+        part_explanations[cid] = PartExplanation(
+            shap_contributions=[
+                ShapContributionRow(feature=c.feature, value=c.value, shap_value=c.shap_value)
+                for c in (shap_exp.contributions if shap_exp else [])
+            ],
+            mcd_contributions=[
+                MCDContributionRow(parameter=c.parameter, contribution=c.contribution)
+                for c in mcd_contributions
+            ],
+            ecod_dimensions=[
+                EcodDimensionRow(dimension=c.dimension, score=c.score) for c in ecod_dimensions
+            ],
+            zscore_table=[
+                ZScoreTableRow(parameter=r.parameter, value=r.value, lot_median=r.lot_median, z=r.z)
+                for r in zscore_rows
+            ],
+            explanation_sentence=sentence,
+            confidence_qualifier=confidence_qualifier(b_res_for_explain),
+            severity_cap_note=severity_cap_note(cap_reason_by_cid.get(cid), assessment.verdict),
+            unavailable_forecast_note=unavailable_forecast_note(b_res_for_explain),
+        )
+
+    explanation_summary = build_explanation_summary(assessments, insufficient_data_components)
+
     pda_result = (failures / total_parts) if total_parts > 0 else 0.0
     pda_exceeded = pda_result >= config.pda_threshold
     
@@ -145,7 +268,12 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
             lot_verdict = "HOLD"
         else:
             lot_verdict = "ACCEPT"
-            
+        # Part 1 ruling (Block 3B): a COMPLETE lot with >=1 analysed part but a non-empty
+        # insufficient_data_components must never be ACCEPT - HOLD instead. Scoped to the ACCEPT
+        # case only: REJECT/HOLD from the ordinary rules above are unaffected (D15 stays).
+        if lot_verdict == "ACCEPT" and insufficient_data_components:
+            lot_verdict = "HOLD"
+
     disposition = LotDisposition(
         lot_id=lot.lot_id,
         status=lot.status,
@@ -153,8 +281,13 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         verdict=lot_verdict,
         is_forecast=is_forecast
     )
-    
+
     return AnalysisResults(
         assessments=assessments,
-        disposition=disposition
+        disposition=disposition,
+        insufficient_data_components=insufficient_data_components,
+        part_explanations=part_explanations,
+        explanation_summary=explanation_summary,
+        module_a_results=module_a_results,
+        module_b_results=module_b_results,
     )
