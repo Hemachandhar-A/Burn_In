@@ -367,3 +367,11 @@ Entry format:
 - Missing/wrong: CAPA endpoints are not in contracts.py.
 - Proposed fix: Created TEMP_CapaRecord and TEMP_ResolveRequest in capa.models, mapped to GET /capa, POST /capa/{id}/resolve, and GET /audit/export.
 - Status: OPEN
+
+---
+
+## 2026-09-30 Lead-as-P2 - Nothing but the upload response carries insufficient_data_components; a dashboard reload has no banner source
+- Missing/wrong: `LotUploadResponse.insufficient_data_components` (field added 2026-09-26, now populated for real by `ingestion/router.py` - see the "p2-ingestion merged" entry above) only reaches the client on the `POST /lots` / `POST /lots/{lot_id}/checkpoints` response. `LotSummaryResponse` is `AnalysisResults` verbatim (`assessments` + `disposition`), and `LotDisposition` has only `lot_id`, `status`, `pda_result`, `verdict`, `is_forecast` - neither carries any per-component "insufficient data" list. `GET /lots/{lot_id}/quality` still returns the full, unfiltered `QualityFlag` list (component_id/parameter/flag_type/message), not the same `list[str]` shape.
+- Why it matters: if a dashboard screen (E6) wants this banner on a page reload rather than only right after an upload, there is currently no route that gives it the same `insufficient_data_components: list[str]` shape - only the raw quality-flags list, which the client would have to filter/re-derive itself (drift risk if the flag_type spelling or semantics ever changes).
+- Proposed fix: n/a - flagging only, no contracts.py edit made. Two candidates for the Lead: (a) add `insufficient_data_components: list[str]` to `LotSummaryResponse` too, populated the same way in whichever pipeline path builds it; (b) leave it to `GET /lots/{lot_id}/quality` and have the frontend derive the list client-side from `flag_type == "INSUFFICIENT_DATA"`.
+- Status: OPEN.
