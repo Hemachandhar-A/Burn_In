@@ -29,21 +29,37 @@ it, so both paths work without a second accessor.
 import shap
 
 from contracts import ModuleBInput
+from explain.cache import ExplainCache
 from explain.models import FeatureContribution, ShapExplanation
 from module_b.calibration import CalibratedDriftModel, horizon_of
 from module_b.model import FEATURE_NAMES, feature_matrix
 
 
-def explain_module_b(frame: ModuleBInput, model: CalibratedDriftModel) -> ShapExplanation:
+def explain_module_b(
+    frame: ModuleBInput, model: CalibratedDriftModel, cache: ExplainCache | None = None,
+) -> ShapExplanation:
     """TreeSHAP contributions for one part's Module B point-estimate (median quantile) prediction, in
     the model's own residual/output space - before module_b.predictor adds the persistence anchor back
     to get predicted_168h. Raises KeyError if `model` has no regressor for `frame`'s horizon
-    (forecast_unavailable case) - callers check that first, the same as module_b.predictor.predict does."""
+    (forecast_unavailable case) - callers check that first, the same as module_b.predictor.predict does.
+
+    `cache` (Block 4c Part 2): when given, shap.TreeExplainer(booster) is reused for every call whose
+    booster is the same object (same part_number/parameter/horizon, since
+    module_b.predictor.synthetic_models is itself functools.cache'd) instead of reconstructed -
+    TreeExplainer's construction depends only on the booster, so this is numerically identical, only
+    the redundant construction is removed. Keyed by id(booster), not by lot. Default None reproduces
+    the exact pre-optimization behavior (a fresh TreeExplainer on every call)."""
     horizon = horizon_of(frame)
     booster = model.regressors[horizon]._mapie_quantile_regressor.single_estimator_
 
     X = feature_matrix([frame])
-    explainer = shap.TreeExplainer(booster)
+    if cache is not None:
+        key = id(booster)
+        if key not in cache.tree_explainers:
+            cache.tree_explainers[key] = shap.TreeExplainer(booster)
+        explainer = cache.tree_explainers[key]
+    else:
+        explainer = shap.TreeExplainer(booster)
     shap_values = explainer.shap_values(X)[0]
     base_value = float(explainer.expected_value)
     prediction = float(booster.predict(X)[0])

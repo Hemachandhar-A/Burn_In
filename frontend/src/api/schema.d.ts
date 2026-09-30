@@ -755,6 +755,10 @@ export interface components {
         };
         /** PartDetailResponse */
         PartDetailResponse: {
+            /** Analysis Run Id */
+            analysis_run_id?: string | null;
+            /** Component Id */
+            component_id?: string | null;
             /** Confidence Qualifier */
             confidence_qualifier: string;
             /** Confirmed Outcomes */
@@ -764,14 +768,20 @@ export interface components {
             explanation?: components["schemas"]["PartExplanation"] | null;
             /** Explanation Sentence */
             explanation_sentence: string;
+            /** Lot Id */
+            lot_id?: string | null;
             module_a?: components["schemas"]["ModuleAResult"] | null;
             module_b?: components["schemas"]["ModuleBResult"] | null;
+            /** Project Id */
+            project_id?: string | null;
             /** Severity Cap Note */
             severity_cap_note: string | null;
             /** Staleness Note */
             staleness_note: string | null;
             /** Unavailable Forecast Note */
             unavailable_forecast_note: string | null;
+            /** Verdict */
+            verdict?: ("PASS" | "WATCH" | "REJECT") | null;
         };
         /**
          * PartExplanation
@@ -801,6 +811,11 @@ export interface components {
              * @default []
              */
             shap_contributions: components["schemas"]["ShapContributionRow"][];
+            /**
+             * Trajectory
+             * @default []
+             */
+            trajectory: components["schemas"]["TrajectoryPoint"][];
             /** Unavailable Forecast Note */
             unavailable_forecast_note?: string | null;
             /**
@@ -919,6 +934,20 @@ export interface components {
              * @constant
              */
             token_type: "bearer";
+        };
+        /**
+         * TrajectoryPoint
+         * @description Block 4c Part 3b: one measured checkpoint of a part's worst parameter over burn-in - built at
+         *     analysis time from the stored FeatureFrame, one point per checkpoint that actually has a value
+         *     (never a guessed/NaN one - rule 7, and the same discipline the earlier SHAP null bug required).
+         */
+        TrajectoryPoint: {
+            /** Checkpoint Hour */
+            checkpoint_hour: number;
+            /** Lot Median */
+            lot_median?: number | null;
+            /** Value */
+            value: number;
         };
         /** ValidationError */
         ValidationError: {

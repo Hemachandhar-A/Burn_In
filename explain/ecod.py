@@ -10,16 +10,29 @@ own `_value_matrix` feature scope). The identity PyOD itself uses to aggregate i
 must reproduce that same sum, verified by test.
 """
 from contracts import FeatureFrame
+from explain.cache import ExplainCache
 from explain.models import DimensionContribution, EcodExplanation
 from module_a.detect import fit_ecod
 
 _DIMENSIONS = ("value_0h", "value_24h")
 
 
-def explain_ecod(frames: list[FeatureFrame], parameter: str, component_id: str) -> EcodExplanation:
+def explain_ecod(
+    frames: list[FeatureFrame], parameter: str, component_id: str, cache: ExplainCache | None = None,
+) -> EcodExplanation:
     """Per-dimension ECOD score breakdown for one part. Raises ValueError if no frame in `frames` has
-    `parameter`, or if `component_id` isn't among the frames scored for it."""
-    fitted = fit_ecod(frames, parameter)
+    `parameter`, or if `component_id` isn't among the frames scored for it.
+
+    `cache` (Block 4c Part 2): when given, fit_ecod(frames, parameter) is reused for every call
+    sharing the same parameter instead of refit - numerically identical (ECOD's fit has no
+    randomness), only the redundant computation is removed. Default None reproduces the exact
+    pre-optimization behavior (a fresh fit on every call)."""
+    if cache is not None:
+        if parameter not in cache.ecod_fits:
+            cache.ecod_fits[parameter] = fit_ecod(frames, parameter)
+        fitted = cache.ecod_fits[parameter]
+    else:
+        fitted = fit_ecod(frames, parameter)
     if fitted is None:
         raise ValueError(f"no frames for parameter {parameter!r}")
     component_ids, ecod = fitted
