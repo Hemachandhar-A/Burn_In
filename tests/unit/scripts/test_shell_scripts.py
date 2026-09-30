@@ -27,5 +27,7 @@ def test_build_demo_dry_run_steps_and_flags():
     assert proc.returncode == 0, proc.stderr
     assert "scripts.seed" in proc.stdout and "npm ci && npm run build" in proc.stdout
     assert "scripts.prewarm" in proc.stdout and "--reload" not in proc.stdout
+    assert "scripts.load_demo_lots" in proc.stdout and "WARNING" not in proc.stderr
+    assert "scripts.load_demo_lots" not in _dry("build_demo.sh", "--no-demo-lots").stdout
     skip = _dry("build_demo.sh", "--no-reseed", "--port", "9000")
     assert "scripts.seed" not in skip.stdout and "--port 9000" in skip.stdout
