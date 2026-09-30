@@ -62,6 +62,10 @@ const EXPLANATION: NonNullable<PartDetailResponse['explanation']> = {
   confidence_qualifier: null,
   severity_cap_note: null,
   unavailable_forecast_note: null,
+  trajectory: [
+    { checkpoint_hour: 0, value: 9.8, lot_median: 9.5 },
+    { checkpoint_hour: 24, value: 45, lot_median: 10 },
+  ],
 }
 
 const DETAIL = (overrides: Partial<PartDetailResponse> = {}): PartDetailResponse => ({
@@ -248,6 +252,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
           confidence_qualifier: null,
           severity_cap_note: null,
           unavailable_forecast_note: null,
+          trajectory: [],
         },
       }),
     )
