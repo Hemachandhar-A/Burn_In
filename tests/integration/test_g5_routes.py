@@ -7,9 +7,7 @@ lot (COMPLETE, uploaded as a CSV through POST /lots) plus one IN_PROGRESS lot. P
   (iv)  unknown id -> 404 where an id is in the path
 then one flow across routes. The final test prints the route x check table (run with -s).
 
-`GET /lots/{lot_id}` is planned as auth-required (Part 5.6) but fusion/router.py registers no
-get_current_account dependency on it: that check is marked xfail(strict=True) as an OPEN G5 finding -
-it turns red the moment the route is fixed, so the marker can never go stale.
+Auth for the ingestion/storage/report/fusion routers is applied at app level (api/main.py).
 """
 import csv
 import io
@@ -104,7 +102,7 @@ def env(tmp_path_factory):
 
 def _part_ids(env):
     """(project_id, analysis_run_id) for a part, straight from GET /parts - the documented round trip."""
-    r = env["client"].get(f"/parts/{GOLDEN_COMPONENT_ID}", headers=env["sharma"])
+    r = env["client"].get(f"/parts/{GOLDEN_COMPONENT_ID}?lot_id={GOLDEN_LOT_ID}", headers=env["sharma"])
     assert r.status_code == 200
     return r.json()["project_id"], r.json()["analysis_run_id"]
 
@@ -137,12 +135,47 @@ def test_get_lot_valid_and_404(env):
     _record("GET /lots/{lot_id}", "404")
 
 
-@pytest.mark.xfail(strict=True, reason="OPEN G5 finding: GET /lots/{lot_id} (fusion/router.py:25) has no "
-                                       "get_current_account dependency; Part 5.6 says auth required")
 def test_get_lot_requires_auth_per_plan(env):
     r = env["client"].get(f"/lots/{GOLDEN_LOT_ID}")
-    _record("GET /lots/{lot_id}", "401", f"FAIL (got {r.status_code})")
     assert r.status_code == 401
+    _record("GET /lots/{lot_id}", "401")
+
+
+# Every route registered at app level behind get_current_account (finding 1/3/4): no token -> 401.
+_PROTECTED = [
+    ("GET", "/lots/{lot}"), ("POST", "/lots"), ("POST", "/lots/demo"), ("POST", "/lots/{lot}/checkpoints"),
+    ("GET", "/lots/{lot}/quality"), ("POST", "/lots/{lot}/report"), ("GET", "/projects"),
+    ("GET", "/projects/{project}"), ("GET", "/projects/{project}/events"),
+    ("GET", "/projects/{project}/disposition-signoffs"), ("GET", "/events"), ("GET", "/disposition-signoffs"),
+]
+
+
+@pytest.mark.parametrize("method,path", _PROTECTED)
+def test_app_level_routes_require_token(env, method, path):
+    url = path.format(lot=GOLDEN_LOT_ID, project="any-project")
+    r = env["client"].request(method, url)
+    assert r.status_code == 401, (method, url, r.status_code)
+
+
+@pytest.mark.parametrize("method,path", [(m, p) for m, p in _PROTECTED if m == "GET"])
+def test_app_level_get_routes_work_with_token(env, method, path):
+    url = path.format(lot=GOLDEN_LOT_ID, project="any-project")
+    r = env["client"].request(method, url, headers=env["sharma"])
+    assert r.status_code != 401, (url, r.status_code)
+
+
+def test_open_routes_stay_open(env):
+    c = env["client"]
+    assert c.get("/health").status_code == 200
+    assert c.post("/auth/login", json={"account_id": "a.sharma", "pin": "1234"}).status_code == 200
+
+
+def test_cors_preflight_not_blocked_by_auth(env):
+    r = env["client"].options("/lots/" + GOLDEN_LOT_ID, headers={
+        "Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization"})
+    assert r.status_code == 200, r.status_code
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
 # --- GET /parts/{component_id} ----------------------------------------------------------------------
@@ -182,14 +215,73 @@ def test_disposition_checks(env):
     _record("POST /parts/{id}/disposition", "200+model")
 
 
-@pytest.mark.xfail(strict=True, reason="OPEN G5 finding: POST /parts/{id}/disposition (identity/router.py:41) "
-                                       "never checks the component exists - an unknown id is accepted (200)")
+def _signoff_count(project_id):
+    from storage.repository import query_disposition_signoffs
+    return len(query_disposition_signoffs(project_id=project_id))
+
+
 def test_disposition_unknown_component_is_404(env):
     project_id, run_id = _part_ids(env)
+    before = _signoff_count(project_id)
     r = env["client"].post(f"/parts/NO-SUCH-PART/disposition?project_id={project_id}&analysis_run_id={run_id}",
                            json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
-    _record("POST /parts/{id}/disposition", "404", f"FAIL (got {r.status_code})")
-    assert r.status_code == 404
+    _record("POST /parts/{id}/disposition", "404")
+    assert r.status_code == 404 and "NO-SUCH-PART" in r.json()["detail"]
+    assert _signoff_count(project_id) == before
+
+
+def test_disposition_unknown_project_is_404(env):
+    _, run_id = _part_ids(env)
+    r = env["client"].post(f"/parts/{GOLDEN_COMPONENT_ID}/disposition?project_id=no-such-project&analysis_run_id={run_id}",
+                           json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
+    assert r.status_code == 404 and "no-such-project" in r.json()["detail"]
+    assert _signoff_count("no-such-project") == 0
+
+
+def test_disposition_run_of_other_project_is_404(env):
+    c = env["client"]
+    project_id, _ = _part_ids(env)
+    ip = c.get(f"/parts/{IN_PROGRESS_PART}?lot_id={IN_PROGRESS_LOT_ID}", headers=env["sharma"]).json()
+    assert ip["project_id"] != project_id
+    before = _signoff_count(project_id)
+    r = c.post(f"/parts/{GOLDEN_COMPONENT_ID}/disposition?project_id={project_id}&analysis_run_id={ip['analysis_run_id']}",
+               json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
+    assert r.status_code == 404 and ip["analysis_run_id"] in r.json()["detail"]
+    assert _signoff_count(project_id) == before
+
+
+def test_disposition_component_not_in_run_is_404(env):
+    """A component that exists only in a different (in-progress) lot, sent with the GOLDEN lot's project
+    and run ids: the golden run's assessments don't contain it -> 404, no row written."""
+    c = env["client"]
+    only_id = "IP-ONLY-1"
+    readings = [r for r in golden_lot().readings if r.checkpoint_hour in (0, 24)]
+    readings += [r.model_copy(update={"component_id": only_id}) for r in readings if r.component_id == "G-002"]
+    meta = {"lot_id": "IP-LOT-02", "part_number": "PN-GOLDEN", "manufacturer": "GOLDEN-MFR",
+            "date_code": "2601", "account_id": "a.sharma"}
+    up = c.post("/lots", files={"file": ("lot.csv", _csv_bytes(readings), "text/csv")}, data=meta,
+                headers=env["sharma"])
+    assert up.status_code == 200, up.text
+    assert any(a["component_id"] == only_id for a in c.get("/lots/IP-LOT-02", headers=env["sharma"]).json()["assessments"])
+    golden_ids = {a["component_id"] for a in c.get(f"/lots/{GOLDEN_LOT_ID}", headers=env["sharma"]).json()["assessments"]}
+    assert only_id not in golden_ids
+
+    project_id, run_id = _part_ids(env)
+    before = _signoff_count(project_id)
+    r = c.post(f"/parts/{only_id}/disposition?project_id={project_id}&analysis_run_id={run_id}",
+               json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
+    assert r.status_code == 404 and only_id in r.json()["detail"]
+    assert _signoff_count(project_id) == before
+
+
+def test_disposition_valid_path_writes_exactly_one_row(env):
+    project_id, run_id = _part_ids(env)
+    before = _signoff_count(project_id)
+    r = env["client"].post(
+        f"/parts/{GOLDEN_COMPONENT_ID}/disposition?project_id={project_id}&analysis_run_id={run_id}",
+        json={"verdict": "HOLD", "rationale": "valid path"}, headers=env["sharma"])
+    assert r.status_code == 200
+    assert _signoff_count(project_id) == before + 1
 
 
 # --- GET /settings, POST /settings/propose, POST /settings/signoff ----------------------------------

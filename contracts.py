@@ -256,6 +256,10 @@ class Project(Base):
     test_date: Mapped[datetime]  # lot-level physical test date from the ingestion metadata form (E7 step 1); distinct from created_at
     created_at: Mapped[datetime]
     created_by: Mapped[str] = mapped_column(ForeignKey("accounts.account_id"))
+    # Block 4d (additive, nullable, CONTRACT_CHANGES.md): lot metadata from the ingestion form. Older rows
+    # (and an old database file, see storage.database.init_db) read back None.
+    manufacturer: Mapped[str | None] = mapped_column(default=None)
+    date_code: Mapped[str | None] = mapped_column(default=None)
 
 
 class ProjectData(Base):
@@ -484,6 +488,10 @@ class ProjectSummary(BaseModel):
     part_number: str
     created_at: datetime
     created_by: str
+    # Block 4d (additive, default None): lot metadata persisted with the project.
+    manufacturer: str | None = None
+    date_code: str | None = None
+    test_date: datetime | None = None
 
 
 class ProjectDataResponse(BaseModel):

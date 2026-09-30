@@ -37,6 +37,26 @@ _ALL_TABLES = [
 ]
 
 
+# Columns added to an existing table after its first release: (table, column, SQL type). create_all never
+# alters a table that already exists, so an old database file needs these added explicitly.
+_ADDED_COLUMNS = [
+    (Project.__tablename__, "manufacturer", "VARCHAR"),
+    (Project.__tablename__, "date_code", "VARCHAR"),
+]
+
+
+def _add_missing_columns() -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as conn:
+        for table, column, sql_type in _ADDED_COLUMNS:
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
+
+
 def init_db() -> None:
-    """Creates all six tables in contracts.py Part 5.5."""
+    """Creates all six tables in contracts.py Part 5.5, then adds any nullable column an older database
+    file lacks (idempotent: a second call adds nothing)."""
     Base.metadata.create_all(bind=engine, tables=_ALL_TABLES)
+    _add_missing_columns()
