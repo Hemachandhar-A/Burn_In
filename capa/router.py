@@ -5,12 +5,16 @@ from fastapi.responses import PlainTextResponse
 from typing import List
 
 from contracts import (
-    Account, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest, CorrectiveStatusResponse, ScreeningConfig,
+    Account, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest, CorrectiveStatusResponse, DispositionRecord,
+    ScreeningConfig, WorklistResponse,
 )
 from identity.auth import get_current_account
 from identity.router import get_current_settings_state
 from capa.models import TEMP_CapaRecord, TEMP_ResolveRequest
-from capa.logic import compute_corrective_status, find_latest_run_for_component, get_all_capas
+from capa.logic import (
+    compute_corrective_status, find_dispositions_awaiting_confirmed_outcome,
+    find_latest_run_for_component, get_all_capas,
+)
 from storage.repository import log_event, query_events, save_confirmed_outcome
 
 router = APIRouter(tags=["CAPA", "Audit"])
@@ -75,6 +79,20 @@ def get_corrective_status(account: Account = Depends(get_current_account)) -> Co
         ceiling=current_values["confirmed_outcome_fn_ceiling"],
         min_confirmed_outcomes=config.min_confirmed_outcomes_for_ceiling,
     )
+
+
+@planned_router.get("/settings/worklist", response_model=WorklistResponse)
+def get_worklist(account: Account = Depends(get_current_account)) -> WorklistResponse:
+    """E13 step 4: "N dispositions awaiting a confirmed outcome" - tracking only, changes nothing."""
+    pending = [
+        DispositionRecord(
+            project_id=s.project_id, component_id=s.component_id, account_id=s.account_id,
+            verdict=s.verdict, rationale=s.rationale, timestamp=s.timestamp,
+            analysis_run_id=s.analysis_run_id,
+        )
+        for s in find_dispositions_awaiting_confirmed_outcome()
+    ]
+    return WorklistResponse(pending=pending)
 
 @router.get("/capa", response_model=List[TEMP_CapaRecord])
 def list_capas(account: Account = Depends(get_current_account)):

@@ -5,7 +5,9 @@ from typing import Literal, NamedTuple
 
 from pydantic import ValidationError
 
-from contracts import AnalysisResults, ConfirmedOutcome, CorrectiveStatusResponse, Project, ProjectData
+from contracts import (
+    AnalysisResults, ConfirmedOutcome, CorrectiveStatusResponse, DispositionSignoff, Project, ProjectData,
+)
 from capa.models import TEMP_CapaRecord
 from storage.repository import (
     query_confirmed_outcomes, query_events, log_event, query_disposition_signoffs, query_project_data,
@@ -214,6 +216,23 @@ def compute_corrective_status(
         confirmed_outcome_count=confirmed_outcome_count,
         status=status,
     )
+
+
+# ---------------------------------------------------------------------------
+# E13 step 4 (Block 4a Part 4) - GET /settings/worklist: tracking only, changes nothing.
+# ---------------------------------------------------------------------------
+
+
+def find_dispositions_awaiting_confirmed_outcome() -> list[DispositionSignoff]:
+    """Every signed-off disposition (disposition_signoffs row) with no confirmed_outcomes row for
+    the same (project_id, component_id), across every project - "N dispositions awaiting a confirmed
+    outcome" (E13 step 4). One entry per disposition_signoffs row, matching
+    WorklistResponse.pending: list[DispositionRecord] as the contract literally defines it - a dual
+    sign-off's two rows for the same REJECT both appear here if that part has no confirmed outcome
+    yet, since the contract wraps the raw signoff record, not a part-deduplicated view."""
+    signoffs = query_disposition_signoffs()
+    confirmed_keys = {(o.project_id, o.component_id) for o in query_confirmed_outcomes()}
+    return [s for s in signoffs if (s.project_id, s.component_id) not in confirmed_keys]
 
 
 def get_all_capas() -> list[TEMP_CapaRecord]:
