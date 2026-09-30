@@ -352,11 +352,39 @@ describe('Part Detail screen (E6 screen 4)', () => {
 
     await waitFor(() =>
       expect(submitConfirmedOutcome).toHaveBeenCalledWith(
+        expect.anything(),
         'DUT-042',
         { confirmed_outcome: 'Confirmed Defective', note: null },
-        'a.sharma',
+        undefined,
       ),
     )
+  })
+
+  test('recording a confirmed outcome refreshes both the part and the worklist', async () => {
+    const { queryClient } = setup()
+    vi.spyOn(partsApi, 'submitConfirmedOutcome').mockResolvedValue({
+      project_id: 'proj-1',
+      component_id: 'DUT-042',
+      account_id: 'a.sharma',
+      confirmed_outcome: 'Confirmed Good',
+      note: null,
+      recorded_at: '2026-09-26T10:00:00',
+      analysis_run_id: '03',
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Record Confirmed Outcome' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() =>
+      expect(invalidate.mock.calls.some((c) => c[0]?.queryKey?.[0] === 'part-detail')).toBe(true),
+    )
+    expect(
+      invalidate.mock.calls.some(
+        (c) => c[0]?.queryKey?.[0] === 'settings' && c[0]?.queryKey?.[1] === 'worklist',
+      ),
+    ).toBe(true)
   })
 
   test('no component selected shows a note instead of crashing', () => {

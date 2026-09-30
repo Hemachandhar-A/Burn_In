@@ -10,6 +10,7 @@ import { describeFailure } from '../api/errors'
 import { getPartDetail, submitConfirmedOutcome, submitDisposition } from '../api/parts'
 import type { PartDetailResponse } from '../api/parts'
 import type { components } from '../api/schema'
+import { WORKLIST_QUERY_KEY } from '../api/settings'
 import { pathToLot } from './registry'
 import { VerdictBadge } from './VerdictBadge'
 
@@ -392,14 +393,16 @@ function PartDetailForComponent({
   const confirmedOutcomeMutation = useMutation({
     mutationFn: () =>
       submitConfirmedOutcome(
+        client,
         componentId,
         { confirmed_outcome: confirmedOutcome, note: confirmedNote.trim() || null },
-        accountId,
+        navState?.lotId,
       ),
     onSuccess: () => {
       setConfirmedNote('')
       setShowConfirmedOutcome(false)
       void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ queryKey: WORKLIST_QUERY_KEY })
     },
   })
 
