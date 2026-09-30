@@ -4,10 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
 from typing import List
 
-from contracts import Account, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest
+from contracts import (
+    Account, ConfirmedOutcomeRecord, ConfirmedOutcomeRequest, CorrectiveStatusResponse, ScreeningConfig,
+)
 from identity.auth import get_current_account
+from identity.router import get_current_settings_state
 from capa.models import TEMP_CapaRecord, TEMP_ResolveRequest
-from capa.logic import find_latest_run_for_component, get_all_capas
+from capa.logic import compute_corrective_status, find_latest_run_for_component, get_all_capas
 from storage.repository import log_event, query_events, save_confirmed_outcome
 
 router = APIRouter(tags=["CAPA", "Audit"])
@@ -58,6 +61,19 @@ def create_confirmed_outcome(
         note=outcome.note,
         recorded_at=outcome.recorded_at,
         analysis_run_id=outcome.analysis_run_id,
+    )
+
+
+@planned_router.get("/settings/corrective-status", response_model=CorrectiveStatusResponse)
+def get_corrective_status(account: Account = Depends(get_current_account)) -> CorrectiveStatusResponse:
+    """E13 steps 6-8: live-computed on every call, nothing stored, nothing to dismiss. The ceiling
+    read here is the live Settings value (post dual sign-off), via identity.router's own state
+    function - never re-derived from raw events a second time."""
+    current_values, _pending = get_current_settings_state()
+    config = ScreeningConfig()
+    return compute_corrective_status(
+        ceiling=current_values["confirmed_outcome_fn_ceiling"],
+        min_confirmed_outcomes=config.min_confirmed_outcomes_for_ceiling,
     )
 
 @router.get("/capa", response_model=List[TEMP_CapaRecord])

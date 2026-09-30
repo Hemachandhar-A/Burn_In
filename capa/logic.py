@@ -5,10 +5,11 @@ from typing import Literal, NamedTuple
 
 from pydantic import ValidationError
 
-from contracts import AnalysisResults, Project, ProjectData
+from contracts import AnalysisResults, ConfirmedOutcome, CorrectiveStatusResponse, Project, ProjectData
 from capa.models import TEMP_CapaRecord
 from storage.repository import (
-    query_events, log_event, query_disposition_signoffs, query_project_data, query_projects,
+    query_confirmed_outcomes, query_events, log_event, query_disposition_signoffs, query_project_data,
+    query_projects,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,79 @@ def compute_match_rates(pairs: list[tuple[str, str]]) -> MatchRates:
         caught_count=caught,
         false_alarm_count=false_alarm,
         fine_count=fine,
+    )
+
+
+# ---------------------------------------------------------------------------
+# E13 steps 6-8 (Block 4a Part 3b) - GET /settings/corrective-status: live-computed on every call,
+# nothing stored. Ties compute_match_rates (Part 2) to storage - the one I/O step Part 2's own
+# pure function deliberately does not do.
+# ---------------------------------------------------------------------------
+
+
+def _verdict_for_outcome(outcome: ConfirmedOutcome) -> str | None:
+    """The model's verdict tier (RiskAssessment.verdict) at the exact analysis_run_id a confirmed
+    outcome is linked to - not the latest run for that project, the run that was actually judged
+    (E13 step 1). None if the row or the component within it can no longer be found (a data-integrity
+    edge that should not occur under normal operation, logged rather than raised - one bad row must
+    not 500 the whole live-computed status)."""
+    for row in query_project_data(outcome.project_id):
+        if row.analysis_run_id != outcome.analysis_run_id:
+            continue
+        try:
+            results = AnalysisResults.model_validate_json(row.results_json)
+        except ValidationError as exc:
+            logger.warning(
+                "corrective-status: skipping confirmed outcome %s - stored run %s failed "
+                "AnalysisResults validation: %s", outcome.confirmed_outcome_id, row.analysis_run_id, exc,
+            )
+            return None
+        for assessment in results.assessments:
+            if assessment.component_id == outcome.component_id:
+                return assessment.verdict
+        return None
+    return None
+
+
+def compute_corrective_status(
+    ceiling: float, min_confirmed_outcomes: int, outcomes: list[ConfirmedOutcome] | None = None,
+) -> CorrectiveStatusResponse:
+    """E13 steps 6-8. outcomes defaults to every confirmed outcome across every project (the ceiling
+    is a global Settings value, not per-project). status is INSUFFICIENT_DATA strictly below
+    min_confirmed_outcomes (Good+Defective, Unknown excluded) regardless of the FN rate; otherwise
+    CEILING_EXCEEDED iff the FN rate is known and exceeds ceiling, else OK. fp_rate is informational
+    only, never a trigger (E13 step 7).
+
+    CorrectiveStatusResponse.fn_rate/fp_rate are contract-frozen required floats (not Optional) -
+    contracts.py is read-only here (AGENTS.md rule 3), so a None rate (zero denominator, e.g. zero
+    Confirmed Defective outcomes so far) is rendered as 0.0 at this API boundary, a disclosed
+    rendering choice logged in CONTRACT_CHANGES.md, not a silent guess: compute_match_rates itself
+    still returns the honest None to any caller that wants it."""
+    if outcomes is None:
+        outcomes = query_confirmed_outcomes()
+
+    pairs: list[tuple[str, str]] = []
+    for outcome in outcomes:
+        verdict = _verdict_for_outcome(outcome)
+        if verdict is None:
+            continue
+        pairs.append((outcome.confirmed_outcome, verdict))
+
+    rates = compute_match_rates(pairs)
+    confirmed_outcome_count = rates.confirmed_defective_count + rates.confirmed_good_count
+
+    if confirmed_outcome_count < min_confirmed_outcomes:
+        status: Literal["OK", "CEILING_EXCEEDED", "INSUFFICIENT_DATA"] = "INSUFFICIENT_DATA"
+    elif rates.fn_rate is not None and rates.fn_rate > ceiling:
+        status = "CEILING_EXCEEDED"
+    else:
+        status = "OK"
+
+    return CorrectiveStatusResponse(
+        fn_rate=rates.fn_rate if rates.fn_rate is not None else 0.0,
+        fp_rate=rates.fp_rate if rates.fp_rate is not None else 0.0,
+        confirmed_outcome_count=confirmed_outcome_count,
+        status=status,
     )
 
 
