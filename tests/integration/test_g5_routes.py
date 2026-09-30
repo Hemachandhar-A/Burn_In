@@ -102,7 +102,7 @@ def env(tmp_path_factory):
 
 def _part_ids(env):
     """(project_id, analysis_run_id) for a part, straight from GET /parts - the documented round trip."""
-    r = env["client"].get(f"/parts/{GOLDEN_COMPONENT_ID}", headers=env["sharma"])
+    r = env["client"].get(f"/parts/{GOLDEN_COMPONENT_ID}?lot_id={GOLDEN_LOT_ID}", headers=env["sharma"])
     assert r.status_code == 200
     return r.json()["project_id"], r.json()["analysis_run_id"]
 
@@ -215,14 +215,73 @@ def test_disposition_checks(env):
     _record("POST /parts/{id}/disposition", "200+model")
 
 
-@pytest.mark.xfail(strict=True, reason="OPEN G5 finding: POST /parts/{id}/disposition (identity/router.py:41) "
-                                       "never checks the component exists - an unknown id is accepted (200)")
+def _signoff_count(project_id):
+    from storage.repository import query_disposition_signoffs
+    return len(query_disposition_signoffs(project_id=project_id))
+
+
 def test_disposition_unknown_component_is_404(env):
     project_id, run_id = _part_ids(env)
+    before = _signoff_count(project_id)
     r = env["client"].post(f"/parts/NO-SUCH-PART/disposition?project_id={project_id}&analysis_run_id={run_id}",
                            json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
-    _record("POST /parts/{id}/disposition", "404", f"FAIL (got {r.status_code})")
-    assert r.status_code == 404
+    _record("POST /parts/{id}/disposition", "404")
+    assert r.status_code == 404 and "NO-SUCH-PART" in r.json()["detail"]
+    assert _signoff_count(project_id) == before
+
+
+def test_disposition_unknown_project_is_404(env):
+    _, run_id = _part_ids(env)
+    r = env["client"].post(f"/parts/{GOLDEN_COMPONENT_ID}/disposition?project_id=no-such-project&analysis_run_id={run_id}",
+                           json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
+    assert r.status_code == 404 and "no-such-project" in r.json()["detail"]
+    assert _signoff_count("no-such-project") == 0
+
+
+def test_disposition_run_of_other_project_is_404(env):
+    c = env["client"]
+    project_id, _ = _part_ids(env)
+    ip = c.get(f"/parts/{IN_PROGRESS_PART}?lot_id={IN_PROGRESS_LOT_ID}", headers=env["sharma"]).json()
+    assert ip["project_id"] != project_id
+    before = _signoff_count(project_id)
+    r = c.post(f"/parts/{GOLDEN_COMPONENT_ID}/disposition?project_id={project_id}&analysis_run_id={ip['analysis_run_id']}",
+               json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
+    assert r.status_code == 404 and ip["analysis_run_id"] in r.json()["detail"]
+    assert _signoff_count(project_id) == before
+
+
+def test_disposition_component_not_in_run_is_404(env):
+    """A component that exists only in a different (in-progress) lot, sent with the GOLDEN lot's project
+    and run ids: the golden run's assessments don't contain it -> 404, no row written."""
+    c = env["client"]
+    only_id = "IP-ONLY-1"
+    readings = [r for r in golden_lot().readings if r.checkpoint_hour in (0, 24)]
+    readings += [r.model_copy(update={"component_id": only_id}) for r in readings if r.component_id == "G-002"]
+    meta = {"lot_id": "IP-LOT-02", "part_number": "PN-GOLDEN", "manufacturer": "GOLDEN-MFR",
+            "date_code": "2601", "account_id": "a.sharma"}
+    up = c.post("/lots", files={"file": ("lot.csv", _csv_bytes(readings), "text/csv")}, data=meta,
+                headers=env["sharma"])
+    assert up.status_code == 200, up.text
+    assert any(a["component_id"] == only_id for a in c.get("/lots/IP-LOT-02", headers=env["sharma"]).json()["assessments"])
+    golden_ids = {a["component_id"] for a in c.get(f"/lots/{GOLDEN_LOT_ID}", headers=env["sharma"]).json()["assessments"]}
+    assert only_id not in golden_ids
+
+    project_id, run_id = _part_ids(env)
+    before = _signoff_count(project_id)
+    r = c.post(f"/parts/{only_id}/disposition?project_id={project_id}&analysis_run_id={run_id}",
+               json={"verdict": "HOLD", "rationale": "x"}, headers=env["sharma"])
+    assert r.status_code == 404 and only_id in r.json()["detail"]
+    assert _signoff_count(project_id) == before
+
+
+def test_disposition_valid_path_writes_exactly_one_row(env):
+    project_id, run_id = _part_ids(env)
+    before = _signoff_count(project_id)
+    r = env["client"].post(
+        f"/parts/{GOLDEN_COMPONENT_ID}/disposition?project_id={project_id}&analysis_run_id={run_id}",
+        json={"verdict": "HOLD", "rationale": "valid path"}, headers=env["sharma"])
+    assert r.status_code == 200
+    assert _signoff_count(project_id) == before + 1
 
 
 # --- GET /settings, POST /settings/propose, POST /settings/signoff ----------------------------------

@@ -37,6 +37,30 @@ def setup_db(tmp_path, monkeypatch):
     save_project("proj1", "lot_001", "PN123", datetime.now(UTC), "account1")
 
 
+@pytest.fixture(autouse=True)
+def stub_disposition_validation(monkeypatch):
+    """create_disposition validates project, run and component before saving (G5 finding 2). These tests
+    post for made-up ids, so patch the two lookups it calls, the same way the other repository functions
+    are patched here: one project, and runs ("run-1", "run1") whose assessments contain the components used."""
+    from types import SimpleNamespace
+    from contracts import AnalysisResults, LotDisposition, RiskAssessment
+
+    def _assessment(cid):
+        return RiskAssessment(component_id=cid, lot_id="lot_001", verdict="REJECT", module_a_rank=1.0,
+                              module_b_rank=1.0, worst_parameter="leakage", module_a_ran=True,
+                              module_b_ran=True, predicted_168h=None, actual_168h=None,
+                              explanation_sentence=None)
+
+    ids = ["comp1", "comp2", "comp3"] + [f"comp_{i}" for i in range(1, 5)] + [f"comp_{i}_dup" for i in range(1, 4)]
+    results = AnalysisResults(
+        assessments=[_assessment(c) for c in ids],
+        disposition=LotDisposition(lot_id="lot_001", status="COMPLETE", pda_result=0.0, verdict="REJECT",
+                                   is_forecast=False))
+    runs = [SimpleNamespace(analysis_run_id=rid, results_json=results.model_dump_json()) for rid in ("run-1", "run1")]
+    monkeypatch.setattr("identity.router.query_project", lambda pid: SimpleNamespace(project_id=pid))
+    monkeypatch.setattr("identity.router.query_project_data", lambda pid: runs)
+
+
 @pytest.fixture
 def client():
     from identity.router import router as identity_router
