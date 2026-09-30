@@ -1,0 +1,346 @@
+/**
+ * Live smoke test: exercises the app's OWN typed client functions (never a raw fetch, rule 14)
+ * against a real running backend. Run with the backend up (default http://localhost:8001 for
+ * Block 5B-2's own worktree backend; override with VITE_API_BASE_URL):
+ *
+ *   npx tsx scripts/smoke_live.ts
+ *
+ * Not part of `npm test` - this hits a real server and a real (seeded) database, not a fake one.
+ */
+import { login } from '../src/api/auth'
+import { createApiClient } from '../src/api/client'
+import { ApiError } from '../src/api/errors'
+import { listDispositionSignoffs, listEvents } from '../src/api/history'
+import { downloadReport, generateDpaWorkOrder, getLotSummary } from '../src/api/lotDetail'
+import {
+  getProject,
+  listProjects,
+  loadDemoLot,
+  uploadCheckpoint,
+  uploadLot,
+  type LotMetadata,
+} from '../src/api/lots'
+import { getPartDetail, submitConfirmedOutcome, submitDisposition } from '../src/api/parts'
+import { getCorrectiveStatus, getSettings, getWorklist } from '../src/api/settings'
+
+import { execFileSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:8001'
+
+let token: string | null = null
+/**
+ * Node's fetch reuses a keep-alive socket that uvicorn may have just closed, which fails a request
+ * with "fetch failed" before it reaches the server (checked: the server log has no line for it).
+ * One retry for that connection-level failure only; an HTTP error response is never retried.
+ */
+async function retryingFetch(request: Request): Promise<Response> {
+  const retry = request.clone()
+  try {
+    return await fetch(request)
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error
+    return fetch(retry)
+  }
+}
+
+const client = createApiClient({ baseUrl: BASE_URL, getToken: () => token, fetch: retryingFetch })
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(`FAIL: ${message}`)
+}
+
+async function step<T>(name: string, run: () => Promise<T>): Promise<T> {
+  process.stdout.write(`${name} ... `)
+  const start = performance.now()
+  const result = await run()
+  console.log(`ok (${((performance.now() - start) / 1000).toFixed(2)}s)`)
+  return result
+}
+
+/** Three one-second samples of total CPU load (Windows `Get-Counter`), printed before a slow call. */
+function cpuReading(label: string): void {
+  try {
+    const out = execFileSync(
+      'powershell',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'cpu.ps1')],
+      { encoding: 'utf8' },
+    )
+    console.log(`  CPU before ${label}: ${out.trim().split(/\s+/).join('% / ')}%`)
+  } catch {
+    console.log(`  CPU before ${label}: unavailable`)
+  }
+}
+
+async function main() {
+  const session = await step('login as a.sharma', () =>
+    login(client, { account_id: 'a.sharma', pin: '1234' }),
+  )
+  assert(session.access_token, 'login response has no access_token')
+  assert(session.token_type === 'bearer', 'login response token_type is not "bearer"')
+  token = session.access_token
+  console.log(`  account_id=${session.account_id} role=${session.role}`)
+
+  cpuReading('loadDemoLot')
+  const upload = await step('loadDemoLot', () => loadDemoLot(client, session.account_id))
+  assert(upload.lot_id, 'loadDemoLot response has no lot_id')
+  console.log(`  lot_id=${upload.lot_id} status=${upload.status}`)
+
+  const summary = await step('getLotSummary', () => getLotSummary(client, upload.lot_id))
+  assert(summary.assessments.length > 0, 'assessments is empty')
+  assert(
+    typeof summary.explanation_summary === 'string' && summary.explanation_summary.trim() !== '',
+    'explanation_summary is empty',
+  )
+  console.log(
+    `  assessments=${summary.assessments.length} explanation_summary="${summary.explanation_summary}"`,
+  )
+
+  // Auth check: the same two routes WITHOUT a token must answer 401 (raw fetch, these two only).
+  await step('GET /lots/<id> without a token returns 401', async () => {
+    const res = await fetch(`${BASE_URL}/lots/${encodeURIComponent(upload.lot_id)}`)
+    assert(res.status === 401, `GET /lots/<id> without a token gave ${res.status}, not 401`)
+  })
+  await step('POST /lots without a token returns 401', async () => {
+    const res = await fetch(`${BASE_URL}/lots`, { method: 'POST', body: new FormData() })
+    assert(res.status === 401, `POST /lots without a token gave ${res.status}, not 401`)
+  })
+
+  const projects = await step('listProjects', () => listProjects(client))
+  assert(projects.some((p) => p.lot_id === upload.lot_id), 'the demo lot is not in listProjects')
+  const project = await step('getProject (lot metadata)', () => getProject(client, upload.lot_id))
+  assert(project.project_id === upload.lot_id, 'project_id does not equal lot_id')
+  console.log(
+    `  part_number=${project.part_number} manufacturer=${project.manufacturer ?? 'null'} date_code=${project.date_code ?? 'null'} test_date=${project.test_date ?? 'null'}`,
+  )
+  const report = await step('downloadReport (blob)', () => downloadReport(client, upload.lot_id))
+  assert(report.blob.size > 0, 'report blob is empty')
+  console.log(`  ${report.filename} ${report.blob.size} bytes`)
+  const signoffs = await step('listDispositionSignoffs', () => listDispositionSignoffs(client))
+  console.log(`  signoffs=${signoffs.length}`)
+
+  const events = await step('listEvents', () => listEvents(client))
+  assert(
+    events.some((e) => e.event_type === 'analysis_run'),
+    'no analysis_run event in the log',
+  )
+  console.log(`  events=${events.length}`)
+
+  const settings = await step('getSettings', () => getSettings(client))
+  assert(typeof settings.pda_threshold === 'number', 'pda_threshold is not a number')
+  console.log(
+    `  fn_fp_cost_ratio=${settings.fn_fp_cost_ratio} pda_threshold=${settings.pda_threshold} confirmed_outcome_fn_ceiling=${settings.confirmed_outcome_fn_ceiling}`,
+  )
+
+  // Block 5B-2 Part 3a: the highest-severity flagged component, and its real Part Detail.
+  const flagged = summary.assessments.filter((a) => a.verdict !== 'PASS')
+  assert(flagged.length > 0, 'the demo lot has no flagged components')
+  const top = flagged.reduce((best, a) => (a.module_a_rank > best.module_a_rank ? a : best))
+  console.log(`  highest-severity flagged component: ${top.component_id} (${top.verdict})`)
+
+  const partDetail = await step('getPartDetail (Complete lot, flagged part)', () =>
+    getPartDetail(client, top.component_id, upload.lot_id),
+  )
+  assert(
+    partDetail.explanation_sentence.trim() !== '',
+    'explanation_sentence is empty for a flagged part',
+  )
+  assert(partDetail.module_a !== null && partDetail.module_a !== undefined, 'module_a is null for a Complete lot')
+  assert(partDetail.module_b !== null && partDetail.module_b !== undefined, 'module_b is null for a Complete lot')
+  assert(partDetail.explanation, 'explanation is missing for a flagged part')
+  console.log(
+    `  explanation: zscore_table=${partDetail.explanation!.zscore_table.length} mcd_contributions=${partDetail.explanation!.mcd_contributions.length} ecod_dimensions=${partDetail.explanation!.ecod_dimensions.length} shap_contributions=${partDetail.explanation!.shap_contributions.length}`,
+  )
+
+  assert(
+    partDetail.component_id === top.component_id &&
+      partDetail.lot_id === upload.lot_id &&
+      partDetail.project_id &&
+      partDetail.analysis_run_id &&
+      partDetail.verdict === top.verdict,
+    'PartDetailResponse is missing its ids or verdict',
+  )
+  console.log(
+    `  ids: component_id=${partDetail.component_id} lot_id=${partDetail.lot_id} project_id=${partDetail.project_id} analysis_run_id=${partDetail.analysis_run_id} verdict=${partDetail.verdict} trajectory=${partDetail.explanation?.trajectory.length ?? 0} checkpoints`,
+  )
+
+  // Block 5D Part 4a: the full disposition round trip on the real route.
+  const ids = {
+    projectId: partDetail.project_id as string,
+    analysisRunId: partDetail.analysis_run_id as string,
+  }
+  const first = await step(`submitDisposition (${top.component_id}, REJECT) as a.sharma`, () =>
+    submitDisposition(client, top.component_id, ids, { verdict: 'REJECT', rationale: 'Smoke: first sign-off' }),
+  )
+  assert(first.account_id === 'a.sharma' && first.analysis_run_id === ids.analysisRunId, 'wrong first record')
+
+  await step('same account again returns the 400 path', async () => {
+    let caught: unknown
+    try {
+      await submitDisposition(client, top.component_id, ids, { verdict: 'REJECT', rationale: 'Smoke: retry' })
+    } catch (error) {
+      caught = error
+    }
+    assert(caught instanceof ApiError, 'same-account retry did not throw an ApiError')
+    assert((caught as ApiError).status === 400, `same-account retry gave status ${(caught as ApiError).status}, not 400`)
+    console.log(`  400 message: "${(caught as ApiError).messages.join(' ')}"`)
+  })
+
+  const mehta = await step('login as r.mehta', () => login(client, { account_id: 'r.mehta', pin: '5678' }))
+  token = mehta.access_token
+  const second = await step(`submitDisposition (${top.component_id}, REJECT) as r.mehta`, () =>
+    submitDisposition(client, top.component_id, ids, { verdict: 'REJECT', rationale: 'Smoke: second sign-off' }),
+  )
+  assert(second.account_id === 'r.mehta', 'wrong second record')
+
+  const afterSignoffs = await step('getPartDetail after both sign-offs', () =>
+    getPartDetail(client, top.component_id, upload.lot_id),
+  )
+  const history = afterSignoffs.disposition_history
+  assert(history.length === 2, `expected 2 sign-offs in history, got ${history.length}`)
+  assert(new Set(history.map((h) => h.account_id)).size === 2, 'sign-offs are not from two distinct accounts')
+  assert(new Set(history.map((h) => h.analysis_run_id)).size === 1, 'sign-offs carry different analysis_run_ids')
+  console.log(
+    `  history: ${history.map((h) => `${h.account_id}/${h.verdict}/run ${h.analysis_run_id}`).join(', ')}`,
+  )
+
+  const worklistBefore = await step('getWorklist (before confirmed outcome)', () => getWorklist(client))
+  assert(
+    worklistBefore.pending.some((w) => w.component_id === top.component_id),
+    'worklist does not contain the dispositioned part',
+  )
+  console.log(`  pending=${worklistBefore.pending.length}, contains ${top.component_id}`)
+
+  // Block 5B-2 Part 3b: a small in-progress lot (0h+24h only) - Module A should not have run.
+  const csv = [
+    'component_id,parameter,checkpoint_hour,value,unit',
+    'c1,iddq,0,1.2,uA',
+    'c1,iddq,24,3.5,uA',
+    'c2,iddq,0,1.1,uA',
+    'c2,iddq,24,1.15,uA',
+    '',
+  ].join('\n')
+  const inProgressMeta: LotMetadata = {
+    lot_id: `smoke-inprogress-${Date.now()}`,
+    part_number: 'SMOKE-PN',
+    manufacturer: 'Smoke Test Fab',
+    date_code: '2601',
+    test_date: '2026-09-30',
+  }
+  const file = new File([csv], 'inprogress.csv', { type: 'text/csv' })
+  cpuReading('uploadLot')
+  const inProgressUpload = await step('uploadLot (small in-progress lot)', () =>
+    uploadLot(client, inProgressMeta, file, session.account_id),
+  )
+  assert(inProgressUpload.status === 'IN_PROGRESS', `expected IN_PROGRESS, got ${inProgressUpload.status}`)
+  console.log(`  lot_id=${inProgressUpload.lot_id} status=${inProgressUpload.status}`)
+  const checkpointCsv = [
+    'component_id,parameter,checkpoint_hour,value,unit',
+    'c1,iddq,96,4.1,uA',
+    'c2,iddq,96,1.2,uA',
+    '',
+  ].join('\n')
+  const checkpoint = await step('uploadCheckpoint (96h on the in-progress lot)', () =>
+    uploadCheckpoint(
+      client,
+      inProgressUpload.lot_id,
+      new File([checkpointCsv], 'checkpoint.csv', { type: 'text/csv' }),
+      session.account_id,
+    ),
+  )
+  console.log(`  lot_id=${checkpoint.lot_id} status=${checkpoint.status}`)
+
+  const c1Detail = await step("getPartDetail('c1') on the in-progress lot", () =>
+    getPartDetail(client, 'c1', inProgressUpload.lot_id),
+  )
+  assert(c1Detail.module_a === null || c1Detail.module_a === undefined, 'module_a is present on an in-progress lot')
+  assert(c1Detail.module_b !== null && c1Detail.module_b !== undefined, 'module_b is missing on an in-progress lot')
+  console.log(`  module_a=${c1Detail.module_a ?? 'null'} module_b.parameter=${c1Detail.module_b!.parameter}`)
+
+  // Block 5C Part 3a: a real DPA work order on the Complete demo lot.
+  const workOrder = await step('generateDpaWorkOrder (Complete lot)', () =>
+    generateDpaWorkOrder(client, upload.lot_id),
+  )
+  assert(
+    workOrder.recommendations.length >= 1 && workOrder.recommendations.length <= 3,
+    `expected 1-3 recommendations, got ${workOrder.recommendations.length}`,
+  )
+  for (const rec of workOrder.recommendations) {
+    assert(rec.reason.trim() !== '', `recommendation for ${rec.component_id} has an empty reason`)
+  }
+  console.log(
+    `  recommendations=${workOrder.recommendations.map((r) => `${r.component_id} (${r.reason})`).join('; ')}`,
+  )
+
+  await step('generateDpaWorkOrder on an in-progress lot returns the 409 path', async () => {
+    let caught: unknown
+    try {
+      await generateDpaWorkOrder(client, inProgressUpload.lot_id)
+    } catch (error) {
+      caught = error
+    }
+    assert(caught instanceof ApiError, 'in-progress DPA request did not throw an ApiError')
+    assert(
+      (caught as ApiError).status === 409,
+      `in-progress DPA request gave status ${(caught as ApiError).status}, not 409`,
+    )
+    console.log(`  409 message: "${(caught as ApiError).messages.join(' ')}"`)
+  })
+
+  // Block 5C Part 3b: confirmed outcomes for two different flagged parts.
+  const other = flagged.find((a) => a.component_id !== top.component_id)
+  assert(other, 'the demo lot has fewer than 2 flagged components')
+  const defectiveOutcome = await step(`submitConfirmedOutcome (${top.component_id}, Confirmed Defective)`, () =>
+    submitConfirmedOutcome(
+      client,
+      top.component_id,
+      { confirmed_outcome: 'Confirmed Defective', note: 'Smoke test' },
+      upload.lot_id,
+    ),
+  )
+  assert(defectiveOutcome.confirmed_outcome === 'Confirmed Defective', 'wrong confirmed_outcome echoed back')
+
+  const goodOutcome = await step(`submitConfirmedOutcome (${other.component_id}, Confirmed Good)`, () =>
+    submitConfirmedOutcome(
+      client,
+      other.component_id,
+      { confirmed_outcome: 'Confirmed Good', note: 'Smoke test' },
+      upload.lot_id,
+    ),
+  )
+  assert(goodOutcome.confirmed_outcome === 'Confirmed Good', 'wrong confirmed_outcome echoed back')
+
+  const corrective = await step('getCorrectiveStatus', () => getCorrectiveStatus(client))
+  assert(corrective.confirmed_outcome_count === 2, `expected count=2, got ${corrective.confirmed_outcome_count}`)
+  assert(corrective.status === 'INSUFFICIENT_DATA', `expected INSUFFICIENT_DATA, got ${corrective.status}`)
+  console.log(
+    `  status=${corrective.status} count=${corrective.confirmed_outcome_count} fn_rate=${corrective.fn_rate ?? 'null'} fp_rate=${corrective.fp_rate ?? 'null'}`,
+  )
+
+  const worklist = await step('getWorklist (after confirmed outcome)', () => getWorklist(client))
+  assert(
+    !worklist.pending.some((w) => w.component_id === top.component_id),
+    'worklist still contains the part after its confirmed outcome',
+  )
+  console.log(`  pending=${worklist.pending.length}, no longer contains ${top.component_id}`)
+
+  await step('wrong-PIN login returns the 401 path', async () => {
+    let caught: unknown
+    try {
+      await login(client, { account_id: 'a.sharma', pin: '0000' })
+    } catch (error) {
+      caught = error
+    }
+    assert(caught instanceof ApiError, 'wrong PIN did not throw an ApiError')
+    assert((caught as ApiError).status === 401, `wrong PIN gave status ${(caught as ApiError).status}, not 401`)
+  })
+
+  console.log('\nAll smoke checks passed.')
+}
+
+main().catch((error) => {
+  console.error('\n' + (error instanceof Error ? error.message : String(error)))
+  process.exitCode = 1
+})
