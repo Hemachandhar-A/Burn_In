@@ -310,6 +310,14 @@
           },
           "disposition": {
             "$ref": "#/components/schemas/LotDisposition"
+          },
+          "insufficient_data_components": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Insufficient Data Components",
+            "type": "array"
           }
         },
         "required": [
