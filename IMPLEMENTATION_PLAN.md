@@ -460,7 +460,7 @@ class DPAWorkOrderResponse(BaseModel):
 | `POST /parts/{component_id}/disposition` | `DispositionRequest` | `DispositionRecord` | required | `identity/router.py` (P5) |
 | `POST /parts/{component_id}/confirmed-outcome` | `ConfirmedOutcomeRequest` | `ConfirmedOutcomeRecord` | required | `capa/router.py` (P5) |
 | `GET /projects` | — | `list[ProjectSummary]` | required | `storage/router.py` (P2) |
-| `GET /projects/{project_id}` | — | `ProjectDataResponse` | required | `storage/router.py` (P2) |
+| `GET /projects/{project_id}` | — | `ProjectSummary` | required | `storage/router.py` (P2) |
 | `GET /events` | — | `list[EventResponse]` | required | `storage/router.py` (P2) |
 | `GET /disposition-signoffs` | — | `list[DispositionRecord]` | required | `storage/router.py` (P2) |
 | `GET /projects/{project_id}/events` | — | `list[EventResponse]` | required | `storage/router.py` (P2) — per-project variant, additional to the global `GET /events` above, not a replacement |

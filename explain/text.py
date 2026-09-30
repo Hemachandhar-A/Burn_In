@@ -11,6 +11,29 @@ from collections import Counter
 
 from contracts import ModuleBResult, RiskAssessment
 from explain.models import ShapExplanation, ZScoreRow
+from module_b.model import FEATURE_NAMES
+
+# E4 step 5's "Primary driver: ..." clause names a module_b.model.FEATURE_NAMES entry (SHAP's own
+# feature-engineering name, e.g. "delta_96h") - QA-facing text humanizes it instead, per feature.
+# Every name in FEATURE_NAMES is mapped; an unrecognized name (should not occur, but never a KeyError)
+# falls back to the raw name rather than hiding it.
+_FEATURE_NAME_LABELS: dict[str, str] = {
+    "delta_24h": "0h-to-24h change",
+    "delta_96h": "0h-to-96h change",
+    "offset_0h": "0h value vs. lot median",
+    "offset_24h": "24h value vs. lot median",
+    "lot_drift_24h": "lot median's 0h-to-24h change",
+    "elapsed_24h": "elapsed hours to the 24h reading",
+    "elapsed_96h": "elapsed hours to the 96h reading",
+    "value_0h": "0h baseline value",
+}
+assert set(_FEATURE_NAME_LABELS) == set(FEATURE_NAMES), (
+    "_FEATURE_NAME_LABELS must have one entry per module_b.model.FEATURE_NAMES"
+)
+
+
+def _humanize_feature(feature: str) -> str:
+    return _FEATURE_NAME_LABELS.get(feature, feature)
 
 # E4 step 6's confidence qualifier needs a numeric threshold for its second, independent signal
 # (context.md 4.3/7.6's physics-vs-model disagreement gap) that no source document states - a
@@ -56,7 +79,7 @@ def explanation_sentence(
         verb = "exceeds" if pct >= 0 else "is under"
         clauses.append(f"Predicted 168h drift {verb} the calibrated safety slope by {abs(pct):.0f}%.")
         if shap is not None and shap.contributions:
-            clauses.append(f"Primary driver: {shap.contributions[0].feature}.")
+            clauses.append(f"Primary driver: {_humanize_feature(shap.contributions[0].feature)}.")
 
     return " ".join(clauses)
 
@@ -106,8 +129,11 @@ def explanation_summary(
 ) -> str:
     """E4 step 7's lot-level rollup, a template over `assessments`/`insufficient_data_components` -
     both already computed by fusion (Part 1a), nothing new derived here. "Flagged" matches the
-    project's own vocabulary (AGENTS.md rule 10): verdict WATCH or REJECT, never PASS. Ties in the
-    most-common worst_parameter are broken alphabetically, for determinism (rule 9)."""
+    project's own vocabulary (AGENTS.md rule 10): verdict WATCH or REJECT, never PASS.
+
+    "concentrated in X" is only used when X holds more than half of the flagged parts - otherwise
+    the breakdown is spread across every worst_parameter that appears, ordered by count descending
+    then parameter name ascending, for determinism (rule 9)."""
     total = len(assessments)
     if total == 0:
         base = "No parts analysed."
@@ -119,8 +145,14 @@ def explanation_summary(
             n_watch = sum(1 for a in flagged if a.verdict == "WATCH")
             counts = Counter(a.worst_parameter for a in flagged)
             top_count = max(counts.values())
-            top_parameter = min(p for p, c in counts.items() if c == top_count)
-            base = f"{len(flagged)} of {total} parts flagged, concentrated in {top_parameter}"
+            if top_count > len(flagged) / 2:
+                top_parameter = min(p for p, c in counts.items() if c == top_count)
+                base = f"{len(flagged)} of {total} parts flagged, concentrated in {top_parameter}"
+            else:
+                breakdown = ", ".join(
+                    f"{p} ({c})" for p, c in sorted(counts.items(), key=lambda pc: (-pc[1], pc[0]))
+                )
+                base = f"{len(flagged)} of {total} parts flagged, spread across {breakdown}"
             if n_watch:
                 base += f", {n_watch} crossing REVIEW only"
             base += "."

@@ -38,7 +38,7 @@ def test_explanation_sentence_golden_part_module_a_and_b():
     assert "leakage at 24h is 4.2 robust-sigma above lot median" in sentence
     assert "median = 10" in sentence and "value = 45" in sentence
     assert "Predicted 168h drift exceeds the calibrated safety slope by 38%" in sentence
-    assert "Primary driver: delta_24h" in sentence
+    assert "Primary driver: 0h-to-24h change" in sentence
 
 
 def test_explanation_sentence_below_median_direction_worded_correctly():
@@ -69,7 +69,7 @@ def test_explanation_sentence_module_b_only_part():
     sentence = explanation_sentence("C9", zscore_row=None, module_b=module_b, shap=shap)
     assert sentence == (
         "Part C9: Predicted 168h drift exceeds the calibrated safety slope by 38%. "
-        "Primary driver: delta_24h."
+        "Primary driver: 0h-to-24h change."
     )
 
 
@@ -85,6 +85,49 @@ def test_explanation_sentence_module_b_under_slope_worded_correctly():
     sentence = explanation_sentence("C2", zscore_row=None, module_b=module_b, shap=None)
     assert "Predicted 168h drift is under the calibrated safety slope by 50%" in sentence
     assert "Primary driver" not in sentence
+
+
+def test_primary_driver_humanizes_every_feature_name():
+    """B2b: every module_b.model.FEATURE_NAMES entry gets a human-readable label in the "Primary
+    driver: ..." clause, not the raw feature name."""
+    from module_b.model import FEATURE_NAMES
+    from explain.models import FeatureContribution, ShapExplanation
+    from explain.text import _FEATURE_NAME_LABELS
+    from contracts import ModuleBResult
+
+    module_b = ModuleBResult(
+        component_id="C1", lot_id="L1", parameter="leakage", predicted_168h=50.0,
+        interval_lower=45.0, interval_upper=55.0, physics_baseline_prediction=48.0,
+        physics_disagreement_gap=2.0, drift_rate=1.38, exceeds_safety_slope=True, safety_slope=1.0,
+        lower_bound_exceeds_safety_slope=True, forecast_unavailable=False,
+    )
+    for feature in FEATURE_NAMES:
+        shap = ShapExplanation(
+            component_id="C1", parameter="leakage", horizon="24h", base_value=10.0,
+            model_prediction=50.0,
+            contributions=[FeatureContribution(feature=feature, value=1.0, shap_value=1.0)],
+        )
+        sentence = explanation_sentence("C1", zscore_row=None, module_b=module_b, shap=shap)
+        assert f"Primary driver: {_FEATURE_NAME_LABELS[feature]}." in sentence
+        assert feature not in sentence
+
+
+def test_primary_driver_falls_back_to_raw_name_for_an_unrecognized_feature():
+    from explain.models import FeatureContribution, ShapExplanation
+    from contracts import ModuleBResult
+
+    module_b = ModuleBResult(
+        component_id="C1", lot_id="L1", parameter="leakage", predicted_168h=50.0,
+        interval_lower=45.0, interval_upper=55.0, physics_baseline_prediction=48.0,
+        physics_disagreement_gap=2.0, drift_rate=1.38, exceeds_safety_slope=True, safety_slope=1.0,
+        lower_bound_exceeds_safety_slope=True, forecast_unavailable=False,
+    )
+    shap = ShapExplanation(
+        component_id="C1", parameter="leakage", horizon="24h", base_value=10.0, model_prediction=50.0,
+        contributions=[FeatureContribution(feature="some_future_feature", value=1.0, shap_value=1.0)],
+    )
+    sentence = explanation_sentence("C1", zscore_row=None, module_b=module_b, shap=shap)
+    assert "Primary driver: some_future_feature." in sentence
 
 
 def test_explanation_sentence_module_a_only_part_no_module_b_clause():
@@ -180,13 +223,40 @@ def _assessment(cid, verdict, worst_parameter, lot_id="L1"):
 
 def test_explanation_summary_on_the_golden_lot():
     """Real numbers from the golden pipeline (harness.golden.run_golden_pipeline): 77 parts, 5
-    flagged (2 WATCH, 3 REJECT), worst_parameter tied 2-2 between iddq and prop_delay (leakage=1) -
-    alphabetical tie-break picks iddq."""
+    flagged (2 WATCH, 3 REJECT), worst_parameter counts iddq=2, prop_delay=2, leakage=1 - no
+    parameter holds more than half of the 5 flagged parts, so B2's breakdown wording applies:
+    spread across every parameter, ordered by count descending then name ascending."""
     from harness.golden import run_golden_pipeline
 
     result = run_golden_pipeline()
     summary = explanation_summary(result.assessments, result.insufficient_data_components)
-    assert summary == "5 of 77 parts flagged, concentrated in iddq, 2 crossing REVIEW only."
+    assert summary == (
+        "5 of 77 parts flagged, spread across iddq (2), prop_delay (2), leakage (1), "
+        "2 crossing REVIEW only."
+    )
+
+
+def test_explanation_summary_concentrated_when_one_parameter_holds_more_than_half():
+    """B2: "concentrated in X" only when X holds MORE THAN HALF of the flagged parts - here iddq
+    is 3 of 4 flagged (>50%), so it stays the "concentrated" wording, not a breakdown."""
+    assessments = [
+        _assessment("C1", "REJECT", "iddq"), _assessment("C2", "REJECT", "iddq"),
+        _assessment("C3", "WATCH", "iddq"), _assessment("C4", "REJECT", "leakage"),
+    ]
+    summary = explanation_summary(assessments, [])
+    assert summary == "4 of 4 parts flagged, concentrated in iddq, 1 crossing REVIEW only."
+
+
+def test_explanation_summary_spread_wording_orders_by_count_desc_then_name_asc():
+    """B2: an exact 50/50 split (2 of 4 flagged each) is NOT more than half, so it uses the spread
+    wording - ties broken by parameter name ascending, per-parameter counts ordered by count
+    descending then name ascending."""
+    assessments = [
+        _assessment("C1", "REJECT", "prop_delay"), _assessment("C2", "REJECT", "prop_delay"),
+        _assessment("C3", "WATCH", "iddq"), _assessment("C4", "WATCH", "iddq"),
+    ]
+    summary = explanation_summary(assessments, [])
+    assert summary == "4 of 4 parts flagged, spread across iddq (2), prop_delay (2), 2 crossing REVIEW only."
 
 
 def test_explanation_summary_no_flags():
