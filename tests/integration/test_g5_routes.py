@@ -7,9 +7,7 @@ lot (COMPLETE, uploaded as a CSV through POST /lots) plus one IN_PROGRESS lot. P
   (iv)  unknown id -> 404 where an id is in the path
 then one flow across routes. The final test prints the route x check table (run with -s).
 
-`GET /lots/{lot_id}` is planned as auth-required (Part 5.6) but fusion/router.py registers no
-get_current_account dependency on it: that check is marked xfail(strict=True) as an OPEN G5 finding -
-it turns red the moment the route is fixed, so the marker can never go stale.
+Auth for the ingestion/storage/report/fusion routers is applied at app level (api/main.py).
 """
 import csv
 import io
@@ -137,12 +135,47 @@ def test_get_lot_valid_and_404(env):
     _record("GET /lots/{lot_id}", "404")
 
 
-@pytest.mark.xfail(strict=True, reason="OPEN G5 finding: GET /lots/{lot_id} (fusion/router.py:25) has no "
-                                       "get_current_account dependency; Part 5.6 says auth required")
 def test_get_lot_requires_auth_per_plan(env):
     r = env["client"].get(f"/lots/{GOLDEN_LOT_ID}")
-    _record("GET /lots/{lot_id}", "401", f"FAIL (got {r.status_code})")
     assert r.status_code == 401
+    _record("GET /lots/{lot_id}", "401")
+
+
+# Every route registered at app level behind get_current_account (finding 1/3/4): no token -> 401.
+_PROTECTED = [
+    ("GET", "/lots/{lot}"), ("POST", "/lots"), ("POST", "/lots/demo"), ("POST", "/lots/{lot}/checkpoints"),
+    ("GET", "/lots/{lot}/quality"), ("POST", "/lots/{lot}/report"), ("GET", "/projects"),
+    ("GET", "/projects/{project}"), ("GET", "/projects/{project}/events"),
+    ("GET", "/projects/{project}/disposition-signoffs"), ("GET", "/events"), ("GET", "/disposition-signoffs"),
+]
+
+
+@pytest.mark.parametrize("method,path", _PROTECTED)
+def test_app_level_routes_require_token(env, method, path):
+    url = path.format(lot=GOLDEN_LOT_ID, project="any-project")
+    r = env["client"].request(method, url)
+    assert r.status_code == 401, (method, url, r.status_code)
+
+
+@pytest.mark.parametrize("method,path", [(m, p) for m, p in _PROTECTED if m == "GET"])
+def test_app_level_get_routes_work_with_token(env, method, path):
+    url = path.format(lot=GOLDEN_LOT_ID, project="any-project")
+    r = env["client"].request(method, url, headers=env["sharma"])
+    assert r.status_code != 401, (url, r.status_code)
+
+
+def test_open_routes_stay_open(env):
+    c = env["client"]
+    assert c.get("/health").status_code == 200
+    assert c.post("/auth/login", json={"account_id": "a.sharma", "pin": "1234"}).status_code == 200
+
+
+def test_cors_preflight_not_blocked_by_auth(env):
+    r = env["client"].options("/lots/" + GOLDEN_LOT_ID, headers={
+        "Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization"})
+    assert r.status_code == 200, r.status_code
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
 # --- GET /parts/{component_id} ----------------------------------------------------------------------
