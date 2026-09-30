@@ -181,6 +181,7 @@ def test_disposition_reject_dual_signoff_timing_flag(auth_headers, auth_headers2
     assert response.status_code == 200
     assert response.json()["account_id"] == "r.mehta"
     assert len(events_logged) == 1
+    assert events_logged[0]["event_type"] == "timing_flag"  # B4: no longer mocked as config_change
     assert events_logged[0]["payload"]["timing_flag"] is True
 
 def test_settings_propose(auth_headers, monkeypatch):
@@ -249,6 +250,29 @@ def test_settings_signoff_distinct_user(auth_headers2, monkeypatch):
     assert response.json()["fn_fp_cost_ratio"] == 15.0
     assert len(events_logged) == 1
     assert events_logged[0]["payload"]["action"] == "signoff"
+
+def test_settings_history_excludes_timing_flags(auth_headers, monkeypatch):
+    """B4: identity/router.py:113-116's Settings-history read filters on event_type ==
+    "config_change" - a timing_flag event (dual-signoff < 120s apart) must never surface there,
+    even though its payload has no "action"/"field" keys of its own."""
+    class DummyEvent:
+        def __init__(self, event_type, account_id, payload):
+            self.event_type = event_type
+            self.account_id = account_id
+            self.payload = payload
+
+    events = [
+        DummyEvent("timing_flag", "a.sharma", {"timing_flag": True, "message": "Sign-offs occurred < 2 minutes apart."}),
+        DummyEvent("config_change", "a.sharma", {"action": "propose", "field": "pda_threshold", "proposed_value": 0.5}),
+    ]
+    monkeypatch.setattr("identity.router.query_events", lambda: events)
+
+    response = client.get("/settings", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["pending_changes"]) == 1
+    assert body["pending_changes"][0]["field"] == "pda_threshold"
+
 
 def test_disposition_hold(auth_headers, monkeypatch):
     from contracts import DispositionSignoff

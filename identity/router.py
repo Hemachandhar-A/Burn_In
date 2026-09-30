@@ -66,11 +66,10 @@ def create_disposition(
                     time_diff = (datetime.now(UTC) - first_signoff.timestamp).total_seconds()
                 
                 if time_diff < 120:
-                    # TEMP: Using config_change since disposition event type doesn't exist
                     log_event(
                         project_id=project_id,
                         account_id=account.account_id,
-                        event_type="config_change",
+                        event_type="timing_flag",
                         payload={"timing_flag": True, "message": "Sign-offs occurred < 2 minutes apart."}
                     )
 

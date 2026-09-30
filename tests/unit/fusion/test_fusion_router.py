@@ -277,6 +277,40 @@ def test_get_part_detail_pass_part_within_normal_range():
     assert data["explanation"]["zscore_table"] == []
 
 
+def test_get_part_detail_in_progress_part_returns_200_module_a_none():
+    """B1: after B6, PartDetailResponse.module_a/.module_b are Optional - an in-progress part
+    (Module A never ran) now returns 200 with module_a=None, module_b present, explanation
+    present. 404 stays reserved for a genuinely unknown component_id."""
+    from contracts import AnalysisResults, LotDisposition, PartExplanation, RiskAssessment
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-inprog-detail-{uid}"
+    account_id = _seed_account(uid)
+    results = AnalysisResults(
+        assessments=[RiskAssessment(
+            component_id="C-INPROG", lot_id=lot_id, verdict="REJECT", module_a_rank=0.0,
+            module_b_rank=1.0, worst_parameter="iddq", module_a_ran=False, module_b_ran=True,
+            predicted_168h=500.0, actual_168h=None, explanation_sentence=None,
+        )],
+        disposition=LotDisposition(lot_id=lot_id, status="IN_PROGRESS", pda_result=1.0,
+                                    verdict="STOP_RUN_RECOMMENDED", is_forecast=True),
+        module_a_results={},
+        module_b_results={"C-INPROG": _module_b_result("C-INPROG", lot_id, parameter="iddq")},
+        part_explanations={"C-INPROG": PartExplanation(
+            explanation_sentence="Part C-INPROG: predicted 168h drift exceeds the safety slope.",
+            confidence_qualifier="borderline - recommend retest",
+        )},
+    )
+    _seed_lot_with_results(lot_id, lot_id, "PN-INPROG", account_id, results)
+
+    resp = client.get("/parts/C-INPROG", headers=_auth_headers(account_id))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["module_a"] is None
+    assert data["module_b"]["predicted_168h"] == 69.0
+    assert data["explanation_sentence"] == "Part C-INPROG: predicted 168h drift exceeds the safety slope."
+
+
 def test_get_part_detail_unknown_component_404():
     uid = str(uuid.uuid4())
     account_id = _seed_account(uid)
@@ -287,6 +321,41 @@ def test_get_part_detail_unknown_component_404():
 def test_get_part_detail_requires_auth():
     resp = client.get("/parts/anything")
     assert resp.status_code in (401, 403)
+
+
+def test_matching_runs_logs_a_warning_on_a_row_that_fails_validation(caplog):
+    """B6c: a stored row that fails AnalysisResults validation is still skipped, not a 500 - but
+    it must now be logged, not silently dropped (deliberately invalid row: no "disposition" key,
+    a required field)."""
+    import logging
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-invalid-row-{uid}"
+    account_id = _seed_account(uid)
+    repository.save_project(lot_id, lot_id, "PN-1", datetime.now(UTC), account_id)
+
+    invalid_results_json = json.dumps({"assessments": []})  # missing required "disposition"
+    from contracts import ProjectData
+    from storage.repository import SessionLocal
+
+    with SessionLocal() as session:
+        session.add(ProjectData(
+            analysis_run_id=f"run-invalid-{uid}",
+            project_id=lot_id,
+            raw_data=json.dumps({}),
+            results_json=invalid_results_json,
+            diff_vs_prior=None,
+            created_at=datetime.now(UTC),
+        ))
+        session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="fusion.router"):
+        resp = client.get(f"/parts/anything-{uid}", headers=_auth_headers(account_id))
+    assert resp.status_code == 404
+    assert any(
+        f"run-invalid-{uid}" in record.getMessage() and lot_id in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_get_part_detail_ambiguous_component_resolves_to_most_recent_or_named_lot():

@@ -456,7 +456,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "ingest" | "checkpoint_add" | "analysis_run" | "config_change";
+            event_type: "ingest" | "checkpoint_add" | "analysis_run" | "config_change" | "timing_flag";
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -640,8 +640,8 @@ export interface components {
             explanation?: components["schemas"]["PartExplanation"] | null;
             /** Explanation Sentence */
             explanation_sentence: string;
-            module_a: components["schemas"]["ModuleAResult"];
-            module_b: components["schemas"]["ModuleBResult"];
+            module_a?: components["schemas"]["ModuleAResult"] | null;
+            module_b?: components["schemas"]["ModuleBResult"] | null;
             /** Severity Cap Note */
             severity_cap_note: string | null;
             /** Staleness Note */
@@ -779,7 +779,7 @@ export interface components {
             /** Shap Value */
             shap_value: number;
             /** Value */
-            value: number;
+            value?: number | null;
         };
         /** TokenResponse */
         TokenResponse: {

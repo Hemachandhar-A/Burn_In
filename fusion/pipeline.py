@@ -1,3 +1,5 @@
+import math
+
 from contracts import (
     LotDataset, ScreeningConfig, AnalysisResults, RiskAssessment, LotDisposition, to_module_b_input,
     PartExplanation, ShapContributionRow, MCDContributionRow, EcodDimensionRow, ZScoreTableRow,
@@ -222,7 +224,11 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
 
         part_explanations[cid] = PartExplanation(
             shap_contributions=[
-                ShapContributionRow(feature=c.feature, value=c.value, shap_value=c.shap_value)
+                ShapContributionRow(
+                    feature=c.feature,
+                    value=c.value if math.isfinite(c.value) else None,
+                    shap_value=c.shap_value,
+                )
                 for c in (shap_exp.contributions if shap_exp else [])
             ],
             mcd_contributions=[
