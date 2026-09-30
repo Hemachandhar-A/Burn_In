@@ -105,6 +105,62 @@
         "title": "Body_upload_lot_lots_post",
         "type": "object"
       },
+      "ConfirmedOutcomeRecord": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "analysis_run_id": {
+            "title": "Analysis Run Id",
+            "type": "string"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "confirmed_outcome": {
+            "enum": [
+              "Confirmed Good",
+              "Confirmed Defective",
+              "Unknown"
+            ],
+            "title": "Confirmed Outcome",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "component_id",
+          "account_id",
+          "confirmed_outcome",
+          "note",
+          "recorded_at",
+          "analysis_run_id"
+        ],
+        "title": "ConfirmedOutcomeRecord",
+        "type": "object"
+      },
       "DispositionRecord": {
         "properties": {
           "account_id": {
@@ -175,6 +231,24 @@
           "rationale"
         ],
         "title": "DispositionRequest",
+        "type": "object"
+      },
+      "EcodDimensionRow": {
+        "properties": {
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "dimension",
+          "score"
+        ],
+        "title": "EcodDimensionRow",
         "type": "object"
       },
       "EventResponse": {
@@ -311,6 +385,11 @@
           "disposition": {
             "$ref": "#/components/schemas/LotDisposition"
           },
+          "explanation_summary": {
+            "default": "",
+            "title": "Explanation Summary",
+            "type": "string"
+          },
           "insufficient_data_components": {
             "default": [],
             "items": {
@@ -318,6 +397,30 @@
             },
             "title": "Insufficient Data Components",
             "type": "array"
+          },
+          "module_a_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModuleAResult"
+            },
+            "default": {},
+            "title": "Module A Results",
+            "type": "object"
+          },
+          "module_b_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModuleBResult"
+            },
+            "default": {},
+            "title": "Module B Results",
+            "type": "object"
+          },
+          "part_explanations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PartExplanation"
+            },
+            "default": {},
+            "title": "Part Explanations",
+            "type": "object"
           }
         },
         "required": [
@@ -365,6 +468,437 @@
           "reading_count"
         ],
         "title": "LotUploadResponse",
+        "type": "object"
+      },
+      "MCDContributionRow": {
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "contribution"
+        ],
+        "title": "MCDContributionRow",
+        "type": "object"
+      },
+      "ModuleAResult": {
+        "properties": {
+          "combined_severity": {
+            "title": "Combined Severity",
+            "type": "number"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "above_median",
+              "below_median"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "ecod_score": {
+            "title": "Ecod Score",
+            "type": "number"
+          },
+          "explainable_corroboration": {
+            "title": "Explainable Corroboration",
+            "type": "boolean"
+          },
+          "explainable_tags": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Explainable Tags",
+            "type": "object"
+          },
+          "isolation_forest_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isolation Forest Score"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "mcd_distance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcd Distance"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          },
+          "robust_z": {
+            "title": "Robust Z",
+            "type": "number"
+          },
+          "severity_cap_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Cap Reason"
+          },
+          "severity_tier": {
+            "enum": [
+              "PASS",
+              "REVIEW",
+              "REJECT"
+            ],
+            "title": "Severity Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "lot_id",
+          "parameter",
+          "robust_z",
+          "mcd_distance",
+          "isolation_forest_score",
+          "ecod_score",
+          "explainable_tags",
+          "direction",
+          "severity_tier",
+          "severity_cap_reason",
+          "combined_severity",
+          "explainable_corroboration"
+        ],
+        "title": "ModuleAResult",
+        "type": "object"
+      },
+      "ModuleBResult": {
+        "properties": {
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "drift_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drift Rate"
+          },
+          "exceeds_safety_slope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exceeds Safety Slope"
+          },
+          "forecast_unavailable": {
+            "title": "Forecast Unavailable",
+            "type": "boolean"
+          },
+          "interval_lower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Lower"
+          },
+          "interval_upper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Upper"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "lower_bound_exceeds_safety_slope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Bound Exceeds Safety Slope"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          },
+          "physics_baseline_prediction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physics Baseline Prediction"
+          },
+          "physics_disagreement_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physics Disagreement Gap"
+          },
+          "predicted_168h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted 168H"
+          },
+          "safety_slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Slope"
+          }
+        },
+        "required": [
+          "component_id",
+          "lot_id",
+          "parameter",
+          "predicted_168h",
+          "interval_lower",
+          "interval_upper",
+          "physics_baseline_prediction",
+          "physics_disagreement_gap",
+          "drift_rate",
+          "exceeds_safety_slope",
+          "safety_slope",
+          "lower_bound_exceeds_safety_slope",
+          "forecast_unavailable"
+        ],
+        "title": "ModuleBResult",
+        "type": "object"
+      },
+      "PartDetailResponse": {
+        "properties": {
+          "confidence_qualifier": {
+            "title": "Confidence Qualifier",
+            "type": "string"
+          },
+          "confirmed_outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmedOutcomeRecord"
+            },
+            "title": "Confirmed Outcomes",
+            "type": "array"
+          },
+          "disposition_history": {
+            "items": {
+              "$ref": "#/components/schemas/DispositionRecord"
+            },
+            "title": "Disposition History",
+            "type": "array"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartExplanation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation_sentence": {
+            "title": "Explanation Sentence",
+            "type": "string"
+          },
+          "module_a": {
+            "$ref": "#/components/schemas/ModuleAResult"
+          },
+          "module_b": {
+            "$ref": "#/components/schemas/ModuleBResult"
+          },
+          "severity_cap_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Cap Note"
+          },
+          "staleness_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Note"
+          },
+          "unavailable_forecast_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Forecast Note"
+          }
+        },
+        "required": [
+          "module_a",
+          "module_b",
+          "explanation_sentence",
+          "confidence_qualifier",
+          "severity_cap_note",
+          "unavailable_forecast_note",
+          "staleness_note",
+          "disposition_history",
+          "confirmed_outcomes"
+        ],
+        "title": "PartDetailResponse",
+        "type": "object"
+      },
+      "PartExplanation": {
+        "description": "Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the\ntext/notes for that one part. Every field optional/defaulted - a PASS part gets none of this\n(AnalysisResults.part_explanations only ever holds non-PASS parts, Part 3g).",
+        "properties": {
+          "confidence_qualifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Qualifier"
+          },
+          "ecod_dimensions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EcodDimensionRow"
+            },
+            "title": "Ecod Dimensions",
+            "type": "array"
+          },
+          "explanation_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Sentence"
+          },
+          "mcd_contributions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MCDContributionRow"
+            },
+            "title": "Mcd Contributions",
+            "type": "array"
+          },
+          "severity_cap_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Cap Note"
+          },
+          "shap_contributions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ShapContributionRow"
+            },
+            "title": "Shap Contributions",
+            "type": "array"
+          },
+          "unavailable_forecast_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Forecast Note"
+          },
+          "zscore_table": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ZScoreTableRow"
+            },
+            "title": "Zscore Table",
+            "type": "array"
+          }
+        },
+        "title": "PartExplanation",
         "type": "object"
       },
       "PendingSettingChange": {
@@ -602,6 +1136,29 @@
         "title": "SettingsSignoffRequest",
         "type": "object"
       },
+      "ShapContributionRow": {
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "shap_value": {
+            "title": "Shap Value",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "feature",
+          "value",
+          "shap_value"
+        ],
+        "title": "ShapContributionRow",
+        "type": "object"
+      },
       "TokenResponse": {
         "properties": {
           "access_token": {
@@ -669,6 +1226,34 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ZScoreTableRow": {
+        "properties": {
+          "lot_median": {
+            "title": "Lot Median",
+            "type": "number"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "z": {
+            "title": "Z",
+            "type": "number"
+          }
+        },
+        "required": [
+          "parameter",
+          "value",
+          "lot_median",
+          "z"
+        ],
+        "title": "ZScoreTableRow",
         "type": "object"
       }
     },
@@ -1095,6 +1680,69 @@
         "summary": "Generate Report",
         "tags": [
           "report"
+        ]
+      }
+    },
+    "/parts/{component_id}": {
+      "get": {
+        "operationId": "get_part_detail_parts__component_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "component_id",
+            "required": true,
+            "schema": {
+              "title": "Component Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lot Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Part Detail",
+        "tags": [
+          "fusion"
         ]
       }
     },

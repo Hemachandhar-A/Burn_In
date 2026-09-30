@@ -193,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/parts/{component_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Part Detail */
+        get: operations["get_part_detail_parts__component_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/parts/{component_id}/disposition": {
         parameters: {
             query?: never;
@@ -366,6 +383,29 @@ export interface components {
             /** Test Date */
             test_date?: string | null;
         };
+        /** ConfirmedOutcomeRecord */
+        ConfirmedOutcomeRecord: {
+            /** Account Id */
+            account_id: string;
+            /** Analysis Run Id */
+            analysis_run_id: string;
+            /** Component Id */
+            component_id: string;
+            /**
+             * Confirmed Outcome
+             * @enum {string}
+             */
+            confirmed_outcome: "Confirmed Good" | "Confirmed Defective" | "Unknown";
+            /** Note */
+            note: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
         /** DispositionRecord */
         DispositionRecord: {
             /** Account Id */
@@ -398,6 +438,13 @@ export interface components {
              * @enum {string}
              */
             verdict: "ACCEPT" | "HOLD" | "REJECT";
+        };
+        /** EcodDimensionRow */
+        EcodDimensionRow: {
+            /** Dimension */
+            dimension: string;
+            /** Score */
+            score: number;
         };
         /** EventResponse */
         EventResponse: {
@@ -459,10 +506,36 @@ export interface components {
             assessments: components["schemas"]["RiskAssessment"][];
             disposition: components["schemas"]["LotDisposition"];
             /**
+             * Explanation Summary
+             * @default
+             */
+            explanation_summary: string;
+            /**
              * Insufficient Data Components
              * @default []
              */
             insufficient_data_components: string[];
+            /**
+             * Module A Results
+             * @default {}
+             */
+            module_a_results: {
+                [key: string]: components["schemas"]["ModuleAResult"];
+            };
+            /**
+             * Module B Results
+             * @default {}
+             */
+            module_b_results: {
+                [key: string]: components["schemas"]["ModuleBResult"];
+            };
+            /**
+             * Part Explanations
+             * @default {}
+             */
+            part_explanations: {
+                [key: string]: components["schemas"]["PartExplanation"];
+            };
         };
         /** LotUploadResponse */
         LotUploadResponse: {
@@ -482,6 +555,135 @@ export interface components {
              * @enum {string}
              */
             status: "IN_PROGRESS" | "COMPLETE";
+        };
+        /** MCDContributionRow */
+        MCDContributionRow: {
+            /** Contribution */
+            contribution: number;
+            /** Parameter */
+            parameter: string;
+        };
+        /** ModuleAResult */
+        ModuleAResult: {
+            /** Combined Severity */
+            combined_severity: number;
+            /** Component Id */
+            component_id: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "above_median" | "below_median";
+            /** Ecod Score */
+            ecod_score: number;
+            /** Explainable Corroboration */
+            explainable_corroboration: boolean;
+            /** Explainable Tags */
+            explainable_tags: {
+                [key: string]: boolean;
+            };
+            /** Isolation Forest Score */
+            isolation_forest_score: number | null;
+            /** Lot Id */
+            lot_id: string;
+            /** Mcd Distance */
+            mcd_distance: number | null;
+            /** Parameter */
+            parameter: string;
+            /** Robust Z */
+            robust_z: number;
+            /** Severity Cap Reason */
+            severity_cap_reason: string | null;
+            /**
+             * Severity Tier
+             * @enum {string}
+             */
+            severity_tier: "PASS" | "REVIEW" | "REJECT";
+        };
+        /** ModuleBResult */
+        ModuleBResult: {
+            /** Component Id */
+            component_id: string;
+            /** Drift Rate */
+            drift_rate: number | null;
+            /** Exceeds Safety Slope */
+            exceeds_safety_slope: boolean | null;
+            /** Forecast Unavailable */
+            forecast_unavailable: boolean;
+            /** Interval Lower */
+            interval_lower: number | null;
+            /** Interval Upper */
+            interval_upper: number | null;
+            /** Lot Id */
+            lot_id: string;
+            /** Lower Bound Exceeds Safety Slope */
+            lower_bound_exceeds_safety_slope: boolean | null;
+            /** Parameter */
+            parameter: string;
+            /** Physics Baseline Prediction */
+            physics_baseline_prediction: number | null;
+            /** Physics Disagreement Gap */
+            physics_disagreement_gap: number | null;
+            /** Predicted 168H */
+            predicted_168h: number | null;
+            /** Safety Slope */
+            safety_slope: number | null;
+        };
+        /** PartDetailResponse */
+        PartDetailResponse: {
+            /** Confidence Qualifier */
+            confidence_qualifier: string;
+            /** Confirmed Outcomes */
+            confirmed_outcomes: components["schemas"]["ConfirmedOutcomeRecord"][];
+            /** Disposition History */
+            disposition_history: components["schemas"]["DispositionRecord"][];
+            explanation?: components["schemas"]["PartExplanation"] | null;
+            /** Explanation Sentence */
+            explanation_sentence: string;
+            module_a: components["schemas"]["ModuleAResult"];
+            module_b: components["schemas"]["ModuleBResult"];
+            /** Severity Cap Note */
+            severity_cap_note: string | null;
+            /** Staleness Note */
+            staleness_note: string | null;
+            /** Unavailable Forecast Note */
+            unavailable_forecast_note: string | null;
+        };
+        /**
+         * PartExplanation
+         * @description Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the
+         *     text/notes for that one part. Every field optional/defaulted - a PASS part gets none of this
+         *     (AnalysisResults.part_explanations only ever holds non-PASS parts, Part 3g).
+         */
+        PartExplanation: {
+            /** Confidence Qualifier */
+            confidence_qualifier?: string | null;
+            /**
+             * Ecod Dimensions
+             * @default []
+             */
+            ecod_dimensions: components["schemas"]["EcodDimensionRow"][];
+            /** Explanation Sentence */
+            explanation_sentence?: string | null;
+            /**
+             * Mcd Contributions
+             * @default []
+             */
+            mcd_contributions: components["schemas"]["MCDContributionRow"][];
+            /** Severity Cap Note */
+            severity_cap_note?: string | null;
+            /**
+             * Shap Contributions
+             * @default []
+             */
+            shap_contributions: components["schemas"]["ShapContributionRow"][];
+            /** Unavailable Forecast Note */
+            unavailable_forecast_note?: string | null;
+            /**
+             * Zscore Table
+             * @default []
+             */
+            zscore_table: components["schemas"]["ZScoreTableRow"][];
         };
         /** PendingSettingChange */
         PendingSettingChange: {
@@ -570,6 +772,15 @@ export interface components {
              */
             field: "fn_fp_cost_ratio" | "pda_threshold" | "confirmed_outcome_fn_ceiling";
         };
+        /** ShapContributionRow */
+        ShapContributionRow: {
+            /** Feature */
+            feature: string;
+            /** Shap Value */
+            shap_value: number;
+            /** Value */
+            value: number;
+        };
         /** TokenResponse */
         TokenResponse: {
             /** Access Token */
@@ -597,6 +808,17 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** ZScoreTableRow */
+        ZScoreTableRow: {
+            /** Lot Median */
+            lot_median: number;
+            /** Parameter */
+            parameter: string;
+            /** Value */
+            value: number;
+            /** Z */
+            z: number;
         };
     };
     responses: never;
@@ -896,6 +1118,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_part_detail_parts__component_id__get: {
+        parameters: {
+            query?: {
+                lot_id?: string | null;
+            };
+            header?: never;
+            path: {
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartDetailResponse"];
                 };
             };
             /** @description Validation Error */
