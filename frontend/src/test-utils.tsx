@@ -29,7 +29,9 @@ export type Routes = Record<
 export function fakeServer(routes: Routes) {
   const requests: Request[] = []
   const fetch = vi.fn(async (request: Request) => {
-    requests.push(request)
+    // Cloned before any route handler can read its body: a route function that calls
+    // `request.json()` would otherwise leave the stored request's body already consumed.
+    requests.push(request.clone())
     const key = `${request.method} ${new URL(request.url).pathname}`
     const route = routes[key]
     const reply = typeof route === 'function' ? await route(request) : route

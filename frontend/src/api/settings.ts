@@ -1,52 +1,56 @@
+import type { ApiClient } from './client'
+import { unwrap } from './errors'
 import {
   MOCK_getCorrectiveStatus,
-  MOCK_getSettings,
   MOCK_getWorklist,
-  MOCK_proposeSetting,
-  MOCK_signoffSetting,
   type MOCK_CorrectiveStatusResponse,
-  type MOCK_PendingSettingChange,
-  type MOCK_SettingsProposalRequest,
-  type MOCK_SettingsResponse,
-  type MOCK_SettingsSignoffRequest,
   type MOCK_WorklistResponse,
 } from './mocks'
+import type { components } from './schema'
+
+export type SettingsResponse = components['schemas']['SettingsResponse']
+export type PendingSettingChange = components['schemas']['PendingSettingChange']
+export type SettingsProposalRequest = components['schemas']['SettingsProposalRequest']
+export type SettingsSignoffRequest = components['schemas']['SettingsSignoffRequest']
+export type SettingField = SettingsProposalRequest['field']
 
 export const SETTINGS_QUERY_KEY = ['settings'] as const
 export const WORKLIST_QUERY_KEY = ['settings', 'worklist'] as const
 export const CORRECTIVE_STATUS_QUERY_KEY = ['settings', 'corrective-status'] as const
 
+/** `GET /settings`: real (P5.5, identity/router.py). */
+export async function getSettings(client: ApiClient): Promise<SettingsResponse> {
+  return unwrap(await client.GET('/settings'))
+}
+
 /**
- * `GET /settings`. MOCKED: not in the live schema (P5.5, identity/router.py; BLOCKERS.md). When it
- * lands, each function here takes the ApiClient and calls its route through it; the two POSTs stop
- * taking `accountId`, since the real routes read the account from the JWT.
+ * `POST /settings/propose`: real (P5.5). The real route reads the proposer from the JWT
+ * (`get_current_account`), so this no longer takes an `accountId`.
  */
-export function getSettings(): Promise<MOCK_SettingsResponse> {
-  return MOCK_getSettings()
+export async function proposeSetting(
+  client: ApiClient,
+  request: SettingsProposalRequest,
+): Promise<PendingSettingChange> {
+  return unwrap(await client.POST('/settings/propose', { body: request }))
 }
 
-/** `POST /settings/propose`. MOCKED (P5.5). */
-export function proposeSetting(
-  request: MOCK_SettingsProposalRequest,
-  accountId: string,
-): Promise<MOCK_PendingSettingChange> {
-  return MOCK_proposeSetting(request, accountId)
+/** `POST /settings/signoff`: real (P5.5). Same JWT-derived account as `proposeSetting`. */
+export async function signoffSetting(
+  client: ApiClient,
+  request: SettingsSignoffRequest,
+): Promise<SettingsResponse> {
+  return unwrap(await client.POST('/settings/signoff', { body: request }))
 }
 
-/** `POST /settings/signoff`. MOCKED (P5.5). */
-export function signoffSetting(
-  request: MOCK_SettingsSignoffRequest,
-  accountId: string,
-): Promise<MOCK_SettingsResponse> {
-  return MOCK_signoffSetting(request, accountId)
-}
-
-/** `GET /settings/worklist`. MOCKED (P5.8, capa/router.py). */
+/** `GET /settings/worklist`. MOCKED: blocked on Block 4a (backend route not merged; BLOCKERS.md). */
 export function getWorklist(): Promise<MOCK_WorklistResponse> {
   return MOCK_getWorklist()
 }
 
-/** `GET /settings/corrective-status`. MOCKED (P5.8, capa/router.py). */
+/**
+ * `GET /settings/corrective-status`. MOCKED: blocked on Block 4a (backend route not merged;
+ * BLOCKERS.md).
+ */
 export function getCorrectiveStatus(): Promise<MOCK_CorrectiveStatusResponse> {
   return MOCK_getCorrectiveStatus()
 }

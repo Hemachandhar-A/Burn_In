@@ -688,27 +688,15 @@ export async function MOCK_submitConfirmedOutcome(
 }
 
 /* ------------------------------------------------------------------------------------------ *
- * Project Browser, History, Settings (P1.12). Stand in for `GET /events`, `GET
- * /disposition-signoffs` (P2, storage/router.py - Lead-approved global routes, not yet built),
- * `GET /settings`, `POST /settings/propose`, `POST /settings/signoff` (P5.5, identity/router.py)
- * and `GET /settings/worklist`, `GET /settings/corrective-status` (P5.8, capa/router.py). None are
- * in the live OpenAPI schema (BLOCKERS.md). `GET /projects` is real and is not mocked here.
+ * Project Browser worklist and corrective status (P1.12/P5.8, capa/router.py). `GET /events`,
+ * `GET /disposition-signoffs`, `GET /settings`, `POST /settings/propose` and
+ * `POST /settings/signoff` are all real now (history.ts, settings.ts) - only
+ * `GET /settings/worklist` and `GET /settings/corrective-status` remain mocked, blocked on
+ * Block 4a not being merged yet (BLOCKERS.md). `GET /projects` is real and is not mocked here.
  *
  * Unlike the per-id generators above, these share one small fixture world (MOCK_FIXTURE_PROJECTS)
- * so History, the worklist and the Project Browser tell the same story. The settings and event
- * stores are mutable in-memory state, because proposing and signing off a setting has to change
- * what the next `GET /settings` and `GET /events` return, the way the real routes will.
+ * so the worklist and the Project Browser tell the same story.
  * ------------------------------------------------------------------------------------------ */
-
-/** contracts.py `EventResponse`, verbatim. `payload` is a dict by design (Part 5.6 note). */
-export interface MOCK_EventResponse {
-  event_id: string
-  project_id: string
-  account_id: string
-  event_type: 'ingest' | 'checkpoint_add' | 'analysis_run' | 'config_change'
-  timestamp: string
-  payload: Record<string, unknown>
-}
 
 export type MOCK_SettingField =
   'fn_fp_cost_ratio' | 'pda_threshold' | 'confirmed_outcome_fn_ceiling'
@@ -727,17 +715,6 @@ export interface MOCK_SettingsResponse {
   pda_threshold: number
   confirmed_outcome_fn_ceiling: number
   pending_changes: MOCK_PendingSettingChange[]
-}
-
-/** contracts.py `SettingsProposalRequest`, verbatim. */
-export interface MOCK_SettingsProposalRequest {
-  field: MOCK_SettingField
-  proposed_value: number
-}
-
-/** contracts.py `SettingsSignoffRequest`, verbatim. */
-export interface MOCK_SettingsSignoffRequest {
-  field: MOCK_SettingField
 }
 
 /** contracts.py `WorklistResponse`, verbatim. */
@@ -809,107 +786,6 @@ const MOCK_FIXTURE_LOTS: Record<
   'LOT-2024-9230': { status: 'IN_PROGRESS', part_number: 'DAC8830' },
 }
 
-type FixtureEvent = Omit<MOCK_EventResponse, 'event_id'>
-
-function ingestEvent(
-  project: (typeof MOCK_FIXTURE_PROJECTS)[number],
-  componentCount: number,
-  checkpointHours: number[],
-): FixtureEvent {
-  return {
-    project_id: project.project_id,
-    account_id: project.created_by,
-    event_type: 'ingest',
-    timestamp: project.created_at,
-    payload: {
-      lot_id: project.lot_id,
-      part_number: project.part_number,
-      component_count: componentCount,
-      checkpoint_hours: checkpointHours,
-    },
-  }
-}
-
-function event(
-  projectId: string,
-  accountId: string,
-  eventType: MOCK_EventResponse['event_type'],
-  timestamp: string,
-  payload: Record<string, unknown>,
-): FixtureEvent {
-  return { project_id: projectId, account_id: accountId, event_type: eventType, timestamp, payload }
-}
-
-/**
- * `analysis_run` payloads follow the stored diff's real shape, from storage/repository.py
- * `_diff_analysis_results`: `newly_activated_modules`, `resolved_forecasts`, `verdict_changes`. A
- * project's first run has no prior run to diff against (`diff_vs_prior` is null), so its payload
- * is `{}` here. The other three event types' payloads aren't pinned anywhere yet
- * (CONTRACT_CHANGES.md, P1.12), so the keys used for them here are a proposal, not a contract.
- */
-function fixtureEvents(): MOCK_EventResponse[] {
-  const [p6090, p7712, p8841, p9104, p9230] = MOCK_FIXTURE_PROJECTS
-  const rows: FixtureEvent[] = [
-    ingestEvent(p6090, 77, [0, 24]),
-    event(p6090.project_id, 'a.sharma', 'analysis_run', '2026-09-09T08:10:04Z', {}),
-    ingestEvent(p7712, 77, [0, 24, 96, 168]),
-    event(p7712.project_id, 'r.mehta', 'analysis_run', '2026-09-10T09:40:05Z', {}),
-    ingestEvent(p8841, 77, [0]),
-    event(p8841.project_id, 'r.mehta', 'analysis_run', '2026-09-11T09:15:34Z', {}),
-    event(p6090.project_id, 'a.sharma', 'checkpoint_add', '2026-09-11T16:20:00Z', {
-      checkpoint_hours: [96, 168],
-    }),
-    event(p6090.project_id, 'a.sharma', 'analysis_run', '2026-09-11T16:20:06Z', {
-      newly_activated_modules: { 'DUT-011': ['module_a'], 'DUT-064': ['module_a'] },
-      resolved_forecasts: { 'DUT-064': { predicted: 38.2, actual: 41.7 } },
-      verdict_changes: {},
-    }),
-    event(p8841.project_id, 'a.sharma', 'checkpoint_add', '2026-09-12T14:31:40Z', {
-      checkpoint_hours: [24],
-    }),
-    event(p8841.project_id, 'a.sharma', 'analysis_run', '2026-09-12T14:32:00Z', {
-      newly_activated_modules: {
-        'DUT-019': ['module_b'],
-        'DUT-042': ['module_b'],
-        'DUT-055': ['module_b'],
-        'DUT-070': ['module_b'],
-      },
-      resolved_forecasts: {},
-      verdict_changes: {},
-    }),
-    ingestEvent(p9104, 77, [0, 24]),
-    event(p9104.project_id, 'r.mehta', 'analysis_run', '2026-09-14T10:05:03Z', {}),
-    event(p9104.project_id, 'a.sharma', 'checkpoint_add', '2026-09-14T16:50:12Z', {
-      checkpoint_hours: [96],
-    }),
-    event(p9104.project_id, 'a.sharma', 'analysis_run', '2026-09-14T16:50:15Z', {
-      newly_activated_modules: {},
-      resolved_forecasts: {},
-      verdict_changes: {},
-    }),
-    event(p8841.project_id, 'r.mehta', 'checkpoint_add', '2026-09-15T11:20:40Z', {
-      checkpoint_hours: [96, 168],
-    }),
-    event(p8841.project_id, 'r.mehta', 'analysis_run', '2026-09-15T11:20:45Z', {
-      newly_activated_modules: { 'DUT-019': ['module_a'], 'DUT-042': ['module_a'] },
-      resolved_forecasts: { 'DUT-042': { predicted: 61.5, actual: 60.8 } },
-      verdict_changes: { 'DUT-019': { from: 'WATCH', to: 'REJECT' } },
-    }),
-    ingestEvent(p9230, 80, [0]),
-    event(p9230.project_id, 'a.sharma', 'analysis_run', '2026-09-15T14:32:04Z', {}),
-    // The pending PDA-threshold proposal fixtureSettings() starts with.
-    event(p8841.project_id, 'r.mehta', 'config_change', '2026-09-16T15:40:22Z', {
-      field: 'pda_threshold',
-      stage: 'proposed',
-      previous_value: 0.05,
-      proposed_value: 0.055,
-      proposed_by: 'r.mehta',
-      signed_off_by: null,
-    }),
-  ]
-  return rows.map((row, i) => ({ event_id: `evt-${String(i + 1).padStart(4, '0')}`, ...row }))
-}
-
 function fixtureSignoffs(): MOCK_DispositionRecord[] {
   return [
     {
@@ -976,120 +852,11 @@ function fixtureSettings(): MOCK_SettingsResponse {
   }
 }
 
-let mockEvents = fixtureEvents()
 let mockSettings = fixtureSettings()
 
-/** Test-only: put the mutable settings/event stores back to their fixture state. */
+/** Test-only: put the mutable settings store back to its fixture state. */
 export function MOCK_resetStores(): void {
-  mockEvents = fixtureEvents()
   mockSettings = fixtureSettings()
-}
-
-function appendConfigEvent(accountId: string, payload: Record<string, unknown>): void {
-  mockEvents.push({
-    event_id: `evt-${String(mockEvents.length + 1).padStart(4, '0')}`,
-    // `Event.project_id` is a non-null FK, but a config change belongs to no project. Which
-    // project_id the real route logs it under is an open question (CONTRACT_CHANGES.md, P1.12).
-    project_id: 'proj-LOT-2024-8841',
-    account_id: accountId,
-    event_type: 'config_change',
-    timestamp: new Date().toISOString(),
-    payload,
-  })
-}
-
-/** `GET /events` (P2, storage/router.py). Every event, every project, every account (E6 screen 6). */
-export async function MOCK_listEvents(): Promise<MOCK_EventResponse[]> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  return structuredClone(mockEvents)
-}
-
-/** `GET /disposition-signoffs` (P2, storage/router.py). */
-export async function MOCK_listDispositionSignoffs(): Promise<MOCK_DispositionRecord[]> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  return fixtureSignoffs()
-}
-
-/** `GET /settings` (P5.5, identity/router.py). */
-export async function MOCK_getSettings(): Promise<MOCK_SettingsResponse> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  return structuredClone(mockSettings)
-}
-
-/** Why a proposed value can't be accepted, or null. What the real route should 422 on. */
-function proposalProblem(field: MOCK_SettingField, value: number): string | null {
-  if (!Number.isFinite(value) || value <= 0) {
-    return 'proposed_value: must be a number greater than 0.'
-  }
-  if (field !== 'fn_fp_cost_ratio' && value > 1) {
-    return 'proposed_value: a rate must be a fraction no greater than 1.'
-  }
-  return null
-}
-
-/**
- * `POST /settings/propose` (P5.5). `accountId` stands in for the JWT's account the real route
- * reads via `get_current_account`. One pending change per value at a time.
- */
-export async function MOCK_proposeSetting(
-  request: MOCK_SettingsProposalRequest,
-  accountId: string,
-): Promise<MOCK_PendingSettingChange> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  const problem = proposalProblem(request.field, request.proposed_value)
-  if (problem) throw new ApiError(422, [problem])
-  if (mockSettings.pending_changes.some((p) => p.field === request.field)) {
-    throw new ApiError(409, [
-      'A change to this value is already awaiting sign-off. It has to be finalized first.',
-    ])
-  }
-  const pending: MOCK_PendingSettingChange = {
-    field: request.field,
-    proposed_value: request.proposed_value,
-    proposed_by: accountId,
-    signed_off_by: null,
-  }
-  mockSettings.pending_changes.push(pending)
-  appendConfigEvent(accountId, {
-    field: request.field,
-    stage: 'proposed',
-    previous_value: mockSettings[request.field],
-    proposed_value: request.proposed_value,
-    proposed_by: accountId,
-    signed_off_by: null,
-  })
-  return structuredClone(pending)
-}
-
-/**
- * `POST /settings/signoff` (P5.5). The second sign-off must come from a different account than
- * the proposer (E10 step 5, the same two-distinct-account rule as REJECT). Finalizing applies the
- * value and clears its pending entry.
- */
-export async function MOCK_signoffSetting(
-  request: MOCK_SettingsSignoffRequest,
-  accountId: string,
-): Promise<MOCK_SettingsResponse> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_SHORT_MS))
-  const pending = mockSettings.pending_changes.find((p) => p.field === request.field)
-  if (!pending) throw new ApiError(404, ['No pending change for this value.'])
-  if (pending.proposed_by === accountId) {
-    throw new ApiError(403, [
-      'The second sign-off has to come from a different account than the one that proposed the change.',
-    ])
-  }
-  const previous = mockSettings[request.field]
-  mockSettings[request.field] = pending.proposed_value
-  mockSettings.pending_changes = mockSettings.pending_changes.filter((p) => p !== pending)
-  appendConfigEvent(accountId, {
-    field: request.field,
-    stage: 'finalized',
-    previous_value: previous,
-    proposed_value: pending.proposed_value,
-    proposed_by: pending.proposed_by,
-    signed_off_by: accountId,
-  })
-  return structuredClone(mockSettings)
 }
 
 /** `GET /settings/worklist` (P5.8). Dispositions with no confirmed outcome yet, one per part. */

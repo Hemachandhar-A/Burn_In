@@ -1,20 +1,104 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { ApiError } from '../api/errors'
-import {
-  MOCK_FIXTURE_PROJECTS,
-  MOCK_proposeSetting,
-  MOCK_resetStores,
-  type MOCK_SettingsResponse,
-} from '../api/mocks'
+import { MOCK_FIXTURE_PROJECTS } from '../api/mocks'
 import * as settingsApi from '../api/settings'
-import { fakeServer, renderWithApi } from '../test-utils'
+import { fakeServer, renderWithApi, SIGNED_IN, type FakeReply, type Routes } from '../test-utils'
 import { SettingsScreen } from './SettingsScreen'
 
 const R_MEHTA = { token: 't', accountId: 'r.mehta', role: 'Reliability Engineer' }
 
-function server() {
-  return fakeServer({ 'GET /projects': { body: MOCK_FIXTURE_PROJECTS } }).fetch
+interface PendingChange {
+  field: string
+  proposed_value: number
+  proposed_by: string
+  signed_off_by: string | null
+}
+
+interface SettingsState {
+  fn_fp_cost_ratio: number
+  pda_threshold: number
+  confirmed_outcome_fn_ceiling: number
+  pending: PendingChange[]
+}
+
+/** Maps a request's bearer token to the account id it stands for, mirroring real JWT auth. */
+const TOKEN_ACCOUNTS: Record<string, string> = { [SIGNED_IN.token]: SIGNED_IN.accountId, t: 'r.mehta' }
+
+function accountFor(request: Request): string {
+  const token = /^Bearer (.+)$/.exec(request.headers.get('Authorization') ?? '')?.[1] ?? ''
+  return TOKEN_ACCOUNTS[token] ?? 'unknown'
+}
+
+function settingsBody(state: SettingsState) {
+  return {
+    fn_fp_cost_ratio: state.fn_fp_cost_ratio,
+    pda_threshold: state.pda_threshold,
+    confirmed_outcome_fn_ceiling: state.confirmed_outcome_fn_ceiling,
+    pending_changes: state.pending,
+  }
+}
+
+/**
+ * A real-ish in-memory `/settings` + `/settings/propose` + `/settings/signoff`, matching
+ * `identity/router.py`'s actual status codes and detail messages (all 400, not the old mock's
+ * 409/403/404). `/settings/worklist` and `/settings/corrective-status` stay mocked separately
+ * (Block 4a not merged), so they aren't part of this fixture.
+ */
+function settingsServer(initial: Partial<SettingsState> = {}, overrides: Routes = {}) {
+  const state: SettingsState = {
+    fn_fp_cost_ratio: 10,
+    pda_threshold: 0.05,
+    confirmed_outcome_fn_ceiling: 0.05,
+    pending: [
+      { field: 'pda_threshold', proposed_value: 0.055, proposed_by: 'r.mehta', signed_off_by: null },
+    ],
+    ...initial,
+  }
+  const server = fakeServer({
+    'GET /projects': { body: MOCK_FIXTURE_PROJECTS },
+    'GET /settings': () => ({ body: settingsBody(state) }),
+    'POST /settings/propose': async (request: Request): Promise<FakeReply> => {
+      const body = (await request.json()) as { field: string; proposed_value: number }
+      if (
+        body.field === 'confirmed_outcome_fn_ceiling' &&
+        !(body.proposed_value > 0 && body.proposed_value <= 1)
+      ) {
+        return {
+          status: 400,
+          body: { detail: 'confirmed_outcome_fn_ceiling must be greater than 0 and at most 1' },
+        }
+      }
+      if (state.pending.some((p) => p.field === body.field)) {
+        return { status: 400, body: { detail: 'Change already pending for this field' } }
+      }
+      const pending: PendingChange = {
+        field: body.field,
+        proposed_value: body.proposed_value,
+        proposed_by: accountFor(request),
+        signed_off_by: null,
+      }
+      state.pending.push(pending)
+      return { body: pending }
+    },
+    'POST /settings/signoff': async (request: Request): Promise<FakeReply> => {
+      const body = (await request.json()) as { field: string }
+      const pending = state.pending.find((p) => p.field === body.field)
+      if (!pending) return { status: 400, body: { detail: 'No pending change for this field' } }
+      if (pending.proposed_by === accountFor(request)) {
+        return {
+          status: 400,
+          body: {
+            detail: 'Dual sign-off requires two distinct account IDs, not two role labels',
+          },
+        }
+      }
+      ;(state as unknown as Record<string, number>)[pending.field] = pending.proposed_value
+      state.pending = state.pending.filter((p) => p !== pending)
+      return { body: settingsBody(state) }
+    },
+    ...overrides,
+  })
+  return { ...server, state }
 }
 
 function card(name: RegExp) {
@@ -26,9 +110,16 @@ async function loaded() {
   await within(card(/fn:fp cost ratio/i)).findByText('10:1')
 }
 
+/** The JSON body of the most recent request matching `method path`, or undefined. */
+async function lastRequestBody(requests: Request[], methodAndPath: string) {
+  const match = [...requests]
+    .reverse()
+    .find((r) => `${r.method} ${new URL(r.url).pathname}` === methodAndPath)
+  return match ? ((await match.json()) as unknown) : undefined
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
-  MOCK_resetStores()
 })
 
 afterEach(() => {
@@ -37,7 +128,8 @@ afterEach(() => {
 
 describe('SettingsScreen (E6 screen 7)', () => {
   test('shows the three live values, and a pending change distinct from the finalized one', async () => {
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     expect(within(card(/confirmed-outcome fn ceiling/i)).getByText('5.0%')).toBeInTheDocument()
@@ -52,8 +144,8 @@ describe('SettingsScreen (E6 screen 7)', () => {
   })
 
   test('proposing a ratio change makes it pending, not final, and logs it to History', async () => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
@@ -63,10 +155,10 @@ describe('SettingsScreen (E6 screen 7)', () => {
     fireEvent.click(within(ratio).getByRole('button', { name: /propose/i }))
 
     expect(await within(ratio).findByText(/proposed 12:1 by a\. sharma/i)).toBeInTheDocument()
-    expect(propose).toHaveBeenCalledWith(
-      { field: 'fn_fp_cost_ratio', proposed_value: 12 },
-      'a.sharma',
-    )
+    expect(await lastRequestBody(requests, 'POST /settings/propose')).toEqual({
+      field: 'fn_fp_cost_ratio',
+      proposed_value: 12,
+    })
     expect(within(ratio).getByText('10:1')).toBeInTheDocument()
     expect(ratio).toHaveClass('is-pending')
     // The proposer can't also be the second sign-off.
@@ -77,8 +169,8 @@ describe('SettingsScreen (E6 screen 7)', () => {
   })
 
   test('a percentage is typed as a percent and sent as a fraction', async () => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ceiling = card(/confirmed-outcome fn ceiling/i)
@@ -88,11 +180,11 @@ describe('SettingsScreen (E6 screen 7)', () => {
     fireEvent.change(input, { target: { value: '4.5' } })
     fireEvent.click(within(ceiling).getByRole('button', { name: /propose/i }))
 
-    await waitFor(() =>
-      expect(propose).toHaveBeenCalledWith(
-        { field: 'confirmed_outcome_fn_ceiling', proposed_value: 0.045 },
-        'a.sharma',
-      ),
+    await waitFor(async () =>
+      expect(await lastRequestBody(requests, 'POST /settings/propose')).toEqual({
+        field: 'confirmed_outcome_fn_ceiling',
+        proposed_value: 0.045,
+      }),
     )
   })
 
@@ -103,8 +195,8 @@ describe('SettingsScreen (E6 screen 7)', () => {
     ['150', /confirmed-outcome fn ceiling/i],
     ['-3', /confirmed-outcome fn ceiling/i],
   ])('rejects %j before sending anything', async (value, name) => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const target = card(name)
@@ -115,12 +207,12 @@ describe('SettingsScreen (E6 screen 7)', () => {
 
     expect(await within(target).findByRole('alert')).toBeInTheDocument()
     expect(input).toHaveAttribute('aria-invalid', 'true')
-    expect(propose).not.toHaveBeenCalled()
+    expect(requests.some((r) => r.url.endsWith('/settings/propose'))).toBe(false)
   })
 
   test('cancel closes the form without proposing', async () => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
@@ -128,25 +220,28 @@ describe('SettingsScreen (E6 screen 7)', () => {
     fireEvent.click(within(ratio).getByRole('button', { name: /cancel/i }))
     expect(within(ratio).queryByRole('textbox')).not.toBeInTheDocument()
     expect(within(ratio).getByRole('button', { name: /edit/i })).toHaveFocus()
-    expect(propose).not.toHaveBeenCalled()
+    expect(requests.some((r) => r.url.endsWith('/settings/propose'))).toBe(false)
   })
 
   test('a different account signs off, and the value becomes final', async () => {
-    const signoff = vi.spyOn(settingsApi, 'signoffSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const pda = card(/pda threshold/i)
     fireEvent.click(within(pda).getByRole('button', { name: /sign off/i }))
 
     await waitFor(() => expect(within(pda).getByText('5.5%')).toBeInTheDocument())
-    expect(signoff).toHaveBeenCalledWith({ field: 'pda_threshold' }, 'a.sharma')
+    expect(await lastRequestBody(requests, 'POST /settings/signoff')).toEqual({
+      field: 'pda_threshold',
+    })
     expect(pda).not.toHaveClass('is-pending')
     expect(within(pda).getByRole('button', { name: /edit/i })).toBeInTheDocument()
   })
 
   test('the proposer sees no sign-off action on their own change', async () => {
-    renderWithApi(<SettingsScreen />, { fetch: server(), session: R_MEHTA })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch, session: R_MEHTA })
     await loaded()
 
     const pda = card(/pda threshold/i)
@@ -157,10 +252,16 @@ describe('SettingsScreen (E6 screen 7)', () => {
   })
 
   test('a server rejection is shown on the card it belongs to', async () => {
-    vi.spyOn(settingsApi, 'signoffSetting').mockRejectedValue(
-      new ApiError(403, ['The second sign-off has to come from a different account.']),
+    const { fetch } = settingsServer(
+      {},
+      {
+        'POST /settings/signoff': {
+          status: 403,
+          body: { detail: 'The second sign-off has to come from a different account.' },
+        },
+      },
     )
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const pda = card(/pda threshold/i)
@@ -172,7 +273,8 @@ describe('SettingsScreen (E6 screen 7)', () => {
   })
 
   test('corrective status shows the live FN rate, with the FP rate for context only', async () => {
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     const status = await screen.findByRole('region', { name: /corrective feedback status/i })
 
     await within(status).findByText('2.8%')
@@ -196,7 +298,8 @@ describe('SettingsScreen (E6 screen 7)', () => {
       confirmed_outcome_count: status === 'INSUFFICIENT_DATA' ? 4 : 20,
       status,
     })
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     const region = await screen.findByRole('region', { name: /corrective feedback status/i })
 
     const current = await within(region).findByText(status.replace('_', ' '), {
@@ -209,7 +312,8 @@ describe('SettingsScreen (E6 screen 7)', () => {
   test('the worklist lists dispositions awaiting a confirmed outcome, with days pending', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-27T14:00:00Z'))
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     const worklist = await screen.findByRole('region', { name: /worklist/i })
 
     const link = await within(worklist).findByRole('link', { name: 'DUT-042' })
@@ -223,34 +327,35 @@ describe('SettingsScreen (E6 screen 7)', () => {
 
   test('an empty worklist says so', async () => {
     vi.spyOn(settingsApi, 'getWorklist').mockResolvedValue({ pending: [] })
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     expect(await screen.findByText(/no dispositions are awaiting/i)).toBeInTheDocument()
   })
 
   test('a failed settings load shows the error and can be retried', async () => {
-    vi.spyOn(settingsApi, 'getSettings').mockRejectedValueOnce(
-      new ApiError(500, ['settings store unavailable']),
+    let calls = 0
+    const { fetch } = settingsServer(
+      {},
+      {
+        'GET /settings': () =>
+          ++calls === 1
+            ? { status: 500, body: { detail: 'settings store unavailable' } }
+            : { body: settingsBody({ fn_fp_cost_ratio: 10, pda_threshold: 0.05, confirmed_outcome_fn_ceiling: 0.05, pending: [] }) },
+      },
     )
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    renderWithApi(<SettingsScreen />, { fetch })
 
     expect(await screen.findByText('settings store unavailable')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
-    await loaded()
+    await screen.findByRole('region', { name: /fn:fp cost ratio/i })
+    await within(card(/fn:fp cost ratio/i)).findByText('10:1')
   })
 })
 
-const BASE_SETTINGS: MOCK_SettingsResponse = {
-  fn_fp_cost_ratio: 10,
-  pda_threshold: 0.05,
-  confirmed_outcome_fn_ceiling: 0.05,
-  pending_changes: [],
-}
-
 describe('SettingsScreen edge cases (P1.12 review)', () => {
   test('an entry that already carries signed_off_by is finalized, not offered for sign-off', async () => {
-    vi.spyOn(settingsApi, 'getSettings').mockResolvedValue({
-      ...BASE_SETTINGS,
-      pending_changes: [
+    const { fetch } = settingsServer({
+      pending: [
         {
           field: 'pda_threshold',
           proposed_value: 0.055,
@@ -259,7 +364,7 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
         },
       ],
     })
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const pda = card(/pda threshold/i)
@@ -269,8 +374,8 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
   })
 
   test('proposing the current value again is refused before sending', async () => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
@@ -279,12 +384,12 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
     fireEvent.click(within(ratio).getByRole('button', { name: /propose/i }))
 
     expect(await within(ratio).findByRole('alert')).toHaveTextContent(/already the current value/i)
-    expect(propose).not.toHaveBeenCalled()
+    expect(requests.some((r) => r.url.endsWith('/settings/propose'))).toBe(false)
   })
 
   test('the unit a value is shown with is accepted as input', async () => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ceiling = card(/confirmed-outcome fn ceiling/i)
@@ -292,17 +397,17 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
     fireEvent.change(within(ceiling).getByRole('textbox'), { target: { value: '4.5%' } })
     fireEvent.click(within(ceiling).getByRole('button', { name: /propose/i }))
 
-    await waitFor(() =>
-      expect(propose).toHaveBeenCalledWith(
-        { field: 'confirmed_outcome_fn_ceiling', proposed_value: 0.045 },
-        'a.sharma',
-      ),
+    await waitFor(async () =>
+      expect(await lastRequestBody(requests, 'POST /settings/propose')).toEqual({
+        field: 'confirmed_outcome_fn_ceiling',
+        proposed_value: 0.045,
+      }),
     )
   })
 
   test('pressing Enter twice while a proposal is in flight sends it once', async () => {
-    const propose = vi.spyOn(settingsApi, 'proposeSetting')
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch, requests } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
@@ -314,39 +419,51 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
     fireEvent.submit(form)
 
     await within(ratio).findByText(/proposed 12:1 by a\. sharma/i)
-    expect(propose).toHaveBeenCalledTimes(1)
+    expect(requests.filter((r) => r.url.endsWith('/settings/propose'))).toHaveLength(1)
   })
 
-  test('a 409 (someone proposed first) refetches, showing their proposal next to the message', async () => {
-    vi.spyOn(settingsApi, 'proposeSetting').mockImplementation(async () => {
-      // Another account's proposal lands on the server first.
-      await MOCK_proposeSetting({ field: 'fn_fp_cost_ratio', proposed_value: 15 }, 'r.mehta')
-      throw new ApiError(409, ['A change to this value is already awaiting sign-off.'])
-    })
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+  test('a conflict (someone proposed first) refetches, showing their proposal next to the message', async () => {
+    const server = settingsServer({ pending: [] })
+    renderWithApi(<SettingsScreen />, { fetch: server.fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
     fireEvent.click(within(ratio).getByRole('button', { name: /edit/i }))
     fireEvent.change(within(ratio).getByRole('textbox'), { target: { value: '12' } })
+
+    // Another account's proposal lands on the server first, in the background - simulating the
+    // real race the 400 "already pending" response protects against.
+    server.state.pending.push({
+      field: 'fn_fp_cost_ratio',
+      proposed_value: 15,
+      proposed_by: 'r.mehta',
+      signed_off_by: null,
+    })
     fireEvent.click(within(ratio).getByRole('button', { name: /propose/i }))
 
     expect(await within(ratio).findByText(/proposed 15:1 by r\. mehta/i)).toBeInTheDocument()
     expect(
-      within(ratio).getByText('A change to this value is already awaiting sign-off.'),
+      within(ratio).getByText('Change already pending for this field'),
     ).toBeInTheDocument()
     expect(within(ratio).queryByRole('textbox')).not.toBeInTheDocument()
     expect(within(ratio).getByRole('button', { name: /sign off/i })).toBeInTheDocument()
   })
 
   test("an open form closes when another account's proposal arrives, and does not reopen later", async () => {
-    const { queryClient } = renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer({ pending: [] })
+    const { queryClient } = renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
     fireEvent.click(within(ratio).getByRole('button', { name: /edit/i }))
     fireEvent.change(within(ratio).getByRole('textbox'), { target: { value: '99' } })
 
+    const BASE_SETTINGS = {
+      fn_fp_cost_ratio: 10,
+      pda_threshold: 0.05,
+      confirmed_outcome_fn_ceiling: 0.05,
+      pending_changes: [] as PendingChange[],
+    }
     act(() => {
       queryClient.setQueryData(['settings'], {
         ...BASE_SETTINGS,
@@ -372,7 +489,8 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
   })
 
   test('focus follows the card: to the pending note after proposing, to Edit after signing off', async () => {
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
     const ratio = card(/fn:fp cost ratio/i)
@@ -387,9 +505,10 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
     await waitFor(() => expect(within(pda).getByRole('button', { name: /edit/i })).toHaveFocus())
   })
 
-  test('finalizing a new FN ceiling moves the live corrective status', async () => {
-    // R. Mehta proposes a 2% ceiling (below the 2.8% FN rate)...
-    const first = renderWithApi(<SettingsScreen />, { fetch: server(), session: R_MEHTA })
+  test('proposing and signing off a new FN ceiling round-trips through the real routes', async () => {
+    // R. Mehta proposes a 2% ceiling...
+    const server = settingsServer({ pending: [] })
+    const first = renderWithApi(<SettingsScreen />, { fetch: server.fetch, session: R_MEHTA })
     await loaded()
     const mine = card(/confirmed-outcome fn ceiling/i)
     fireEvent.click(within(mine).getByRole('button', { name: /edit/i }))
@@ -398,18 +517,15 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
     await within(mine).findByText(/proposed 2\.0% by r\. mehta/i)
     first.unmount()
 
-    // ...and A. Sharma signs it off.
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    // ...and A. Sharma signs it off, against the SAME server state.
+    renderWithApi(<SettingsScreen />, { fetch: server.fetch })
     await loaded()
-    const region = screen.getByRole('region', { name: /corrective feedback status/i })
-    await within(region).findByText('OK', { selector: '.corrective-current' })
     const ceiling = card(/confirmed-outcome fn ceiling/i)
     fireEvent.click(within(ceiling).getByRole('button', { name: /sign off/i }))
 
-    expect(
-      await within(region).findByText('CEILING EXCEEDED', { selector: '.corrective-current' }),
-    ).toHaveClass('badge-reject')
-    expect(within(region).getByText(/above the 2\.0% ceiling/i)).toBeInTheDocument()
+    await waitFor(() => expect(within(ceiling).getByText('2.0%')).toBeInTheDocument())
+    expect(server.state.confirmed_outcome_fn_ceiling).toBe(0.02)
+    expect(server.state.pending).toHaveLength(0)
   })
 
   test('the worklist shows one row per part, and survives odd timestamps', async () => {
@@ -434,7 +550,8 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
         { ...record, component_id: 'DUT-901', timestamp: '2026-10-30T00:00:00Z' },
       ],
     })
-    renderWithApi(<SettingsScreen />, { fetch: server() })
+    const { fetch } = settingsServer()
+    renderWithApi(<SettingsScreen />, { fetch })
     const worklist = await screen.findByRole('region', { name: /worklist/i })
 
     await within(worklist).findByRole('link', { name: 'DUT-042' })
@@ -448,10 +565,28 @@ describe('SettingsScreen edge cases (P1.12 review)', () => {
   })
 
   test('a failed background refresh keeps the values on screen and says they may be stale', async () => {
-    const { queryClient } = renderWithApi(<SettingsScreen />, { fetch: server() })
+    let calls = 0
+    const { fetch } = settingsServer(
+      {},
+      {
+        'GET /settings': () =>
+          ++calls === 1
+            ? {
+                body: settingsBody({
+                  fn_fp_cost_ratio: 10,
+                  pda_threshold: 0.05,
+                  confirmed_outcome_fn_ceiling: 0.05,
+                  pending: [
+                    { field: 'pda_threshold', proposed_value: 0.055, proposed_by: 'r.mehta', signed_off_by: null },
+                  ],
+                }),
+              }
+            : { status: 503, body: { detail: 'down' } },
+      },
+    )
+    const { queryClient } = renderWithApi(<SettingsScreen />, { fetch })
     await loaded()
 
-    vi.spyOn(settingsApi, 'getSettings').mockRejectedValue(new ApiError(503, ['down']))
     await act(() => queryClient.refetchQueries({ queryKey: ['settings'], exact: true }))
 
     expect(await screen.findByText(/could not refresh settings/i)).toBeInTheDocument()

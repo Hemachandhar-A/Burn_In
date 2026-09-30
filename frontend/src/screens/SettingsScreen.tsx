@@ -5,13 +5,7 @@ import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
 import { EVENTS_QUERY_KEY } from '../api/history'
 import { listProjects, PROJECTS_QUERY_KEY } from '../api/lots'
-import type {
-  MOCK_CorrectiveStatusResponse,
-  MOCK_DispositionRecord,
-  MOCK_PendingSettingChange,
-  MOCK_SettingField,
-  MOCK_SettingsResponse,
-} from '../api/mocks'
+import type { MOCK_CorrectiveStatusResponse, MOCK_DispositionRecord } from '../api/mocks'
 import {
   CORRECTIVE_STATUS_QUERY_KEY,
   getCorrectiveStatus,
@@ -21,6 +15,9 @@ import {
   SETTINGS_QUERY_KEY,
   signoffSetting,
   WORKLIST_QUERY_KEY,
+  type PendingSettingChange,
+  type SettingField,
+  type SettingsResponse,
 } from '../api/settings'
 import { useAuth } from '../auth/AuthContext'
 import { displayNameFor } from '../auth/accounts'
@@ -38,7 +35,7 @@ import {
 } from './settingsFormat'
 import { VerdictBadge } from './VerdictBadge'
 
-const DESCRIPTIONS: Record<MOCK_SettingField, string> = {
+const DESCRIPTIONS: Record<SettingField, string> = {
   fn_fp_cost_ratio:
     'Cost of a missed defect relative to a false alarm; sets the outlier threshold.',
   pda_threshold: 'Lot-level percent defective allowable.',
@@ -64,10 +61,11 @@ function SettingCard({
   settings,
   accountId,
 }: {
-  field: MOCK_SettingField
-  settings: MOCK_SettingsResponse
+  field: SettingField
+  settings: SettingsResponse
   accountId: string
 }) {
+  const client = useApiClient()
   const queryClient = useQueryClient()
   const headingId = useId()
   const inputId = useId()
@@ -81,7 +79,7 @@ function SettingCard({
 
   // An entry that already carries `signed_off_by` is finalized, not pending, even if the list
   // still returns it; showing it as awaiting sign-off would offer a second sign-off on it.
-  const pending: MOCK_PendingSettingChange | undefined = settings.pending_changes.find(
+  const pending: PendingSettingChange | undefined = settings.pending_changes.find(
     (p) => p.field === field && p.signed_off_by === null,
   )
   const label = SETTING_LABELS[field]
@@ -102,7 +100,7 @@ function SettingCard({
   const onMutationError = () => void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY })
 
   const propose = useMutation({
-    mutationFn: (value: number) => proposeSetting({ field, proposed_value: value }, accountId),
+    mutationFn: (value: number) => proposeSetting(client, { field, proposed_value: value }),
     onSuccess: async () => {
       focusNext.current = 'pending'
       setEditing(false)
@@ -112,7 +110,7 @@ function SettingCard({
   })
 
   const signoff = useMutation({
-    mutationFn: () => signoffSetting({ field }, accountId),
+    mutationFn: () => signoffSetting(client, { field }),
     onSuccess: async (next) => {
       focusNext.current = 'edit'
       queryClient.setQueryData(SETTINGS_QUERY_KEY, next)
@@ -468,8 +466,9 @@ function Worklist() {
  * worklist and the live-computed corrective status (E13).
  */
 export function SettingsScreen() {
+  const client = useApiClient()
   const { session } = useAuth()
-  const settings = useQuery({ queryKey: SETTINGS_QUERY_KEY, queryFn: () => getSettings() })
+  const settings = useQuery({ queryKey: SETTINGS_QUERY_KEY, queryFn: () => getSettings(client) })
 
   return (
     <section className="screen settings">
