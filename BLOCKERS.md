@@ -96,3 +96,9 @@ Entry format:
 - Done (`storage/repository.py`): every timestamp-ordered query now has a rowid tie-break (insertion order among ties); SQLite already returned insertion order in practice, so those tests pass before and after - it is a guarantee, not a repro.
 - Needs (outside P2's directories): in `fusion/router.py` pick the last max, e.g. `max(reversed(matches), key=...)` (matches are built in query order, ascending by created_at then rowid), plus a frozen-clock twin test in `tests/unit/fusion/test_part_detail_ids.py`. Alternative inside storage: make `created_at` strictly monotonic per process.
 - Status: OPEN.
+
+## 2026-09-30 Lead-as-P5 - RESOLVED: flaky test_analysis_run_id_matches_the_latest_of_two_runs (tied created_at)
+- Cause: `fusion/router.py` `max(matches, key=created_at)` returns the FIRST maximal element, so two runs with identical `created_at` (coarse clock) resolved to the older run. Same pattern found and fixed in `capa/logic.py::find_latest_run_for_component`, `fusion/router.py::_staleness_note_for` (latest sign-off) and `report/data.py::_trigger_for_run` (latest trigger event).
+- Fix: `max(enumerate(xs), key=(timestamp, index))` - later insertion wins; inputs are in insertion order thanks to the rowid tie-break in `storage/repository.py`.
+- Evidence: frozen-clock tests failed before, pass after (`tests/unit/fusion/test_part_detail_ids.py`, `test_tie_latest_signoff.py`, `tests/unit/capa/test_tie_latest_run.py`, `tests/unit/report/test_tie_trigger.py`); flaky test looped 30/30 passes.
+- Status: RESOLVED (supersedes the OPEN entry above, which stays as history).
