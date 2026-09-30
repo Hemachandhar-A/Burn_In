@@ -1,9 +1,9 @@
 import type { ApiClient } from './client'
 import { ApiError, errorMessages, unwrap } from './errors'
-import { MOCK_generateDpaWorkOrder, type MOCK_DPAWorkOrderResponse } from './mocks'
 import type { components } from './schema'
 
 export type LotSummaryResponse = components['schemas']['LotSummaryResponse']
+export type DPAWorkOrderResponse = components['schemas']['DPAWorkOrderResponse']
 
 /** `GET /lots/{lot_id}`: real (P5.3/5.6, fusion/router.py). */
 export async function getLotSummary(
@@ -14,10 +14,17 @@ export async function getLotSummary(
 }
 
 /**
- * `POST /lots/{lot_id}/dpa-work-order`. MOCKED: not in the live schema (P5.8, BLOCKERS.md).
+ * `POST /lots/{lot_id}/dpa-work-order`: real (Block 4a, capa/router.py). 409 when the lot is
+ * still IN_PROGRESS (a DPA work order needs a final verdict tier to select against) - surfaces
+ * through `unwrap` as an `ApiError` carrying the server's own message, same as any other route.
  */
-export function generateDpaWorkOrder(lotId: string): Promise<MOCK_DPAWorkOrderResponse> {
-  return MOCK_generateDpaWorkOrder(lotId)
+export async function generateDpaWorkOrder(
+  client: ApiClient,
+  lotId: string,
+): Promise<DPAWorkOrderResponse> {
+  return unwrap(
+    await client.POST('/lots/{lot_id}/dpa-work-order', { params: { path: { lot_id: lotId } } }),
+  )
 }
 
 /**

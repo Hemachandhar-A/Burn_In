@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { ApiError } from '../api/errors'
 import * as lotDetailApi from '../api/lotDetail'
 import type { LotSummaryResponse } from '../api/lotDetail'
-import type { MOCK_DPAWorkOrderResponse } from '../api/mocks'
 import { fakeServer, renderWithApi, type FakeReply } from '../test-utils'
 import { LotDashboardScreen } from './LotDashboardScreen'
 
@@ -176,22 +175,41 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
   })
 
   test('Generate DPA Work Order only appears for a COMPLETE lot, and renders its recommendations', async () => {
-    setup()
-    const workOrder: MOCK_DPAWorkOrderResponse = {
-      recommendations: [
-        { component_id: 'DUT-042', reason: 'Highest-severity part in this lot.' },
-        { component_id: 'DUT-011', reason: 'Control part from the unflagged population.' },
-      ],
-    }
-    const generateDpaWorkOrder = vi
-      .spyOn(lotDetailApi, 'generateDpaWorkOrder')
-      .mockResolvedValue(workOrder)
+    const { fetch, requests } = fakeServer({
+      ...lotSummaryRoute({ body: SUMMARY() }),
+      'POST /lots/LOT-2024-8841/dpa-work-order': {
+        body: {
+          recommendations: [
+            { component_id: 'DUT-042', reason: 'Highest-severity part in this lot.' },
+            { component_id: 'DUT-011', reason: 'Control part from the unflagged population.' },
+          ],
+        },
+      },
+    })
+    renderWithApi(routed(), { fetch, path: '/lots/LOT-2024-8841' })
     await screen.findByText('PDA: 5.19%')
 
     const dpaButton = screen.getByRole('button', { name: /generate dpa work order/i })
     fireEvent.click(dpaButton)
-    await waitFor(() => expect(generateDpaWorkOrder).toHaveBeenCalledWith('LOT-2024-8841'))
     await screen.findByText('Highest-severity part in this lot.')
+    expect(requests.some((r) => r.method === 'POST' && r.url.endsWith('/dpa-work-order'))).toBe(
+      true,
+    )
+  })
+
+  test('a 409 from the server (lot not actually Complete) shows its message', async () => {
+    const { fetch } = fakeServer({
+      ...lotSummaryRoute({ body: SUMMARY() }),
+      'POST /lots/LOT-2024-8841/dpa-work-order': {
+        status: 409,
+        body: { detail: "lot 'LOT-2024-8841' is still IN_PROGRESS - a DPA work order requires a COMPLETE lot" },
+      },
+    })
+    renderWithApi(routed(), { fetch, path: '/lots/LOT-2024-8841' })
+    await screen.findByText('PDA: 5.19%')
+
+    fireEvent.click(screen.getByRole('button', { name: /generate dpa work order/i }))
+    expect(await screen.findByText(/is still IN_PROGRESS/)).toBeInTheDocument()
   })
 
   test('Generate DPA Work Order is absent for an In-Progress (forecast) lot', async () => {
@@ -263,15 +281,19 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
   })
 
   test('navigating to a different lot clears a previously generated DPA work order', async () => {
-    vi.spyOn(lotDetailApi, 'generateDpaWorkOrder').mockResolvedValue({
-      recommendations: [{ component_id: 'DUT-042', reason: 'Highest-severity part in this lot.' }],
-    })
-    const server = fakeServer(
-      lotSummaryRoute((request) => {
+    const server = fakeServer({
+      ...lotSummaryRoute((request) => {
         const lotId = request.url.endsWith('LOT-OTHER') ? 'LOT-OTHER' : 'LOT-2024-8841'
         return { body: SUMMARY({ disposition: { ...SUMMARY().disposition, lot_id: lotId } }) }
       }),
-    )
+      'POST /lots/LOT-2024-8841/dpa-work-order': {
+        body: {
+          recommendations: [
+            { component_id: 'DUT-042', reason: 'Highest-severity part in this lot.' },
+          ],
+        },
+      },
+    })
     renderWithApi(routedWithNav('/lots/LOT-OTHER'), {
       fetch: server.fetch,
       path: '/lots/LOT-2024-8841',

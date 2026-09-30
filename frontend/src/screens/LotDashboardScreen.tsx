@@ -3,8 +3,12 @@ import { useId, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
-import { downloadReport, generateDpaWorkOrder, getLotSummary } from '../api/lotDetail'
-import type { MOCK_DPAWorkOrderResponse } from '../api/mocks'
+import {
+  downloadReport,
+  generateDpaWorkOrder,
+  getLotSummary,
+  type DPAWorkOrderResponse,
+} from '../api/lotDetail'
 import type { components } from '../api/schema'
 import { BarChartIcon, ClipboardIcon, DownloadIcon, TrendUpIcon } from '../shell/icons'
 import { pathToPart } from './registry'
@@ -82,7 +86,7 @@ function RankedList({
   )
 }
 
-function DpaResultPanel({ result }: { result: MOCK_DPAWorkOrderResponse }) {
+function DpaResultPanel({ result }: { result: DPAWorkOrderResponse }) {
   return (
     <section className="card dpa-result" aria-label="DPA work order">
       <header className="card-header">
@@ -128,7 +132,7 @@ export function LotDashboardScreen() {
 
 function LotDashboardForLot({ lotId }: { lotId: string }) {
   const client = useApiClient()
-  const [dpaResult, setDpaResult] = useState<MOCK_DPAWorkOrderResponse | null>(null)
+  const [dpaResult, setDpaResult] = useState<DPAWorkOrderResponse | null>(null)
 
   const summary = useQuery({
     queryKey: ['lot-summary', lotId],
@@ -150,7 +154,7 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
   })
 
   const dpa = useMutation({
-    mutationFn: () => generateDpaWorkOrder(lotId),
+    mutationFn: () => generateDpaWorkOrder(client, lotId),
     onSuccess: (result) => setDpaResult(result),
   })
 
