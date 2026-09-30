@@ -266,7 +266,8 @@
               "ingest",
               "checkpoint_add",
               "analysis_run",
-              "config_change"
+              "config_change",
+              "timing_flag"
             ],
             "title": "Event Type",
             "type": "string"
@@ -765,10 +766,24 @@
             "type": "string"
           },
           "module_a": {
-            "$ref": "#/components/schemas/ModuleAResult"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleAResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "module_b": {
-            "$ref": "#/components/schemas/ModuleBResult"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleBResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "severity_cap_note": {
             "anyOf": [
@@ -805,8 +820,6 @@
           }
         },
         "required": [
-          "module_a",
-          "module_b",
           "explanation_sentence",
           "confidence_qualifier",
           "severity_cap_note",
@@ -1147,13 +1160,19 @@
             "type": "number"
           },
           "value": {
-            "title": "Value",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
           }
         },
         "required": [
           "feature",
-          "value",
           "shap_value"
         ],
         "title": "ShapContributionRow",
