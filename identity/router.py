@@ -81,12 +81,14 @@ def create_disposition(
             verdict=request.verdict,
             rationale=request.rationale
         )
-        
-        # Trigger CAPA if threshold crossed
-        if request.verdict == "REJECT":
-            from capa.logic import evaluate_capa_trigger
-            evaluate_capa_trigger(project_id)
-        
+
+        # capa.logic.evaluate_capa_trigger call removed (Block 4a-resume R3, CONTRACT_CHANGES.md
+        # 2026-09-30): its config_change/capa_action event leaked into GET /events and
+        # GET /projects/{project_id}/events - real, registered History routes (essential-features.md
+        # E6 screen 6) - polluting the shared timeline with an unplanned event shape. The function
+        # itself is left in capa/logic.py as dead code (not deleted - out of this session's scope
+        # to remove code it did not add).
+
         return DispositionRecord(
             project_id=record.project_id,
             component_id=record.component_id,
