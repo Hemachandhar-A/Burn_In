@@ -128,8 +128,11 @@ def test_run_full_pipeline_stub_edge_cases():
     result_empty = run_full_pipeline(lot_empty, config)
     assert len(result_empty.assessments) == 0
     assert result_empty.disposition.lot_id == "LOT!@#-$%^&*("
-    assert result_empty.disposition.lot_id == "LOT!@#-$%^&*("
-    
+    # Zero assessments (D50): never reassure without data. An IN_PROGRESS lot with nothing to
+    # assess is LOT_AT_RISK, not the default-case LOT_ON_TRACK a no-failures fallthrough would give.
+    assert result_empty.disposition.verdict == "LOT_AT_RISK"
+    assert result_empty.disposition.pda_result == 0.0
+
     # Edge case 2: Empty lot_id string
     lot_no_id = LotDataset(
         lot_id="",
@@ -141,7 +144,32 @@ def test_run_full_pipeline_stub_edge_cases():
     result_no_id = run_full_pipeline(lot_no_id, config)
     assert len(result_no_id.assessments) == 0
     assert result_no_id.disposition.lot_id == ""
-    assert result_no_id.disposition.lot_id == ""
+    # Zero assessments (D50): a Complete lot with nothing to assess is HOLD, not the default-case
+    # ACCEPT a no-failures/no-WATCH fallthrough would give.
+    assert result_no_id.disposition.verdict == "HOLD"
+    assert result_no_id.disposition.pda_result == 0.0
+
+
+def test_run_full_pipeline_with_assessments_is_unchanged_by_the_zero_assessment_rule():
+    """The zero-assessment D50 rule (LOT_AT_RISK/HOLD) must only fire when there are genuinely no
+    assessments - a lot that DOES have assessments keeps its normal verdict logic untouched."""
+    reading = Reading(
+        component_id="COMP-001", lot_id="LOT-NONEMPTY", part_number="PN-ABC", manufacturer="MFG",
+        date_code="2026", parameter="iddq", checkpoint_hour=0.0, value=1.5, unit="uA",
+    )
+    reading_24h = Reading(
+        component_id="COMP-001", lot_id="LOT-NONEMPTY", part_number="PN-ABC", manufacturer="MFG",
+        date_code="2026", parameter="iddq", checkpoint_hour=24.0, value=1.6, unit="uA",
+    )
+    lot = LotDataset(
+        lot_id="LOT-NONEMPTY", part_number="PN-ABC", status="IN_PROGRESS",
+        readings=[reading, reading_24h], account_id="ACC-001",
+    )
+    result = run_full_pipeline(lot, ScreeningConfig())
+    assert len(result.assessments) == 1
+    # Same as test_run_full_pipeline_stub_in_progress: a healthy in-progress part is LOT_ON_TRACK,
+    # not LOT_AT_RISK - the zero-assessment branch must not fire here.
+    assert result.disposition.verdict == "LOT_ON_TRACK"
 
 from unittest.mock import patch
 from contracts import ModuleBResult

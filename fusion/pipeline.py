@@ -127,7 +127,11 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
     lower_bound_pda = (lower_bound_failures / total_parts) if total_parts > 0 else 0.0
     lower_bound_pda_exceeded = lower_bound_pda >= config.pda_threshold
     
-    if is_forecast:
+    if total_parts == 0:
+        # D50: never reassure without data - a lot with nothing to assess is not "on track"/"accept"
+        # by default. pda_result stays 0.0 (no failures counted, not "0% failure rate confirmed").
+        lot_verdict = "LOT_AT_RISK" if is_forecast else "HOLD"
+    elif is_forecast:
         if lower_bound_pda_exceeded:
             lot_verdict = "STOP_RUN_RECOMMENDED"
         elif failures > 0:
