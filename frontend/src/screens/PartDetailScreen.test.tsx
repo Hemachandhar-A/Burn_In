@@ -9,8 +9,13 @@ import { PartDetailScreen } from './PartDetailScreen'
 // jsdom can't run Plotly's canvas rendering; these tests are about data wiring, not the chart
 // library's internals, so the trace/layout props it was given are all that's checked here.
 vi.mock('react-plotly.js', () => ({
-  default: (props: { data: unknown[] }) => (
-    <div data-testid="plotly-stub" data-trace-count={props.data.length} />
+  default: (props: { data: unknown[]; layout: unknown }) => (
+    <div
+      data-testid="plotly-stub"
+      data-trace-count={props.data.length}
+      data-traces={JSON.stringify(props.data)}
+      data-layout={JSON.stringify(props.layout)}
+    />
   ),
 }))
 
@@ -86,6 +91,10 @@ const DETAIL = (overrides: Partial<PartDetailResponse> = {}): PartDetailResponse
   verdict: 'REJECT',
   ...overrides,
 })
+
+type Trace = { name: string; x: number[]; y: (number | null)[]; text?: string[]; error_y?: unknown }
+const traces = (): Trace[] =>
+  JSON.parse(screen.getByTestId('plotly-stub').getAttribute('data-traces') ?? '[]')
 
 const routed = () => (
   <Routes>
@@ -181,13 +190,76 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(within(shapCard).getByText('+0.400')).toBeInTheDocument()
   })
 
-  test('module_b null hides its sections the same way, with the trajectory chart replaced too', async () => {
+  test('module_b null hides its sections the same way; the trajectory chart keeps the measured points only', async () => {
     setup('/parts/DUT-042', DETAIL({ module_b: null }))
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
-    expect(screen.getAllByText('Module B runs when the lot is Complete.').length).toBe(2) // trajectory slot + side panel
+    expect(screen.getAllByText('Module B runs when the lot is Complete.').length).toBe(1) // side panel only
     expect(screen.queryByText('Model vs. Physics Disagreement')).toBeNull()
     expect(screen.queryByText('SHAP Feature Contribution')).toBeNull()
-    expect(screen.queryByTestId('plotly-stub')).toBeNull()
+    expect(traces().map((t) => t.name)).toEqual(['Measured', 'Lot Median'])
+  })
+
+  test('a complete part draws four measured checkpoints, the lot median where present, and the forecast with its interval and safety slope', async () => {
+    setup(
+      '/parts/DUT-042',
+      DETAIL({
+        explanation: {
+          ...EXPLANATION,
+          trajectory: [
+            { checkpoint_hour: 0, value: 9.8, lot_median: 9.5 },
+            { checkpoint_hour: 24, value: 45, lot_median: 10 },
+            { checkpoint_hour: 96, value: 52.123456, lot_median: null },
+            { checkpoint_hour: 168, value: 60, lot_median: null },
+          ],
+        },
+      }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const t = traces()
+    expect(t.map((x) => x.name)).toEqual([
+      'Measured',
+      'Lot Median',
+      'Module B Forecast (168h)',
+      'Safety Slope Threshold',
+    ])
+    expect(t[0].x).toEqual([0, 24, 96, 168])
+    expect(t[0].text).toEqual(['9.8', '45', '52.1235', '60'])
+    expect(t[1].x).toEqual([0, 24]) // null medians skipped
+    expect(t[2]).toMatchObject({ x: [168], y: [61.5] })
+    expect(t[2].error_y).toMatchObject({ array: [3.5], arrayminus: [3.5] })
+    expect(t[3].y).toEqual([45, 45 + 0.3 * 144])
+    const layout = screen.getByTestId('plotly-stub').getAttribute('data-layout') ?? ''
+    expect(layout).toContain('"ticktext":["0h","24h","96h","168h"]')
+  })
+
+  test('an in-progress part draws two checkpoints and the forecast', async () => {
+    setup('/parts/DUT-042', DETAIL({ module_a: null }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const t = traces()
+    expect(t[0].x).toEqual([0, 24])
+    expect(t.map((x) => x.name)).toContain('Module B Forecast (168h)')
+  })
+
+  test('an unavailable forecast leaves the measured points and shows the note, with no forecast trace', async () => {
+    setup(
+      '/parts/DUT-042',
+      DETAIL({
+        unavailable_forecast_note: 'Supply Slew Drift falls outside the three trained parameters.',
+        module_b: { ...MODULE_B, forecast_unavailable: true, predicted_168h: null },
+      }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(traces().map((x) => x.name)).toEqual(['Measured', 'Lot Median'])
+    expect(traces()[0].x).toEqual([0, 24])
+  })
+
+  test('the chart never shows NaN, undefined or null labels', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const stub = screen.getByTestId('plotly-stub')
+    const raw = (stub.getAttribute('data-traces') ?? '') + (stub.getAttribute('data-layout') ?? '')
+    expect(raw).not.toMatch(/NaN|undefined/)
+    for (const tr of traces()) for (const label of tr.text ?? []) expect(label).toMatch(/^-?\d/)
   })
 
   test('the checkpoint z-score table has one row per parameter with data', async () => {
@@ -220,7 +292,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(screen.queryByText('Drift Prediction Unavailable')).toBeNull()
   })
 
-  test('a capped severity, a stale run and an unavailable forecast each show their own note, and the note replaces the trajectory chart', async () => {
+  test('a capped severity, a stale run and an unavailable forecast each show their own note, and the note replaces only the forecast part of the chart', async () => {
     setup(
       '/parts/DUT-042',
       DETAIL({
@@ -237,7 +309,8 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(screen.getAllByText('Supply Slew Drift falls outside the three trained parameters.'))
       .toHaveLength(2) // top note card + in place of the chart
     expect(screen.queryByText('Model vs. Physics Disagreement')).toBeNull()
-    expect(screen.queryByTestId('plotly-stub')).toBeNull()
+    // The note replaces only the forecast part: the measured points are still drawn.
+    expect(traces().map((t) => t.name)).toEqual(['Measured', 'Lot Median'])
   })
 
   test('a PASS part with no stored explanation shows the plain sentence and no empty chart frames', async () => {

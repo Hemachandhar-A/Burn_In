@@ -226,73 +226,103 @@ function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
   )
 }
 
+type MeasuredPoint = { hour: number; value: number; lotMedian: number | null }
+
 /**
- * The trajectory chart's only real data points, per CONTRACT_CHANGES.md ("PartDetailResponse
- * gives the frontend no way to..." entry family, item 4 status update): a 24h measured point
- * (from the z-score table, matched to `parameter`) and Module B's 168h forecast + interval - no
- * 0h value reaches the frontend in the current response.
+ * Measured points at every checkpoint the backend returns (`explanation.trajectory`); a part with
+ * no stored trajectory (a PASS part, or a run stored before Block 4c) falls back to the one 24h
+ * point the z-score table carries, so the chart never claims checkpoints it wasn't given.
  */
+function measuredPoints(data: PartDetailResponse, parameter: string): MeasuredPoint[] {
+  const trajectory = data.explanation?.trajectory ?? []
+  if (trajectory.length > 0) {
+    return [...trajectory]
+      .sort((a, b) => a.checkpoint_hour - b.checkpoint_hour)
+      .map((p) => ({ hour: p.checkpoint_hour, value: p.value, lotMedian: p.lot_median ?? null }))
+  }
+  const row = data.explanation?.zscore_table.find((r) => r.parameter === parameter)
+  return row ? [{ hour: 24, value: row.value, lotMedian: row.lot_median }] : []
+}
+
+function label(value: number): string {
+  return formatNumber(value) ?? ''
+}
+
+/** Whether Module B has a usable 168h forecast to draw (rule 7: never a guessed one). */
+function forecastOf(data: PartDetailResponse) {
+  const b = data.module_b
+  if (!b || b.forecast_unavailable || b.predicted_168h === null) return null
+  return b
+}
+
 function TrajectoryChart({
   data,
   parameter,
+  measured,
 }: {
   data: PartDetailResponse
   parameter: string
+  measured: MeasuredPoint[]
 }) {
-  const zscoreRow = data.explanation?.zscore_table.find((r) => r.parameter === parameter)
-  const moduleB = data.module_b
+  const forecast = forecastOf(data)
   const traces: Partial<Data>[] = []
 
-  if (zscoreRow) {
+  if (measured.length > 0) {
     traces.push({
       type: 'scatter',
-      mode: 'text+markers',
-      name: 'Measured (24h)',
-      x: [24],
-      y: [zscoreRow.value],
-      text: [formatNumber(zscoreRow.value) ?? `${zscoreRow.value}`],
+      mode: 'text+lines+markers',
+      name: 'Measured',
+      x: measured.map((p) => p.hour),
+      y: measured.map((p) => p.value),
+      text: measured.map((p) => label(p.value)),
       textposition: 'top center',
+      line: { color: '#0f172a', width: 1.5 },
       marker: { color: '#0f172a', size: 8 },
     })
-    traces.push({
-      type: 'scatter',
-      mode: 'markers',
-      name: 'Lot Median (24h)',
-      x: [24],
-      y: [zscoreRow.lot_median],
-      marker: { color: '#94a3b8', size: 8, symbol: 'diamond' },
-    })
+    const withMedian = measured.filter((p) => p.lotMedian !== null)
+    if (withMedian.length > 0) {
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Lot Median',
+        x: withMedian.map((p) => p.hour),
+        y: withMedian.map((p) => p.lotMedian),
+        line: { color: '#94a3b8', width: 1.5, dash: 'dash' },
+        marker: { color: '#94a3b8', size: 7, symbol: 'diamond' },
+      })
+    }
   }
 
-  if (moduleB && !moduleB.forecast_unavailable && moduleB.predicted_168h !== null) {
+  if (forecast && forecast.predicted_168h !== null) {
+    const predicted = forecast.predicted_168h
     traces.push({
       type: 'scatter',
       mode: 'text+markers',
       name: 'Module B Forecast (168h)',
       x: [168],
-      y: [moduleB.predicted_168h],
-      text: [formatNumber(moduleB.predicted_168h) ?? `${moduleB.predicted_168h}`],
+      y: [predicted],
+      text: [label(predicted)],
       textposition: 'top right',
       marker: { color: '#b45309', size: 10, symbol: 'square' },
       error_y:
-        moduleB.interval_lower !== null && moduleB.interval_upper !== null
+        forecast.interval_lower !== null && forecast.interval_upper !== null
           ? {
               type: 'data',
               symmetric: false,
-              array: [moduleB.interval_upper - moduleB.predicted_168h],
-              arrayminus: [moduleB.predicted_168h - moduleB.interval_lower],
+              array: [forecast.interval_upper - predicted],
+              arrayminus: [predicted - forecast.interval_lower],
               color: '#b45309',
             }
           : undefined,
     })
-    if (zscoreRow && moduleB.safety_slope !== null) {
-      const safetyY168 = zscoreRow.value + moduleB.safety_slope * (168 - 24)
+    const anchor = measured.find((p) => p.hour === 24)
+    if (anchor && forecast.safety_slope !== null) {
       traces.push({
         type: 'scatter',
         mode: 'lines',
         name: 'Safety Slope Threshold',
         x: [24, 168],
-        y: [zscoreRow.value, safetyY168],
+        y: [anchor.value, anchor.value + forecast.safety_slope * (168 - 24)],
         line: { color: '#dc2626', width: 1.5, dash: 'dot' },
       })
     }
@@ -301,6 +331,10 @@ function TrajectoryChart({
   if (traces.length === 0) {
     return <p className="card-note">No trajectory data available for {parameter}.</p>
   }
+
+  const hours = [...new Set([...measured.map((p) => p.hour), ...(forecast ? [168] : [])])].sort(
+    (a, b) => a - b,
+  )
 
   return (
     <Plot
@@ -311,7 +345,11 @@ function TrajectoryChart({
         height: 340,
         showlegend: true,
         legend: { orientation: 'h', y: 1.15 },
-        xaxis: { title: { text: 'Hours' }, tickvals: [24, 168], ticktext: ['24h', '168h'] },
+        xaxis: {
+          title: { text: 'Hours' },
+          tickvals: hours,
+          ticktext: hours.map((h) => `${h}h`),
+        },
         yaxis: { title: { text: parameter } },
         font: { family: 'Inter, system-ui, sans-serif', size: 12, color: '#334155' },
       }}
@@ -486,6 +524,7 @@ function PartDetailForComponent({
   const lotId = data.lot_id ?? null
   const shownComponentId = data.component_id ?? componentId
   const parameter = primaryParameter(data)
+  const measured = measuredPoints(data, parameter ?? '')
   const canSubmit = Boolean(data.project_id && data.analysis_run_id)
   const disabledForm = disposition.isPending || !canSubmit
   const confidenceQualifier = data.confidence_qualifier.trim()
@@ -541,23 +580,27 @@ function PartDetailForComponent({
           <header className="card-header">
             <div>
               <h2 className="card-title">
-                Burn-In Parameter Trajectory (24h Measured
-                {data.module_b && !data.module_b.forecast_unavailable
-                  ? ' & Module B Forecast'
-                  : ''}
-                )
+                Burn-In Parameter Trajectory (Measured
+                {forecastOf(data) ? ' & Module B Forecast' : ''})
               </h2>
               {parameter && <p className="card-subtitle">Parameter: {parameter}</p>}
             </div>
           </header>
-          {!data.module_b ? (
-            <ModuleUnavailable module="B" />
-          ) : data.unavailable_forecast_note ? (
-            <p className="card-note">{data.unavailable_forecast_note}</p>
-          ) : parameter ? (
-            <TrajectoryChart data={data} parameter={parameter} />
+          {measured.length === 0 ? (
+            !data.module_b ? (
+              <ModuleUnavailable module="B" />
+            ) : data.unavailable_forecast_note ? (
+              <p className="card-note">{data.unavailable_forecast_note}</p>
+            ) : (
+              <p className="card-note">No trajectory data available for this part.</p>
+            )
           ) : (
-            <p className="card-note">No parameter flagged for this part.</p>
+            <>
+              {data.unavailable_forecast_note && (
+                <p className="card-note">{data.unavailable_forecast_note}</p>
+              )}
+              <TrajectoryChart data={data} parameter={parameter ?? ''} measured={measured} />
+            </>
           )}
         </section>
 
