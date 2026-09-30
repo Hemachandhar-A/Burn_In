@@ -73,5 +73,5 @@ fi
 
 echo "Demo ready: http://localhost:${PORT}"
 "$PY" -c "from scripts.seed import ACCOUNTS; [print(f'  {a[\"account_id\"]} / {a[\"pin\"]}  ({a[\"role\"]})') for a in ACCOUNTS]"
-[[ $DEMO_LOTS -eq 1 ]] && "$PY" -c "from scripts.load_demo_lots import GOLDEN_LOT_ID, EARLY_LOT_ID; print(f'  demo lots: {GOLDEN_LOT_ID} (complete), {EARLY_LOT_ID} (in progress)')"
+[[ $DEMO_LOTS -eq 1 ]] && "$PY" -c "from scripts.load_demo_lots import COMPLETE_LOT_ID, EARLY_LOT_ID; print(f'  demo lots: {COMPLETE_LOT_ID} (complete), {EARLY_LOT_ID} (in progress)')"
 exec "$PY" -m uvicorn api.main:app --host 0.0.0.0 --port "$PORT"
