@@ -5,7 +5,7 @@ import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
 import { EVENTS_QUERY_KEY } from '../api/history'
 import { listProjects, PROJECTS_QUERY_KEY } from '../api/lots'
-import type { MOCK_CorrectiveStatusResponse, MOCK_DispositionRecord } from '../api/mocks'
+import type { DispositionRecord } from '../api/history'
 import {
   CORRECTIVE_STATUS_QUERY_KEY,
   getCorrectiveStatus,
@@ -15,6 +15,7 @@ import {
   SETTINGS_QUERY_KEY,
   signoffSetting,
   WORKLIST_QUERY_KEY,
+  type CorrectiveStatusResponse,
   type PendingSettingChange,
   type SettingField,
   type SettingsResponse,
@@ -265,18 +266,24 @@ function SettingCard({
   )
 }
 
-const STATUS_TIER: Record<MOCK_CorrectiveStatusResponse['status'], string> = {
+const STATUS_TIER: Record<CorrectiveStatusResponse['status'], string> = {
   OK: 'badge-pass',
   INSUFFICIENT_DATA: 'badge-watch',
   CEILING_EXCEEDED: 'badge-reject',
 }
 
+/** `null`/`undefined` means genuinely uncomputable (a zero-denominator rate), never "0%" (rule 7). */
+function formatRate(rate: number | null | undefined): string {
+  return rate === null || rate === undefined ? 'n/a' : formatPercent(rate)
+}
+
 function CorrectiveStatus({ ceiling }: { ceiling: number | undefined }) {
+  const client = useApiClient()
   const headingId = useId()
   // E13 step 7: recalculated whenever the screen is viewed, never a stored alert.
   const status = useQuery({
     queryKey: CORRECTIVE_STATUS_QUERY_KEY,
-    queryFn: () => getCorrectiveStatus(),
+    queryFn: () => getCorrectiveStatus(client),
     refetchOnMount: 'always',
   })
   const data = status.data
@@ -314,12 +321,16 @@ function CorrectiveStatus({ ceiling }: { ceiling: number | undefined }) {
             </span>
             <div>
               <p className="corrective-rate">
-                FN rate <span className="mono">{formatPercent(data.fn_rate)}</span>{' '}
+                FN rate <span className="mono">{formatRate(data.fn_rate)}</span>{' '}
                 <span className="muted">(N={data.confirmed_outcome_count} confirmed outcomes)</span>
               </p>
               <p className="corrective-context">
-                FP rate <span className="mono">{formatPercent(data.fp_rate)}</span>, shown for
+                FP rate <span className="mono">{formatRate(data.fp_rate)}</span>, shown for
                 context only, never a trigger.
+              </p>
+              <p className="corrective-context">
+                Ceiling{' '}
+                <span className="mono">{ceiling === undefined ? 'n/a' : formatPercent(ceiling)}</span>
               </p>
               {data.status === 'INSUFFICIENT_DATA' && (
                 <p className="corrective-note">
@@ -371,8 +382,8 @@ function StaleNote({ what }: { what: string }) {
  * REJECT is two sign-off records for the same part (two rows, and a duplicate React key). Keeps
  * the most recent record per part, longest-waiting first.
  */
-function worklistRows(pending: MOCK_DispositionRecord[]): MOCK_DispositionRecord[] {
-  const latest = new Map<string, MOCK_DispositionRecord>()
+function worklistRows(pending: DispositionRecord[]): DispositionRecord[] {
+  const latest = new Map<string, DispositionRecord>()
   for (const record of pending) {
     const key = JSON.stringify([record.project_id, record.component_id])
     const seen = latest.get(key)
@@ -389,7 +400,7 @@ function worklistRows(pending: MOCK_DispositionRecord[]): MOCK_DispositionRecord
 function Worklist() {
   const client = useApiClient()
   const headingId = useId()
-  const worklist = useQuery({ queryKey: WORKLIST_QUERY_KEY, queryFn: () => getWorklist() })
+  const worklist = useQuery({ queryKey: WORKLIST_QUERY_KEY, queryFn: () => getWorklist(client) })
   const projects = useQuery({ queryKey: PROJECTS_QUERY_KEY, queryFn: () => listProjects(client) })
   const lots = new Map((projects.data ?? []).map((p) => [p.project_id, p.lot_id]))
   const rows = worklistRows(worklist.data?.pending ?? [])

@@ -1,11 +1,5 @@
 import type { ApiClient } from './client'
 import { unwrap } from './errors'
-import {
-  MOCK_getCorrectiveStatus,
-  MOCK_getWorklist,
-  type MOCK_CorrectiveStatusResponse,
-  type MOCK_WorklistResponse,
-} from './mocks'
 import type { components } from './schema'
 
 export type SettingsResponse = components['schemas']['SettingsResponse']
@@ -13,6 +7,8 @@ export type PendingSettingChange = components['schemas']['PendingSettingChange']
 export type SettingsProposalRequest = components['schemas']['SettingsProposalRequest']
 export type SettingsSignoffRequest = components['schemas']['SettingsSignoffRequest']
 export type SettingField = SettingsProposalRequest['field']
+export type WorklistResponse = components['schemas']['WorklistResponse']
+export type CorrectiveStatusResponse = components['schemas']['CorrectiveStatusResponse']
 
 export const SETTINGS_QUERY_KEY = ['settings'] as const
 export const WORKLIST_QUERY_KEY = ['settings', 'worklist'] as const
@@ -42,15 +38,16 @@ export async function signoffSetting(
   return unwrap(await client.POST('/settings/signoff', { body: request }))
 }
 
-/** `GET /settings/worklist`. MOCKED: blocked on Block 4a (backend route not merged; BLOCKERS.md). */
-export function getWorklist(): Promise<MOCK_WorklistResponse> {
-  return MOCK_getWorklist()
+/** `GET /settings/worklist`: real (Block 4a, capa/router.py). */
+export async function getWorklist(client: ApiClient): Promise<WorklistResponse> {
+  return unwrap(await client.GET('/settings/worklist'))
 }
 
 /**
- * `GET /settings/corrective-status`. MOCKED: blocked on Block 4a (backend route not merged;
- * BLOCKERS.md).
+ * `GET /settings/corrective-status`: real (Block 4a, capa/router.py). `fn_rate`/`fp_rate` are
+ * nullable - a zero-denominator rate (e.g. zero Confirmed Defective outcomes so far) is genuinely
+ * uncomputable, not `0%` (rule 7); callers must render `null` as "n/a", never coerce it.
  */
-export function getCorrectiveStatus(): Promise<MOCK_CorrectiveStatusResponse> {
-  return MOCK_getCorrectiveStatus()
+export async function getCorrectiveStatus(client: ApiClient): Promise<CorrectiveStatusResponse> {
+  return unwrap(await client.GET('/settings/corrective-status'))
 }

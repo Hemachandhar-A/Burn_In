@@ -38,11 +38,71 @@ function settingsBody(state: SettingsState) {
   }
 }
 
+/** The old MOCK_getWorklist's fixture dispositions - now just a fakeServer default body, deduped
+ * client-side by the screen itself (`worklistRows`), same as the real route's own raw list would
+ * be. */
+const WORKLIST_FIXTURE = [
+  {
+    project_id: 'proj-LOT-2024-8841',
+    component_id: 'DUT-042',
+    account_id: 'a.sharma',
+    verdict: 'REJECT',
+    rationale: 'Leakage 4.1 robust-σ above lot median at 24h, confirmed at 168h.',
+    timestamp: '2026-09-15T12:10:00Z',
+    analysis_run_id: 'run-8841-03',
+  },
+  {
+    project_id: 'proj-LOT-2024-8841',
+    component_id: 'DUT-042',
+    account_id: 'r.mehta',
+    verdict: 'REJECT',
+    rationale: 'Concur. Predicted drift exceeds the calibrated safety slope.',
+    timestamp: '2026-09-15T13:05:00Z',
+    analysis_run_id: 'run-8841-03',
+  },
+  {
+    project_id: 'proj-LOT-2024-8841',
+    component_id: 'DUT-019',
+    account_id: 'r.mehta',
+    verdict: 'HOLD',
+    rationale: 'Hold for retest after 96h drift acceleration.',
+    timestamp: '2026-09-15T13:20:00Z',
+    analysis_run_id: 'run-8841-03',
+  },
+  {
+    project_id: 'proj-LOT-2024-7712',
+    component_id: 'DUT-081',
+    account_id: 'r.mehta',
+    verdict: 'ACCEPT',
+    rationale: 'Leakage within 1.2 robust-σ of lot median at 168h; drift below the safety slope.',
+    timestamp: '2026-09-16T10:02:00Z',
+    analysis_run_id: 'run-7712-01',
+  },
+  {
+    project_id: 'proj-LOT-2024-9104',
+    component_id: 'DUT-055',
+    account_id: 'a.sharma',
+    verdict: 'HOLD',
+    rationale: 'Borderline 96h reading; retest before 168h.',
+    timestamp: '2026-09-19T09:30:00Z',
+    analysis_run_id: 'run-9104-02',
+  },
+]
+
+/** The old MOCK_getCorrectiveStatus's fixture values, now a fakeServer default body. */
+const CORRECTIVE_STATUS_FIXTURE = {
+  fn_rate: 0.028,
+  fp_rate: 0.114,
+  confirmed_outcome_count: 14,
+  status: 'OK',
+}
+
 /**
  * A real-ish in-memory `/settings` + `/settings/propose` + `/settings/signoff`, matching
  * `identity/router.py`'s actual status codes and detail messages (all 400, not the old mock's
- * 409/403/404). `/settings/worklist` and `/settings/corrective-status` stay mocked separately
- * (Block 4a not merged), so they aren't part of this fixture.
+ * 409/403/404), plus default `/settings/worklist` and `/settings/corrective-status` bodies
+ * (both real routes now, Block 5C) - tests that care about their content override via `overrides`
+ * or spy on `settingsApi.getWorklist`/`getCorrectiveStatus` directly, same as before.
  */
 function settingsServer(initial: Partial<SettingsState> = {}, overrides: Routes = {}) {
   const state: SettingsState = {
@@ -96,6 +156,8 @@ function settingsServer(initial: Partial<SettingsState> = {}, overrides: Routes 
       state.pending = state.pending.filter((p) => p !== pending)
       return { body: settingsBody(state) }
     },
+    'GET /settings/worklist': { body: { pending: WORKLIST_FIXTURE } },
+    'GET /settings/corrective-status': { body: CORRECTIVE_STATUS_FIXTURE },
     ...overrides,
   })
   return { ...server, state }
