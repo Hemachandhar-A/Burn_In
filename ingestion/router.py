@@ -172,6 +172,21 @@ async def upload_lot(
     )
 
 
+def _lot_record_or_rebuild(lot_id: str):
+    """store.get, else rebuild the lot from its latest stored analysis run. The in-process store is empty after a
+    restart, but every run persists the lot's full accumulated LotDataset (project_data.raw_data), so a lot that
+    exists in storage can still take its next checkpoint. None only when the lot exists nowhere."""
+    record = store.get(lot_id)
+    if record is not None:
+        return record
+    row = repository.query_latest_project_data(lot_id)
+    if row is None:
+        return None
+    dataset = LotDataset.model_validate(json.loads(row.raw_data))
+    store.put(lot_id, dataset)
+    return store.get(lot_id)
+
+
 @router.post("/lots/{lot_id}/checkpoints", response_model=LotUploadResponse)
 async def upload_checkpoint(
     lot_id: str,
@@ -179,7 +194,7 @@ async def upload_checkpoint(
     account_id: str = Form(...),  # E7 step 11: every ingestion event is attributed, not just the first
     reference_expected_json: str | None = Form(default=None),
 ) -> LotUploadResponse:
-    record = store.get(lot_id)
+    record = _lot_record_or_rebuild(lot_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"lot '{lot_id}' not found - upload it first via POST /lots")
 
