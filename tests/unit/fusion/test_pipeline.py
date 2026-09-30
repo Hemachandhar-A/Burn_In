@@ -441,3 +441,131 @@ def test_multi_parameter_rank_with_real_per_component_dedup(mock_a, mock_b):
         assert by_id[cid].worst_parameter == expected_param, (
             f"{cid}: expected worst_parameter {expected_param!r}, got {by_id[cid].worst_parameter!r}"
         )
+
+
+# --- Block 3B Part 1: a COMPLETE lot with missing components must never be ACCEPT --------------------
+
+def _reading(cid, lot_id, part_number, param, hour, value, unit='uA'):
+    return Reading(component_id=cid, lot_id=lot_id, part_number=part_number, manufacturer='M',
+                    date_code='D', parameter=param, checkpoint_hour=hour, value=value, unit=unit)
+
+
+def test_complete_lot_with_missing_components_is_hold_not_accept():
+    """C1 has a full 0h/24h pair (iddq); C2 is missing its 24h reading entirely, so
+    ingestion.quality.check_missing_checkpoints flags it INSUFFICIENT_DATA and features.compute
+    produces no frame for it at all (rule 7 - never guessed). C1 alone would otherwise verdict
+    ACCEPT (no WATCH/REJECT, PDA 0) - the new rule must override that to HOLD because the lot is
+    COMPLETE, has >=1 analysed part, and insufficient_data_components is non-empty."""
+    readings = [
+        _reading('C1', 'LOT-MISSING', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C1', 'LOT-MISSING', 'PN1', 'iddq', 24.0, 1.0),
+        _reading('C2', 'LOT-MISSING', 'PN1', 'iddq', 0.0, 1.0),
+        # C2's 24h reading is absent entirely.
+    ]
+    lot = LotDataset(lot_id='LOT-MISSING', part_number='PN1', status='COMPLETE',
+                      readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+
+    assert result.insufficient_data_components == ['C2']
+    assert {a.component_id for a in result.assessments} == {'C1'}
+    assert result.disposition.verdict == 'HOLD'
+
+
+def test_complete_lot_no_missing_none_flagged_stays_accept():
+    """Control for the rule above: the same shape, but C2 also has its 24h reading, so nothing is
+    missing - insufficient_data_components is empty and the verdict is the ordinary ACCEPT."""
+    readings = [
+        _reading('C1', 'LOT-FULL', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C1', 'LOT-FULL', 'PN1', 'iddq', 24.0, 1.0),
+        _reading('C2', 'LOT-FULL', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C2', 'LOT-FULL', 'PN1', 'iddq', 24.0, 1.0),
+    ]
+    lot = LotDataset(lot_id='LOT-FULL', part_number='PN1', status='COMPLETE',
+                      readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+
+    assert result.insufficient_data_components == []
+    assert result.disposition.verdict == 'ACCEPT'
+
+
+@patch('fusion.pipeline.module_a_detect')
+def test_complete_lot_only_reject_parts_below_pda_stays_accept_even_with_missing_components(mock_a):
+    """1b's second case: 'complete + none missing + PDA below threshold + only REJECT parts ->
+    ACCEPT (unchanged)' - the missing-components override must key off insufficient_data_components
+    specifically, never off the presence of a REJECT part, so this pre-existing (D15) behaviour is
+    untouched."""
+    from contracts import ModuleAResult
+    readings = [
+        _reading('C1', 'L1', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C1', 'L1', 'PN1', 'iddq', 24.0, 2.0),
+        _reading('C2', 'L1', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C2', 'L1', 'PN1', 'iddq', 24.0, 2.0),
+    ]
+    lot = LotDataset(lot_id='L1', part_number='PN1', status='COMPLETE', readings=readings, account_id='ACC')
+    config = ScreeningConfig(pda_threshold=1.0)  # 0.5 PDA from one REJECT part does not exceed 1.0
+    mock_a.return_value = [
+        ModuleAResult(component_id='C1', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0,
+                      isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod': False},
+                      direction='above_median', severity_tier='PASS', severity_cap_reason=None,
+                      combined_severity=0.1, explainable_corroboration=False),
+        ModuleAResult(component_id='C2', lot_id='L1', parameter='iddq', robust_z=0, mcd_distance=0,
+                      isolation_forest_score=0, ecod_score=0, explainable_tags={'ecod': False},
+                      direction='above_median', severity_tier='REJECT', severity_cap_reason=None,
+                      combined_severity=0.9, explainable_corroboration=True),
+    ]
+    result = run_full_pipeline(lot, config)
+    assert result.insufficient_data_components == []
+    assert result.disposition.verdict == 'ACCEPT'
+
+
+def test_in_progress_lot_with_missing_components_verdict_unchanged():
+    """The override is scoped to COMPLETE lots only - an IN_PROGRESS lot still carries the list, but
+    its forecast verdict logic (LOT_ON_TRACK/AT_RISK/STOP_RUN_RECOMMENDED) is untouched."""
+    readings = [
+        _reading('C1', 'LOT-INPROG', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C1', 'LOT-INPROG', 'PN1', 'iddq', 24.0, 1.0),
+        _reading('C2', 'LOT-INPROG', 'PN1', 'iddq', 0.0, 1.0),
+        # C2 missing 24h.
+    ]
+    lot = LotDataset(lot_id='LOT-INPROG', part_number='PN1', status='IN_PROGRESS',
+                      readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+
+    assert result.insufficient_data_components == ['C2']
+    assert result.disposition.is_forecast is True
+    assert result.disposition.verdict == 'LOT_ON_TRACK'
+
+
+def test_zero_analysed_with_missing_components_keeps_d50_rule():
+    """D50's zero-assessment rule (HOLD for a COMPLETE lot, LOT_AT_RISK for IN_PROGRESS) must still
+    govern when total_parts == 0, even though insufficient_data_components is non-empty here too -
+    the override in Part 1 requires >=1 analysed part, so it must not double-fire or change wording."""
+    readings = [_reading('C1', 'LOT-ZERO', 'PN1', 'iddq', 0.0, 1.0)]  # 24h missing -> zero frames
+    lot = LotDataset(lot_id='LOT-ZERO', part_number='PN1', status='COMPLETE',
+                      readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+
+    assert result.insufficient_data_components == ['C1']
+    assert result.assessments == []
+    assert result.disposition.verdict == 'HOLD'
+
+
+def test_pipeline_insufficient_data_components_matches_ingestion_routers_helper():
+    """The ingestion router computes the same list independently (CONTRACT_CHANGES.md 2026-09-30) by
+    calling the same ingestion.quality.check_missing_checkpoints - verify the two stay equal rather
+    than assuming it, per Part 1a's instruction."""
+    from ingestion.router import _insufficient_data_components
+
+    readings = [
+        _reading('C1', 'LOT-EQ', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C1', 'LOT-EQ', 'PN1', 'iddq', 24.0, 1.0),
+        _reading('C2', 'LOT-EQ', 'PN1', 'iddq', 0.0, 1.0),
+        _reading('C3', 'LOT-EQ', 'PN1', 'leakage', 0.0, 1.0),
+        _reading('C3', 'LOT-EQ', 'PN1', 'leakage', 24.0, 1.0),
+        _reading('C3', 'LOT-EQ', 'PN1', 'leakage', 96.0, 1.0),
+    ]
+    lot = LotDataset(lot_id='LOT-EQ', part_number='PN1', status='COMPLETE', readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+
+    assert result.insufficient_data_components == _insufficient_data_components(readings)
+    assert result.insufficient_data_components == ['C2']

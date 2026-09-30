@@ -3,11 +3,20 @@ from features.compute import compute
 from module_a.detect import detect as module_a_detect
 from module_b.predictor import predict as module_b_predict
 from fusion.gate import compute_part_verdict
+from ingestion.quality import check_missing_checkpoints
 
 def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResults:
     is_complete = lot.status == "COMPLETE"
     is_forecast = not is_complete
-    
+
+    # Part 1a (Block 3B): single source of the INSUFFICIENT_DATA rule - computed here, not
+    # reimplemented, so AnalysisResults.insufficient_data_components carries it on every path
+    # (live GET /lots/{lot_id} and a stored reload alike), not just the ingestion upload response.
+    quality_flags = check_missing_checkpoints(lot.readings)
+    insufficient_data_components = sorted(
+        {f.component_id for f in quality_flags if f.flag_type == "INSUFFICIENT_DATA"}
+    )
+
     frames = compute(lot)
     
     a_results = []
@@ -145,7 +154,12 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
             lot_verdict = "HOLD"
         else:
             lot_verdict = "ACCEPT"
-            
+        # Part 1 ruling (Block 3B): a COMPLETE lot with >=1 analysed part but a non-empty
+        # insufficient_data_components must never be ACCEPT - HOLD instead. Scoped to the ACCEPT
+        # case only: REJECT/HOLD from the ordinary rules above are unaffected (D15 stays).
+        if lot_verdict == "ACCEPT" and insufficient_data_components:
+            lot_verdict = "HOLD"
+
     disposition = LotDisposition(
         lot_id=lot.lot_id,
         status=lot.status,
@@ -153,8 +167,9 @@ def run_full_pipeline(lot: LotDataset, config: ScreeningConfig) -> AnalysisResul
         verdict=lot_verdict,
         is_forecast=is_forecast
     )
-    
+
     return AnalysisResults(
         assessments=assessments,
-        disposition=disposition
+        disposition=disposition,
+        insufficient_data_components=insufficient_data_components,
     )
