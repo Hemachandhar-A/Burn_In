@@ -1,7 +1,8 @@
 """Block 3B Part 3: E4 steps 5-10's text/notes, pure functions over already-computed values
 (AGENTS.md rule 1 - nothing here re-derives a detector's own math). Fixed inputs only, no randomness
 (rule 9)."""
-from explain.text import explanation_sentence
+from contracts import ModuleBResult
+from explain.text import confidence_qualifier, explanation_sentence
 
 
 def test_explanation_sentence_golden_part_module_a_and_b():
@@ -107,3 +108,58 @@ def test_explanation_sentence_forecast_unavailable_module_b_never_claimed():
     )
     sentence = explanation_sentence("C4", zscore_row=zrow, module_b=module_b, shap=None)
     assert "Predicted 168h drift" not in sentence
+
+
+# --- Part 3b: confidence_qualifier (E4 step 6) ----------------------------------------------------
+
+def _module_b(**overrides):
+    base = dict(
+        component_id="C1", lot_id="L1", parameter="leakage", predicted_168h=50.0,
+        interval_lower=45.0, interval_upper=55.0, physics_baseline_prediction=48.0,
+        physics_disagreement_gap=2.0, drift_rate=1.5, exceeds_safety_slope=True, safety_slope=1.0,
+        lower_bound_exceeds_safety_slope=True, forecast_unavailable=False,
+    )
+    base.update(overrides)
+    return ModuleBResult(**base)
+
+
+def test_confidence_qualifier_none_when_module_b_did_not_run():
+    assert confidence_qualifier(None) is None
+
+
+def test_confidence_qualifier_none_when_forecast_unavailable():
+    module_b = _module_b(
+        forecast_unavailable=True, predicted_168h=None, interval_lower=None, interval_upper=None,
+        physics_baseline_prediction=None, physics_disagreement_gap=None, drift_rate=None,
+        exceeds_safety_slope=None, safety_slope=None, lower_bound_exceeds_safety_slope=None,
+    )
+    assert confidence_qualifier(module_b) is None
+
+
+def test_confidence_qualifier_high_confidence_when_both_signals_agree():
+    # interval_lower/upper agree with the point estimate (both True), physics gap (2.0) within
+    # half the interval width (5.0) * the multiplier.
+    module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=True,
+                          interval_lower=45.0, interval_upper=55.0, physics_disagreement_gap=2.0)
+    assert confidence_qualifier(module_b) == "high confidence"
+
+
+def test_confidence_qualifier_borderline_when_interval_band_disagrees():
+    # Point estimate says exceeds, but the interval's lower bound does not - the interval is wide
+    # enough that narrowing it slightly could flip the call.
+    module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=False)
+    assert confidence_qualifier(module_b) == "borderline - recommend retest"
+
+
+def test_confidence_qualifier_borderline_when_physics_disagreement_exceeds_half_interval_width():
+    # interval width 10.0 -> half-width 5.0; physics gap 5.01 is just past the boundary.
+    module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=True,
+                          interval_lower=45.0, interval_upper=55.0, physics_disagreement_gap=5.01)
+    assert confidence_qualifier(module_b) == "borderline - recommend retest"
+
+
+def test_confidence_qualifier_high_confidence_exactly_at_physics_boundary():
+    # physics gap exactly equal to half-width * multiplier is still "agrees" (<=), not borderline.
+    module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=True,
+                          interval_lower=45.0, interval_upper=55.0, physics_disagreement_gap=5.0)
+    assert confidence_qualifier(module_b) == "high confidence"
