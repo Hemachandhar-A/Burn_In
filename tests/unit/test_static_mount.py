@@ -16,11 +16,18 @@ def dist(tmp_path):
     return d
 
 
-def _app_with_dist(dist_dir) -> FastAPI:
-    """The real app, then the same mount call api/main.py makes (main only mounts a dist dir that exists at import)."""
+def _real_routes_without_frontend() -> FastAPI:
+    """The real app's routes, minus any frontend mount api/main.py made at import (it mounts frontend/dist when
+    that has been built on this machine), so these tests do not depend on whether a build exists."""
     from api.main import app as real
-    fresh = FastAPI(routes=list(real.routes), title=real.title)
+    fresh = FastAPI(routes=[r for r in real.routes if getattr(r, "name", None) != "frontend"], title=real.title)
     fresh.user_middleware = list(real.user_middleware)
+    return fresh
+
+
+def _app_with_dist(dist_dir) -> FastAPI:
+    """Those routes, then the same mount call api/main.py makes."""
+    fresh = _real_routes_without_frontend()
     assert mount_frontend(fresh, dist_dir) is True
     return fresh
 
@@ -56,8 +63,7 @@ def test_missing_index_html_mounts_nothing(tmp_path):
 
 
 def test_app_without_dist_is_json_404_and_starts():
-    from api.main import app
-    client = TestClient(app)
+    client = TestClient(_real_routes_without_frontend())
     assert client.get("/health").status_code == 200
     r = client.get("/definitely-not-a-route")
     assert r.status_code == 404 and r.json() == {"detail": "Not Found"}
