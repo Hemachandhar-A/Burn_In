@@ -61,23 +61,34 @@ def client():
     return TestClient(test_app)
 
 def test_capa_trigger_fires_when_lot_reject_count_crosses_threshold(client):
+    """Block 4a-resume R3: identity/router.py::create_disposition no longer calls
+    capa.logic.evaluate_capa_trigger automatically (its config_change/capa_action event was leaking
+    into GET /events and GET /projects/{project_id}/events - real History routes - CONTRACT_CHANGES.md
+    2026-09-30). evaluate_capa_trigger itself is unchanged, dead code, still directly callable - this
+    test now calls it explicitly after seeding the same disposition_signoffs rows via the real
+    endpoint, to keep exercising the function's own threshold/resolve logic."""
+    from capa.logic import evaluate_capa_trigger
+
     token1 = create_access_token("account1", "Quality Engineer")
     token2 = create_access_token("account2", "Reliability Engineer")
     headers1 = {"Authorization": f"Bearer {token1}"}
     headers2 = {"Authorization": f"Bearer {token2}"}
-    
+
     # Reject part 1 (needs 2 distinct accounts)
-    client.post("/parts/comp1/disposition?project_id=test_proj&analysis_run_id=run-1", 
+    client.post("/parts/comp1/disposition?project_id=test_proj&analysis_run_id=run-1",
                 json={"verdict": "REJECT", "rationale": "r1"}, headers=headers1)
-    client.post("/parts/comp1/disposition?project_id=test_proj&analysis_run_id=run-1", 
+    client.post("/parts/comp1/disposition?project_id=test_proj&analysis_run_id=run-1",
                 json={"verdict": "REJECT", "rationale": "r1"}, headers=headers2)
-                
+
     # Reject part 2
-    client.post("/parts/comp2/disposition?project_id=test_proj&analysis_run_id=run-1", 
+    client.post("/parts/comp2/disposition?project_id=test_proj&analysis_run_id=run-1",
                 json={"verdict": "REJECT", "rationale": "r2"}, headers=headers1)
-    client.post("/parts/comp2/disposition?project_id=test_proj&analysis_run_id=run-1", 
+    client.post("/parts/comp2/disposition?project_id=test_proj&analysis_run_id=run-1",
                 json={"verdict": "REJECT", "rationale": "r2"}, headers=headers2)
-                
+
+    # Not auto-triggered any more - call the (now dead-code) function directly.
+    evaluate_capa_trigger("test_proj")
+
     # Check if CAPA triggered yet (threshold is 3 distinct reject signoffs, actually it's total rejects.
     # We added 4 reject signoffs. Let's see if CAPA is there.)
     resp = client.get("/capa", headers=headers1)
@@ -86,7 +97,7 @@ def test_capa_trigger_fires_when_lot_reject_count_crosses_threshold(client):
     capa = resp.json()[0]
     assert capa["status"] == "OPEN"
     assert "Lot reject count" in capa["trigger_reason"]
-    
+
     # Test resolve
     capa_id = capa["id"]
     resolve_resp = client.post(f"/capa/{capa_id}/resolve", json={"rationale": "Fixed issue"}, headers=headers1)
@@ -115,34 +126,45 @@ def test_audit_log_export_produces_valid_csv_matching_schema(client):
     assert "config_change" in rows[-1]
 
 def test_capa_trigger_does_not_fire_below_threshold(client):
+    """Block 4a-resume R3: calls evaluate_capa_trigger directly - see the note on
+    test_capa_trigger_fires_when_lot_reject_count_crosses_threshold above."""
+    from capa.logic import evaluate_capa_trigger
+
     token1 = create_access_token("account1", "Quality Engineer")
     headers1 = {"Authorization": f"Bearer {token1}"}
-    
-    client.post("/parts/comp3/disposition?project_id=test_proj&analysis_run_id=run-1", 
+
+    client.post("/parts/comp3/disposition?project_id=test_proj&analysis_run_id=run-1",
                 json={"verdict": "REJECT", "rationale": "r3"}, headers=headers1)
-    
+    evaluate_capa_trigger("test_proj")
+
     resp = client.get("/capa", headers=headers1)
     assert resp.status_code == 200
     assert len(resp.json()) == 0
 
 def test_capa_trigger_does_not_fire_duplicates(client):
+    """Block 4a-resume R3: calls evaluate_capa_trigger directly - see the note on
+    test_capa_trigger_fires_when_lot_reject_count_crosses_threshold above."""
+    from capa.logic import evaluate_capa_trigger
+
     token1 = create_access_token("account1", "Quality Engineer")
     token2 = create_access_token("account2", "Reliability Engineer")
     headers1 = {"Authorization": f"Bearer {token1}"}
     headers2 = {"Authorization": f"Bearer {token2}"}
-    
+
     # Add 3 rejects
     for i in range(1, 4):
-        client.post(f"/parts/comp_{i}/disposition?project_id=test_proj&analysis_run_id=run-1", 
+        client.post(f"/parts/comp_{i}/disposition?project_id=test_proj&analysis_run_id=run-1",
                     json={"verdict": "REJECT", "rationale": f"r{i}"}, headers=headers1)
-                    
+    evaluate_capa_trigger("test_proj")
+
     resp = client.get("/capa", headers=headers1)
     assert len(resp.json()) == 1
-    
+
     # Add 4th reject
-    client.post("/parts/comp_4/disposition?project_id=test_proj&analysis_run_id=run-1", 
+    client.post("/parts/comp_4/disposition?project_id=test_proj&analysis_run_id=run-1",
                 json={"verdict": "REJECT", "rationale": "r4"}, headers=headers1)
-                
+    evaluate_capa_trigger("test_proj")
+
     resp2 = client.get("/capa", headers=headers1)
     # Should still be exactly 1 CAPA open for this project
     assert len(resp2.json()) == 1
@@ -156,14 +178,19 @@ def test_resolve_capa_not_found(client):
     assert resp.json()["detail"] == "CAPA not found"
 
 def test_resolve_capa_already_resolved(client):
+    """Block 4a-resume R3: calls evaluate_capa_trigger directly - see the note on
+    test_capa_trigger_fires_when_lot_reject_count_crosses_threshold above."""
+    from capa.logic import evaluate_capa_trigger
+
     token1 = create_access_token("account1", "Quality Engineer")
     headers1 = {"Authorization": f"Bearer {token1}"}
-    
+
     # Create 3 rejects to trigger CAPA
     for i in range(1, 4):
-        client.post(f"/parts/comp_{i}_dup/disposition?project_id=test_proj&analysis_run_id=run-1", 
+        client.post(f"/parts/comp_{i}_dup/disposition?project_id=test_proj&analysis_run_id=run-1",
                     json={"verdict": "REJECT", "rationale": f"r{i}"}, headers=headers1)
-                    
+    evaluate_capa_trigger("test_proj")
+
     capas = client.get("/capa", headers=headers1).json()
     assert len(capas) > 0
     capa_id = capas[0]["id"]

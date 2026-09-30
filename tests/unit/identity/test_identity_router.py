@@ -391,3 +391,92 @@ def test_settings_get(auth_headers, monkeypatch):
     assert len(data["pending_changes"]) == 1
     assert data["pending_changes"][0]["field"] == "fn_fp_cost_ratio"
     assert data["pending_changes"][0]["proposed_value"] == 15.0
+
+
+# E13 step 6 (Block 4a Part 3a): confirmed_outcome_fn_ceiling is the third live-editable Settings
+# value, following exactly the same propose/dual-signoff pattern as fn_fp_cost_ratio above - these
+# tests exercise that field specifically, plus its (0, 1] range validation (no such validation exists,
+# or was asked for, on the two pre-existing fields).
+
+def test_settings_propose_confirmed_outcome_fn_ceiling(auth_headers, monkeypatch):
+    monkeypatch.setattr("identity.router.query_events", lambda: [])
+    events_logged = []
+    def mock_log_event(*args, **kwargs):
+        events_logged.append(kwargs)
+    monkeypatch.setattr("identity.router.log_event", mock_log_event)
+
+    response = client.post(
+        "/settings/propose",
+        json={"field": "confirmed_outcome_fn_ceiling", "proposed_value": 0.1},
+        headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert response.json()["field"] == "confirmed_outcome_fn_ceiling"
+    assert response.json()["proposed_value"] == 0.1
+    assert len(events_logged) == 1
+
+
+def test_settings_signoff_confirmed_outcome_fn_ceiling_distinct_user(auth_headers2, monkeypatch):
+    class DummyEvent:
+        def __init__(self, action="propose", account_id="a.sharma"):
+            self.event_type = "config_change"
+            self.account_id = account_id
+            self.payload = {"action": action, "field": "confirmed_outcome_fn_ceiling", "proposed_value": 0.1}
+
+    events = [DummyEvent()]
+    monkeypatch.setattr("identity.router.query_events", lambda: events)
+    events_logged = []
+    def mock_log_event(*args, **kwargs):
+        events_logged.append(kwargs)
+        events.append(DummyEvent(action=kwargs["payload"]["action"], account_id=kwargs["account_id"]))
+    monkeypatch.setattr("identity.router.log_event", mock_log_event)
+
+    response = client.post(
+        "/settings/signoff",
+        json={"field": "confirmed_outcome_fn_ceiling"},
+        headers=auth_headers2
+    )
+    assert response.status_code == 200
+    assert response.json()["confirmed_outcome_fn_ceiling"] == 0.1
+
+
+def test_settings_signoff_confirmed_outcome_fn_ceiling_same_account_rejected(auth_headers, monkeypatch):
+    class DummyEvent:
+        def __init__(self):
+            self.event_type = "config_change"
+            self.account_id = "a.sharma"
+            self.payload = {"action": "propose", "field": "confirmed_outcome_fn_ceiling", "proposed_value": 0.1}
+
+    monkeypatch.setattr("identity.router.query_events", lambda: [DummyEvent()])
+
+    response = client.post(
+        "/settings/signoff",
+        json={"field": "confirmed_outcome_fn_ceiling"},
+        headers=auth_headers  # same account that proposed
+    )
+    assert response.status_code == 400
+    assert "two distinct account IDs" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("proposed_value", [0.0, -0.05, 1.5])
+def test_settings_propose_confirmed_outcome_fn_ceiling_out_of_range_rejected(auth_headers, monkeypatch, proposed_value):
+    monkeypatch.setattr("identity.router.query_events", lambda: [])
+    response = client.post(
+        "/settings/propose",
+        json={"field": "confirmed_outcome_fn_ceiling", "proposed_value": proposed_value},
+        headers=auth_headers
+    )
+    assert response.status_code == 400
+    assert "confirmed_outcome_fn_ceiling" in response.json()["detail"]
+
+
+def test_settings_propose_confirmed_outcome_fn_ceiling_boundary_one_accepted(auth_headers, monkeypatch):
+    monkeypatch.setattr("identity.router.query_events", lambda: [])
+    monkeypatch.setattr("identity.router.log_event", lambda *a, **k: None)
+
+    response = client.post(
+        "/settings/propose",
+        json={"field": "confirmed_outcome_fn_ceiling", "proposed_value": 1.0},
+        headers=auth_headers
+    )
+    assert response.status_code == 200

@@ -81,12 +81,14 @@ def create_disposition(
             verdict=request.verdict,
             rationale=request.rationale
         )
-        
-        # Trigger CAPA if threshold crossed
-        if request.verdict == "REJECT":
-            from capa.logic import evaluate_capa_trigger
-            evaluate_capa_trigger(project_id)
-        
+
+        # capa.logic.evaluate_capa_trigger call removed (Block 4a-resume R3, CONTRACT_CHANGES.md
+        # 2026-09-30): its config_change/capa_action event leaked into GET /events and
+        # GET /projects/{project_id}/events - real, registered History routes (essential-features.md
+        # E6 screen 6) - polluting the shared timeline with an unplanned event shape. The function
+        # itself is left in capa/logic.py as dead code (not deleted - out of this session's scope
+        # to remove code it did not add).
+
         return DispositionRecord(
             project_id=record.project_id,
             component_id=record.component_id,
@@ -97,7 +99,7 @@ def create_disposition(
             analysis_run_id=record.analysis_run_id
         )
 
-def _get_current_settings_state():
+def get_current_settings_state():
     config = ScreeningConfig()
     current_values = {
         "fn_fp_cost_ratio": config.fn_fp_cost_ratio,
@@ -135,7 +137,7 @@ def _get_current_settings_state():
 
 @router.get("/settings", response_model=SettingsResponse)
 def get_settings(account: Account = Depends(get_current_account)):
-    current_values, pending = _get_current_settings_state()
+    current_values, pending = get_current_settings_state()
     return SettingsResponse(
         fn_fp_cost_ratio=current_values["fn_fp_cost_ratio"],
         pda_threshold=current_values["pda_threshold"],
@@ -149,11 +151,23 @@ def propose_setting(
     account: Account = Depends(get_current_account)
 ):
     with settings_lock:
-        current_values, pending = _get_current_settings_state()
+        # E13 step 6: the confirmed-outcome FN rate ceiling is a rate, so it must stay in (0, 1] -
+        # 0 would mean "any single miss trips the ceiling" (degenerate, not a real ceiling) and a
+        # negative or >1 value isn't a rate at all. The two pre-existing fields have no such natural
+        # bound (fn_fp_cost_ratio is an open-ended cost multiplier; pda_threshold's own valid range
+        # isn't specified anywhere either), so this check is scoped to confirmed_outcome_fn_ceiling
+        # only, not generalized to the other two fields here.
+        if request.field == "confirmed_outcome_fn_ceiling" and not (0 < request.proposed_value <= 1):
+            raise HTTPException(
+                status_code=400,
+                detail="confirmed_outcome_fn_ceiling must be greater than 0 and at most 1",
+            )
+
+        current_values, pending = get_current_settings_state()
         for p in pending:
             if p.field == request.field:
                 raise HTTPException(status_code=400, detail="Change already pending for this field")
-        
+
         # log_event requires project_id. We use a dummy global project ID.
         log_event(
             project_id="GLOBAL_SETTINGS",
@@ -178,7 +192,7 @@ def signoff_setting(
     account: Account = Depends(get_current_account)
 ):
     with settings_lock:
-        current_values, pending = _get_current_settings_state()
+        current_values, pending = get_current_settings_state()
         pending_change = next((p for p in pending if p.field == request.field), None)
         
         if not pending_change:
@@ -198,7 +212,7 @@ def signoff_setting(
             }
         )
         
-        new_values, new_pending = _get_current_settings_state()
+        new_values, new_pending = get_current_settings_state()
         return SettingsResponse(
             fn_fp_cost_ratio=new_values["fn_fp_cost_ratio"],
             pda_threshold=new_values["pda_threshold"],

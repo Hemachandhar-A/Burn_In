@@ -161,6 +161,114 @@
         "title": "ConfirmedOutcomeRecord",
         "type": "object"
       },
+      "ConfirmedOutcomeRequest": {
+        "properties": {
+          "confirmed_outcome": {
+            "enum": [
+              "Confirmed Good",
+              "Confirmed Defective",
+              "Unknown"
+            ],
+            "title": "Confirmed Outcome",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "confirmed_outcome"
+        ],
+        "title": "ConfirmedOutcomeRequest",
+        "type": "object"
+      },
+      "CorrectiveStatusResponse": {
+        "properties": {
+          "confirmed_outcome_count": {
+            "title": "Confirmed Outcome Count",
+            "type": "integer"
+          },
+          "fn_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fn Rate"
+          },
+          "fp_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fp Rate"
+          },
+          "status": {
+            "enum": [
+              "OK",
+              "CEILING_EXCEEDED",
+              "INSUFFICIENT_DATA"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmed_outcome_count",
+          "status"
+        ],
+        "title": "CorrectiveStatusResponse",
+        "type": "object"
+      },
+      "DPARecommendation": {
+        "properties": {
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "reason"
+        ],
+        "title": "DPARecommendation",
+        "type": "object"
+      },
+      "DPAWorkOrderResponse": {
+        "properties": {
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/DPARecommendation"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recommendations"
+        ],
+        "title": "DPAWorkOrderResponse",
+        "type": "object"
+      },
       "DispositionRecord": {
         "properties": {
           "account_id": {
@@ -1247,6 +1355,22 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WorklistResponse": {
+        "properties": {
+          "pending": {
+            "items": {
+              "$ref": "#/components/schemas/DispositionRecord"
+            },
+            "title": "Pending",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pending"
+        ],
+        "title": "WorklistResponse",
+        "type": "object"
+      },
       "ZScoreTableRow": {
         "properties": {
           "lot_median": {
@@ -1614,6 +1738,54 @@
         ]
       }
     },
+    "/lots/{lot_id}/dpa-work-order": {
+      "post": {
+        "description": "E13 step 5: up to 3 recommended parts for destructive physical analysis, on a COMPLETE lot\nonly (a lot still IN_PROGRESS has no final verdict tier to select against - 409, not a guess).",
+        "operationId": "create_dpa_work_order_lots__lot_id__dpa_work_order_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DPAWorkOrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Dpa Work Order",
+        "tags": [
+          "CAPA"
+        ]
+      }
+    },
     "/lots/{lot_id}/quality": {
       "get": {
         "description": "E7 step 7, surfaced separately from `LotUploadResponse` - that response model is frozen\n(`contracts.py`) with no field for quality flags; logged in CONTRACT_CHANGES.md rather than\nhand-edited. Not a contract type itself, so no `response_model` - plain JSON.",
@@ -1762,6 +1934,80 @@
         "summary": "Get Part Detail",
         "tags": [
           "fusion"
+        ]
+      }
+    },
+    "/parts/{component_id}/confirmed-outcome": {
+      "post": {
+        "description": "E13 step 1: records a confirmed real-world outcome for a part, linked to the analysis_run_id\nof the latest stored run containing it (never the disposition itself - this measures whether the\nmodel's verdict tier was right, a different question from whether the human's disposition was).\nAppend-only: never touches disposition_signoffs. No event is logged - see CONTRACT_CHANGES.md,\nthis block: none of the five event_type literal values fits this action, and AGENTS.md rule 3\nforbids inventing a new one here.",
+        "operationId": "create_confirmed_outcome_parts__component_id__confirmed_outcome_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "component_id",
+            "required": true,
+            "schema": {
+              "title": "Component Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lot Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmedOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmedOutcomeRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Confirmed Outcome",
+        "tags": [
+          "CAPA"
         ]
       }
     },
@@ -2045,6 +2291,33 @@
         ]
       }
     },
+    "/settings/corrective-status": {
+      "get": {
+        "description": "E13 steps 6-8: live-computed on every call, nothing stored, nothing to dismiss. The ceiling\nread here is the live Settings value (post dual sign-off), via identity.router's own state\nfunction - never re-derived from raw events a second time.",
+        "operationId": "get_corrective_status_settings_corrective_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectiveStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Corrective Status",
+        "tags": [
+          "CAPA"
+        ]
+      }
+    },
     "/settings/propose": {
       "post": {
         "operationId": "propose_setting_settings_propose_post",
@@ -2138,6 +2411,33 @@
           "Auth",
           "Settings",
           "Disposition"
+        ]
+      }
+    },
+    "/settings/worklist": {
+      "get": {
+        "description": "E13 step 4: \"N dispositions awaiting a confirmed outcome\" - tracking only, changes nothing.",
+        "operationId": "get_worklist_settings_worklist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorklistResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Worklist",
+        "tags": [
+          "CAPA"
         ]
       }
     }
