@@ -13,7 +13,7 @@
  *
  * BASE_URL mode (Session 6): `BASE_URL=http://localhost:8020 npx tsx scripts/screenshots.ts` skips vite entirely and
  * captures the production build served by FastAPI itself (scripts/build_demo.sh) - same origin for page and API -
- * of the two demo lots (DEMO-GOLDEN-01, DEMO-EARLY-01) into frontend/screenshots/single-process/.
+ * of the two demo lots (DEMO-COMPLETE-01, DEMO-EARLY-01) into frontend/screenshots/single-process/.
  */
 import { chromium } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -57,12 +57,19 @@ function waitForServer(url: string, timeoutMs = 30000): Promise<void> {
 async function singleProcess(baseUrl: string) {
   const outDir = path.join(SCREENSHOT_DIR, 'single-process')
   await mkdir(outDir, { recursive: true })
-  const golden = 'DEMO-GOLDEN-01'
+  const complete = 'DEMO-COMPLETE-01'
   const early = 'DEMO-EARLY-01'
 
   let apiToken: string | null = null
   const apiClient = createApiClient({ baseUrl, getToken: () => apiToken })
   apiToken = (await login(apiClient, { account_id: 'a.sharma', pin: '1234' })).access_token
+  const completeSummary = await getLotSummary(apiClient, complete)
+  // module_a_rank is a position: 1 = most severe. Module A REJECT parts of the complete lot, most severe first.
+  const aRejects = completeSummary.assessments
+    .filter((a) => a.verdict === 'REJECT' && a.module_a_ran)
+    .sort((x, y) => x.module_a_rank - y.module_a_rank)
+  if (aRejects.length < 2) throw new Error(`${complete} has fewer than 2 Module A REJECT parts`)
+  console.log(`Complete lot top part: ${aRejects[0].component_id}, second: ${aRejects[1].component_id}`)
   const earlySummary = await getLotSummary(apiClient, early)
   const earlyRejects = earlySummary.assessments.filter((a) => a.verdict === 'REJECT')
   if (earlyRejects.length === 0) throw new Error(`${early} has no REJECT part`)
@@ -100,24 +107,24 @@ async function singleProcess(baseUrl: string) {
     await shot('02-project-browser')
 
     currentScreen = 'lot dashboard golden'
-    await page.goto(`${baseUrl}/#/lots/${golden}`)
+    await page.goto(`${baseUrl}/#/lots/${complete}`)
     await page.waitForSelector('text=/PDA:/')
     const dpaButton = page.getByRole('button', { name: /generate dpa work order/i })
     if (await dpaButton.isVisible()) {
       await dpaButton.click()
       await page.waitForSelector('text=DPA Work Order')
     }
-    await shot('03-lot-dashboard-golden')
+    await shot('03-lot-dashboard-complete')
 
     currentScreen = 'lot dashboard early'
     await page.goto(`${baseUrl}/#/lots/${early}`)
     await page.waitForSelector('text=/PDA:/')
     await shot('04-lot-dashboard-early')
 
-    currentScreen = 'part detail GOLDEN-045'
-    await page.goto(`${baseUrl}/#/parts/GOLDEN-045`)
+    currentScreen = 'part detail top Module A REJECT'
+    await page.goto(`${baseUrl}/#/parts/${encodeURIComponent(aRejects[0].component_id)}`)
     await page.waitForSelector('h1.screen-title')
-    await shot('05-part-detail-golden-045')
+    await shot('05-part-detail-module-a-reject')
 
     currentScreen = 'part detail early'
     await page.goto(`${baseUrl}/#/parts/${encodeURIComponent(earlyPart.component_id)}`)
@@ -128,6 +135,11 @@ async function singleProcess(baseUrl: string) {
     await page.goto(`${baseUrl}/#/settings`)
     await page.waitForSelector('text=Corrective Feedback Status')
     await shot('07-settings')
+
+    currentScreen = 'part detail second Module A REJECT'
+    await page.goto(`${baseUrl}/#/parts/${encodeURIComponent(aRejects[1].component_id)}`)
+    await page.waitForSelector('h1.screen-title')
+    await shot('08-part-detail-module-a-reject-second')
   } finally {
     await browser.close()
     await writeFile(

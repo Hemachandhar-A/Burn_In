@@ -200,3 +200,13 @@ Entry format:
   - Existing tests missed it: `test_golden_module_a.py` never goes through ingestion; `test_g5_routes.py` uploads the golden lot but asserts only status.
 - What was tried: nothing changed (ingestion/, module_b/ and harness/ are not the Lead's in this chunk). No in-scope workaround exists: any value uploaded is normalized to nA before Module B sees it, and rescaling the data would change the worked example. `tests/unit/scripts/test_load_demo_lots.py` carries a skipped test asserting HOLD/0.039 that should be un-skipped when this is fixed.
 - Status: OPEN - blocks the demo claim "DEMO-GOLDEN-01 is HOLD, PDA ~0.039, GOLDEN-045 REJECT first" via the real route.
+
+---
+
+## 2026-09-30 Lead - Module B is calibrated on one measurement scale: a demo lot cannot be the uA golden dataset (D110)
+- Blocked on: nothing further - a disclosed limitation, recorded so it is not rediscovered. Follows the 2026-09-30 entry "the golden lot is REJECT (PDA 0.49) through POST /lots".
+- Cause: Module B's synthetic calibration (`module_b.predictor.synthetic_models`) is built from the generator's parameter world (leakage in nA, tens to hundreds of nA) and its safety slope is an absolute rate in those units. Ingestion normalizes leakage to nA, so a lot whose leakage is genuinely in the microamp range (the golden worked example: 10 uA = 10000 nA) lies far outside what the forecast models were calibrated on.
+- Effect: through the real route the golden dataset gets 37/77 parts over the safety slope (lot REJECT, PDA 0.4935) instead of HOLD/0.039. Module A (robust z, MCD, ECOD) is scale-free and is unaffected; the golden test (`tests/integration/test_golden_module_a.py`, no ingestion) still passes.
+- Disclosure text for user-facing material: "Module B's drift forecasts are calibrated on the synthetic part families this system was built against. For a part type whose measurement scale is far outside that range (for example leakage in the microamp range), the forecast's absolute safety threshold is not validated; treat Module B output as unvalidated for that part type until it is calibrated on its own reference lots. Module A's within-lot screening does not depend on scale."
+- Decision taken: the demo's complete lot is a generated lot (DEMO-COMPLETE-01, scripts/load_demo_lots.py); the golden dataset stays a test fixture (the skipped `test_golden_lot_through_the_route_is_hold` documents the gap).
+- Status: OPEN as a limitation (not a code defect to fix in this chunk).
