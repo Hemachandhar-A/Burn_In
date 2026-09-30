@@ -127,3 +127,38 @@ def explanation_summary(
 
     missing = _missing_components_sentence(insufficient_data_components)
     return f"{base} {missing}" if missing else base
+
+
+# The two, and only two, reasons fusion/gate.py's cap_reason can carry (E12 step 2, E2 step 6) -
+# named here to match fusion/gate.py's and module_a/detect.py's own string values exactly.
+_EXPLAINABILITY_GATE = "explainability_gate"
+_DIRECTION_CAP = "below_median_direction_cap"
+
+
+def severity_cap_note(cap_reason: str | None, final_verdict: str) -> str | None:
+    """E4 step 8, generalized over both capping reasons (never a single wording for both).
+    `cap_reason` is fusion.gate.compute_part_verdict's own second return value - read, not
+    re-derived. None means no cap fired, so no note (a hidden cap protects the system's logic but
+    not the reviewer's understanding of it - E12 step 2 - so this is set whenever a cap fired, not
+    only when it changed the final verdict)."""
+    if cap_reason is None:
+        return None
+
+    if cap_reason == _EXPLAINABILITY_GATE:
+        note = (
+            "Module A's REJECT-level severity was capped to REVIEW: it was driven solely by an "
+            "unexplainable detector (Isolation Forest or ECOD) - a REJECT must be corroborated by "
+            "an explainable detector (z-score or MCD)."
+        )
+        if final_verdict == "REJECT":
+            note += " The final REJECT verdict relies on Module B's own signal, not Module A's."
+        return note
+
+    if cap_reason == _DIRECTION_CAP:
+        return (
+            "Module A's severity was capped to REVIEW: the deviation is below the lot median "
+            "(direction-awareness cap) - a below-median value cannot reach REJECT-eligible on "
+            "this basis alone."
+        )
+
+    raise ValueError(f"unrecognized severity_cap_reason {cap_reason!r}")

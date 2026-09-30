@@ -2,7 +2,7 @@
 (AGENTS.md rule 1 - nothing here re-derives a detector's own math). Fixed inputs only, no randomness
 (rule 9)."""
 from contracts import ModuleBResult, RiskAssessment
-from explain.text import confidence_qualifier, explanation_sentence, explanation_summary
+from explain.text import confidence_qualifier, explanation_sentence, explanation_summary, severity_cap_note
 
 
 def test_explanation_sentence_golden_part_module_a_and_b():
@@ -207,3 +207,38 @@ def test_explanation_summary_appends_missing_components_sentence():
 def test_explanation_summary_missing_components_singular_wording():
     summary = explanation_summary([], ["C7"])
     assert summary == "No parts analysed. 1 component has insufficient data and was not analysed: C7."
+
+
+# --- Part 3d: severity_cap_note (E4 step 8) -------------------------------------------------------
+
+def test_severity_cap_note_none_when_no_cap():
+    assert severity_cap_note(None, "REJECT") is None
+    assert severity_cap_note(None, "WATCH") is None
+
+
+def test_severity_cap_note_explainability_gate_held_down_to_watch():
+    note = severity_cap_note("explainability_gate", "WATCH")
+    assert "unexplainable detector" in note
+    assert "Isolation Forest" in note and "ECOD" in note
+    assert "Module B" not in note
+
+
+def test_severity_cap_note_explainability_gate_but_final_reject_via_module_b():
+    """E12 step 2's non-obvious composition: Module A capped, but Module B independently
+    corroborates so the fused verdict is still REJECT - the note must say the REJECT relies on
+    Module B, not silently disappear just because the final verdict looks unaffected."""
+    note = severity_cap_note("explainability_gate", "REJECT")
+    assert "unexplainable detector" in note
+    assert "Module B" in note and "REJECT" in note
+
+
+def test_severity_cap_note_direction_awareness_cap():
+    note = severity_cap_note("below_median_direction_cap", "WATCH")
+    assert "below the lot median" in note
+    assert "direction-awareness" in note
+
+
+def test_severity_cap_note_unrecognized_reason_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        severity_cap_note("some_new_reason_nobody_told_this_file_about", "WATCH")
