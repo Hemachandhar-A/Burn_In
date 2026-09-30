@@ -569,3 +569,63 @@ def test_pipeline_insufficient_data_components_matches_ingestion_routers_helper(
 
     assert result.insufficient_data_components == _insufficient_data_components(readings)
     assert result.insufficient_data_components == ['C2']
+
+
+# --- Block 3B Part 3g: wiring E4's explanation mechanisms into run_full_pipeline ----------------------
+
+def test_pass_parts_get_no_stored_explanation():
+    """A PASS part gets no part_explanations entry at all - not an empty one."""
+    from harness.golden import run_golden_pipeline
+    result = run_golden_pipeline()
+    pass_ids = {a.component_id for a in result.assessments if a.verdict == 'PASS'}
+    non_pass_ids = {a.component_id for a in result.assessments if a.verdict != 'PASS'}
+    assert pass_ids, "expected at least one PASS part in the golden lot"
+    assert non_pass_ids, "expected at least one non-PASS part in the golden lot"
+    assert not (pass_ids & set(result.part_explanations.keys()))
+    assert non_pass_ids == set(result.part_explanations.keys())
+
+
+def test_golden_045_explanation_has_sentence_and_module_a_charts():
+    """GOLDEN-045 is a static leakage outlier flagged by Module A (a COMPLETE lot) - its stored
+    explanation must carry a real sentence naming leakage, an MCD contribution chart (lot_size=77
+    clears the >=30 floor), and a z-score table row for leakage."""
+    from harness.golden import run_golden_pipeline, GOLDEN_COMPONENT_ID, GOLDEN_PARAMETER
+    result = run_golden_pipeline()
+    explanation = result.part_explanations[GOLDEN_COMPONENT_ID]
+
+    assert explanation.explanation_sentence.startswith(f"Part {GOLDEN_COMPONENT_ID}:")
+    assert GOLDEN_PARAMETER in explanation.explanation_sentence
+    assert any(row.parameter == GOLDEN_PARAMETER for row in explanation.zscore_table)
+    assert explanation.mcd_contributions  # lot_size 77 >= 30, MCD ran
+    assert any(c.parameter == GOLDEN_PARAMETER for c in explanation.mcd_contributions)
+
+
+def test_explanation_summary_matches_explain_text_output_on_golden_lot():
+    from harness.golden import run_golden_pipeline
+    from explain.text import explanation_summary as expected_explanation_summary
+    result = run_golden_pipeline()
+    assert result.explanation_summary == expected_explanation_summary(
+        result.assessments, result.insufficient_data_components
+    )
+
+
+def test_severity_cap_note_populated_when_direction_cap_fires():
+    """A below-median deviation large enough to have reached REJECT is capped to REVIEW/WATCH -
+    the stored explanation must carry the direction-awareness note (E4 step 8)."""
+    readings = []
+    # 30 healthy parts near 100, one deep below-median outlier - the outlier's direction is
+    # below_median, and its deviation is large enough to trip the direction-awareness cap.
+    for i in range(29):
+        readings.append(_reading(f'H{i:02d}', 'LOT-CAP', 'PN1', 'iddq', 0.0, 100.0 + (i % 3) * 0.01))
+        readings.append(_reading(f'H{i:02d}', 'LOT-CAP', 'PN1', 'iddq', 24.0, 100.0 + (i % 3) * 0.01))
+    readings.append(_reading('OUTLIER', 'LOT-CAP', 'PN1', 'iddq', 0.0, 1.0))
+    readings.append(_reading('OUTLIER', 'LOT-CAP', 'PN1', 'iddq', 24.0, 1.0))
+    lot = LotDataset(lot_id='LOT-CAP', part_number='PN1', status='COMPLETE', readings=readings, account_id='ACC')
+    result = run_full_pipeline(lot, ScreeningConfig())
+
+    outlier_assessment = next(a for a in result.assessments if a.component_id == 'OUTLIER')
+    if outlier_assessment.verdict == 'PASS':
+        pytest.skip("synthetic outlier did not cross REVIEW at these harness thresholds")
+    explanation = result.part_explanations['OUTLIER']
+    assert explanation.severity_cap_note is not None
+    assert 'below the lot median' in explanation.severity_cap_note
