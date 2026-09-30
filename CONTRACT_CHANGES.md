@@ -523,3 +523,9 @@ Entry format:
   3. Every P2 route (`ingestion/router.py`, `storage/router.py`, `report/router.py`) is unauthenticated although Part 5.6 marks them required (their docstrings say "identity not merged yet" - never revisited).
   4. Unplanned route `GET /lots/{lot_id}/quality` is registered (unauthenticated).
   5. `fusion/gate.py` never assigns Module B a REVIEW tier (only PASS/REJECT), so E12's "both cross REVIEW" table row is unreachable in code.
+
+## 2026-09-30 - Lead-as-P5 (Block 4d Part 3, Lead ruling) - ProjectSummary gains lot metadata; init_db upgrades an old database
+- Missing: the Project Browser/Lot screens need manufacturer, date code and test date per project; the project row stored only test_date and `ProjectSummary` exposed none of the three (the upload form's manufacturer/date_code lived only on each `Reading`).
+- Fix (additive, defaults only): `contracts.Project` (ORM) gains nullable `manufacturer` and `date_code` columns; `ProjectSummary` gains `manufacturer: str | None = None`, `date_code: str | None = None`, `test_date: datetime | None = None` (same type the project row already stores). `storage.repository.save_project` gains optional `manufacturer`/`date_code`. `ingestion/router.py::_ensure_project` - the single `save_project` call that upload, checkpoint and demo all reach - fills them from the lot's readings (which carry the upload form's values). `storage/router.py::_project_summary` fills the three fields.
+- `storage.database.init_db()` now also runs `PRAGMA table_info(projects)` and `ALTER TABLE projects ADD COLUMN ...` (SQLite, nullable) for whichever of the two columns is missing, so a database file created before this change keeps working: old rows read back `None`, nothing is lost, a second call is a no-op. Tests: `tests/unit/storage/test_project_metadata.py`.
+- Status: RESOLVED.

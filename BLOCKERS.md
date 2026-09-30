@@ -67,3 +67,10 @@ Entry format:
 - Status: RESOLVED.
 
 ---
+
+---
+
+## 2026-09-30 Lead-as-P5 - RESOLVED: lot metadata (manufacturer, date code, test date) not persisted or exposed
+- Blocked on: `GET /projects/{id}` could not return manufacturer / date code / test date - only the `Reading` rows carried manufacturer and date code, and `ProjectSummary` had no such fields. (No entry for this existed in this file to flip from OPEN; this is the only entry for it.)
+- What was tried / resolution: nullable `manufacturer` and `date_code` columns on the project table, `ProjectSummary` additions, ingestion fills them, `init_db()` adds the columns to an old database file. Details in CONTRACT_CHANGES.md (2026-09-30, Block 4d Part 3).
+- Status: RESOLVED.

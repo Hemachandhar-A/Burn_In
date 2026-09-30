@@ -68,9 +68,14 @@ def _ensure_project(dataset: LotDataset, account_id: str, test_date: str | None)
     if repository.query_project(dataset.lot_id) is not None:
         return
     parsed_test_date = _parse_test_date(test_date)
+    # manufacturer / date_code are the upload form's values, carried on every Reading of the lot
+    # (parse_lot_csv stamps them on each row; the demo generator sets its own), so every path that
+    # creates a project - upload, checkpoint, demo - persists them from here.
+    first = dataset.readings[0] if dataset.readings else None
     repository.save_project(
         project_id=dataset.lot_id, lot_id=dataset.lot_id, part_number=dataset.part_number,
         test_date=parsed_test_date, created_by=account_id,
+        manufacturer=first.manufacturer if first else None, date_code=first.date_code if first else None,
     )
 
 

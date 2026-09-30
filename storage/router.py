@@ -30,6 +30,7 @@ def _project_summary(project) -> ProjectSummary:
     return ProjectSummary(
         project_id=project.project_id, lot_id=project.lot_id, part_number=project.part_number,
         created_at=project.created_at, created_by=project.created_by,
+        manufacturer=project.manufacturer, date_code=project.date_code, test_date=project.test_date,
     )
 
 
