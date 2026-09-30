@@ -1,9 +1,7 @@
 import { act, fireEvent, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as historyApi from '../api/history'
-import { ApiError } from '../api/errors'
-import type { MOCK_DispositionRecord, MOCK_EventResponse } from '../api/mocks'
-import { fakeServer, renderWithApi } from '../test-utils'
+import type { DispositionRecord, EventResponse } from '../api/history'
+import { fakeServer, renderWithApi, type FakeReply, type Routes } from '../test-utils'
 import { HistoryScreen } from './HistoryScreen'
 
 const PROJECTS = [
@@ -16,7 +14,7 @@ const PROJECTS = [
   },
 ]
 
-const EVENTS: MOCK_EventResponse[] = [
+const EVENTS: EventResponse[] = [
   {
     event_id: 'e1',
     project_id: 'p-8841',
@@ -91,7 +89,7 @@ const EVENTS: MOCK_EventResponse[] = [
   },
 ]
 
-const SIGNOFFS: MOCK_DispositionRecord[] = [
+const SIGNOFFS: DispositionRecord[] = [
   {
     project_id: 'p-8841',
     component_id: 'DUT-042',
@@ -107,13 +105,20 @@ function rows() {
   return screen.getAllByRole('row').slice(1)
 }
 
-function mockLog(events = EVENTS, signoffs = SIGNOFFS) {
-  vi.spyOn(historyApi, 'listEvents').mockResolvedValue(events)
-  vi.spyOn(historyApi, 'listDispositionSignoffs').mockResolvedValue(signoffs)
+function routes(
+  events: FakeReply | EventResponse[] = EVENTS,
+  signoffs: FakeReply | DispositionRecord[] = SIGNOFFS,
+  projects: unknown = PROJECTS,
+): Routes {
+  return {
+    'GET /projects': { body: projects },
+    'GET /events': Array.isArray(events) ? { body: events } : events,
+    'GET /disposition-signoffs': Array.isArray(signoffs) ? { body: signoffs } : signoffs,
+  }
 }
 
-function server() {
-  return fakeServer({ 'GET /projects': { body: PROJECTS } }).fetch
+function server(events?: EventResponse[], signoffs?: DispositionRecord[]) {
+  return fakeServer(routes(events, signoffs)).fetch
 }
 
 beforeEach(() => {
@@ -122,7 +127,6 @@ beforeEach(() => {
 
 describe('HistoryScreen (E6 screen 6)', () => {
   test('one timeline of events and disposition sign-offs, newest first', async () => {
-    mockLog()
     renderWithApi(<HistoryScreen />, { fetch: server() })
 
     await screen.findByText(/dual sign-off completed/i)
@@ -141,7 +145,6 @@ describe('HistoryScreen (E6 screen 6)', () => {
   })
 
   test('shows the same log to both accounts - no filtering by who is signed in', async () => {
-    mockLog()
     const first = renderWithApi(<HistoryScreen />, { fetch: server() })
     await screen.findByText(/dual sign-off completed/i)
     const asSharma = rows().map((r) => r.textContent)
@@ -156,7 +159,6 @@ describe('HistoryScreen (E6 screen 6)', () => {
   })
 
   test('describes each event type from its payload, with the lot resolved via GET /projects', async () => {
-    mockLog()
     renderWithApi(<HistoryScreen />, { fetch: server() })
     await screen.findByText(/dual sign-off completed/i)
 
@@ -179,8 +181,25 @@ describe('HistoryScreen (E6 screen 6)', () => {
     ).toBeInTheDocument()
   })
 
+  test('a timing_flag event shows its server-provided message', async () => {
+    renderWithApi(<HistoryScreen />, {
+      fetch: server([
+        {
+          event_id: 'tf1',
+          project_id: 'p-8841',
+          account_id: 'a.sharma',
+          event_type: 'timing_flag',
+          timestamp: '2026-09-18T09:00:00Z',
+          payload: { timing_flag: true, message: 'Sign-offs occurred < 2 minutes apart.' },
+        },
+      ]),
+    })
+
+    expect(await screen.findByText('Sign-offs occurred < 2 minutes apart.')).toBeInTheDocument()
+    expect(screen.getByText('Timing Flag')).toBeInTheDocument()
+  })
+
   test('a disposition row links the part and shows its verdict and rationale verbatim', async () => {
-    mockLog()
     renderWithApi(<HistoryScreen />, { fetch: server() })
     await screen.findByText(/dual sign-off completed/i)
 
@@ -195,7 +214,6 @@ describe('HistoryScreen (E6 screen 6)', () => {
   })
 
   test('an analysis run with changes carries its stored diff behind a toggle', async () => {
-    mockLog()
     renderWithApi(<HistoryScreen />, { fetch: server() })
     await screen.findByText(/dual sign-off completed/i)
 
@@ -228,16 +246,17 @@ describe('HistoryScreen (E6 screen 6)', () => {
   })
 
   test('an analysis run whose diff is empty says so and has no toggle', async () => {
-    mockLog(
-      [
-        {
-          ...EVENTS[3],
-          payload: { newly_activated_modules: {}, resolved_forecasts: {}, verdict_changes: {} },
-        },
-      ],
-      [],
-    )
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server(
+        [
+          {
+            ...EVENTS[3],
+            payload: { newly_activated_modules: {}, resolved_forecasts: {}, verdict_changes: {} },
+          },
+        ],
+        [],
+      ),
+    })
 
     expect(
       await screen.findByText('Analysis run for LOT-2024-8841: no changes from the prior run'),
@@ -246,33 +265,39 @@ describe('HistoryScreen (E6 screen 6)', () => {
   })
 
   test('an unrecognized payload is listed as-is rather than dropped', async () => {
-    mockLog([{ ...EVENTS[0], payload: { source: 'script', rows: 12 } }], [])
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server([{ ...EVENTS[0], payload: { source: 'script', rows: 12 } }], []),
+    })
 
     expect(await screen.findByText('source: script; rows: 12')).toBeInTheDocument()
   })
 
   test('an unknown project id is shown as the id, not hidden', async () => {
-    mockLog([{ ...EVENTS[2], project_id: 'p-gone' }], [])
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, { fetch: server([{ ...EVENTS[2], project_id: 'p-gone' }], []) })
 
     expect(await screen.findByText('Added checkpoints 96h, 168h to p-gone')).toBeInTheDocument()
   })
 
   test('the log still renders if GET /projects fails, with project ids in place of lot ids', async () => {
-    mockLog([EVENTS[2]], [])
-    const { fetch } = fakeServer({ 'GET /projects': { status: 500, body: { detail: 'down' } } })
+    const { fetch } = fakeServer({
+      ...routes([EVENTS[2]], []),
+      'GET /projects': { status: 500, body: { detail: 'down' } },
+    })
     renderWithApi(<HistoryScreen />, { fetch })
 
     expect(await screen.findByText('Added checkpoints 96h, 168h to p-8841')).toBeInTheDocument()
   })
 
   test('a failed log load shows the error and can be retried', async () => {
-    vi.spyOn(historyApi, 'listEvents')
-      .mockRejectedValueOnce(new ApiError(503, ['event store unavailable']))
-      .mockResolvedValue(EVENTS)
-    vi.spyOn(historyApi, 'listDispositionSignoffs').mockResolvedValue(SIGNOFFS)
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    let calls = 0
+    const { fetch } = fakeServer({
+      ...routes(),
+      'GET /events': () =>
+        ++calls === 1
+          ? ({ status: 503, body: { detail: 'event store unavailable' } } as FakeReply)
+          : ({ body: EVENTS } as FakeReply),
+    })
+    renderWithApi(<HistoryScreen />, { fetch })
 
     expect(await screen.findByText('event store unavailable')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
@@ -280,14 +305,13 @@ describe('HistoryScreen (E6 screen 6)', () => {
   })
 
   test('empty log', async () => {
-    mockLog([], [])
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, { fetch: server([], []) })
     expect(await screen.findByText(/no events on record yet/i)).toBeInTheDocument()
   })
 })
 
 describe('HistoryScreen edge cases (P1.12 review)', () => {
-  function run(payload: Record<string, unknown>): MOCK_EventResponse {
+  function run(payload: Record<string, unknown>): EventResponse {
     return { ...EVENTS[3], payload }
   }
 
@@ -300,32 +324,34 @@ describe('HistoryScreen edge cases (P1.12 review)', () => {
   }
 
   test('a diff sent with empty lists or nulls is still a diff with no changes', async () => {
-    mockLog(
-      [run({ newly_activated_modules: [], resolved_forecasts: null, verdict_changes: {} })],
-      [],
-    )
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server(
+        [run({ newly_activated_modules: [], resolved_forecasts: null, verdict_changes: {} })],
+        [],
+      ),
+    })
     expect(
       await screen.findByText('Analysis run for LOT-2024-8841: no changes from the prior run'),
     ).toBeInTheDocument()
   })
 
   test('a resolved forecast with no prediction on record, float noise, and a missing verdict', async () => {
-    mockLog(
-      [
-        run({
-          newly_activated_modules: { 'DUT-007': ['module_a', 'module_a'] },
-          resolved_forecasts: {
-            'DUT-007': { predicted: null, actual: 60.80000000000001 },
-            'DUT-008': { predicted: 61.49999999999999, actual: 60.8 },
-          },
-          verdict_changes: { 'DUT-009': { from: 'WATCH' } },
-        }),
-      ],
-      [],
-    )
     const consoleError = vi.spyOn(console, 'error')
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server(
+        [
+          run({
+            newly_activated_modules: { 'DUT-007': ['module_a', 'module_a'] },
+            resolved_forecasts: {
+              'DUT-007': { predicted: null, actual: 60.80000000000001 },
+              'DUT-008': { predicted: 61.49999999999999, actual: 60.8 },
+            },
+            verdict_changes: { 'DUT-009': { from: 'WATCH' } },
+          }),
+        ],
+        [],
+      ),
+    })
 
     expect(await openTrace()).toEqual([
       'Module activation: Module A activated for DUT-007',
@@ -339,8 +365,9 @@ describe('HistoryScreen edge cases (P1.12 review)', () => {
 
   test('a repeated event id renders both rows without a duplicate React key', async () => {
     const consoleError = vi.spyOn(console, 'error')
-    mockLog([EVENTS[2], { ...EVENTS[2], timestamp: '2026-09-16T00:00:00Z' }], [])
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server([EVENTS[2], { ...EVENTS[2], timestamp: '2026-09-16T00:00:00Z' }], []),
+    })
 
     await screen.findAllByText('Added checkpoints 96h, 168h to LOT-2024-8841')
     expect(rows()).toHaveLength(2)
@@ -348,16 +375,17 @@ describe('HistoryScreen edge cases (P1.12 review)', () => {
   })
 
   test('timestamps sort by instant across offsets; an unparseable one goes last, shown raw', async () => {
-    mockLog(
-      [
-        { ...EVENTS[2], event_id: 'bad', timestamp: 'garbage' },
-        // 06:30Z - older, despite reading "12:00".
-        { ...EVENTS[2], event_id: 'offset', timestamp: '2026-09-15T12:00:00+05:30' },
-        { ...EVENTS[2], event_id: 'utc', timestamp: '2026-09-15T07:00:00Z' },
-      ],
-      [],
-    )
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server(
+        [
+          { ...EVENTS[2], event_id: 'bad', timestamp: 'garbage' },
+          // 06:30Z - older, despite reading "12:00".
+          { ...EVENTS[2], event_id: 'offset', timestamp: '2026-09-15T12:00:00+05:30' },
+          { ...EVENTS[2], event_id: 'utc', timestamp: '2026-09-15T07:00:00Z' },
+        ],
+        [],
+      ),
+    })
     await screen.findAllByText(/added checkpoints/i)
 
     expect(rows().map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual([
@@ -368,18 +396,25 @@ describe('HistoryScreen edge cases (P1.12 review)', () => {
   })
 
   test('a disposition with an empty rationale says so instead of showing empty quotes', async () => {
-    mockLog([], [{ ...SIGNOFFS[0], rationale: '  ' }])
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    renderWithApi(<HistoryScreen />, {
+      fetch: server([], [{ ...SIGNOFFS[0], rationale: '  ' }]),
+    })
     expect(await screen.findByText('(no rationale recorded)')).toBeInTheDocument()
     expect(screen.queryByText(/“/)).not.toBeInTheDocument()
   })
 
   test('a failed background refresh keeps the last complete log, flagged as stale', async () => {
-    mockLog()
-    const { queryClient } = renderWithApi(<HistoryScreen />, { fetch: server() })
+    let calls = 0
+    const { fetch } = fakeServer({
+      ...routes(),
+      'GET /events': () =>
+        ++calls === 1
+          ? ({ body: EVENTS } as FakeReply)
+          : ({ status: 503, body: { detail: 'down' } } as FakeReply),
+    })
+    const { queryClient } = renderWithApi(<HistoryScreen />, { fetch })
     await screen.findByText(/dual sign-off completed/i)
 
-    vi.spyOn(historyApi, 'listEvents').mockRejectedValue(new ApiError(503, ['down']))
     await act(() => queryClient.refetchQueries({ queryKey: ['events'] }))
 
     expect(await screen.findByText(/could not refresh the history log/i)).toBeInTheDocument()
@@ -388,11 +423,11 @@ describe('HistoryScreen edge cases (P1.12 review)', () => {
   })
 
   test('never shows half a log: events without sign-offs is an error, not a partial list', async () => {
-    vi.spyOn(historyApi, 'listEvents').mockResolvedValue(EVENTS)
-    vi.spyOn(historyApi, 'listDispositionSignoffs').mockRejectedValue(
-      new ApiError(500, ['sign-off store unavailable']),
-    )
-    renderWithApi(<HistoryScreen />, { fetch: server() })
+    const { fetch } = fakeServer({
+      ...routes(EVENTS, []),
+      'GET /disposition-signoffs': { status: 500, body: { detail: 'sign-off store unavailable' } },
+    })
+    renderWithApi(<HistoryScreen />, { fetch })
 
     expect(await screen.findByText('sign-off store unavailable')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()

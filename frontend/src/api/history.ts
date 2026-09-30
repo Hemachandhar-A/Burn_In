@@ -1,25 +1,20 @@
-import {
-  MOCK_listDispositionSignoffs,
-  MOCK_listEvents,
-  type MOCK_DispositionRecord,
-  type MOCK_EventResponse,
-} from './mocks'
+import type { ApiClient } from './client'
+import { unwrap } from './errors'
+import type { components } from './schema'
+
+export type EventResponse = components['schemas']['EventResponse']
+export type DispositionRecord = components['schemas']['DispositionRecord']
 
 /** react-query key for `GET /events`; invalidate after anything that logs an event. */
 export const EVENTS_QUERY_KEY = ['events'] as const
 export const SIGNOFFS_QUERY_KEY = ['disposition-signoffs'] as const
 
-/**
- * `GET /events`. MOCKED: not in the live OpenAPI schema. The Lead approved it on 2026-09-26
- * (CONTRACT_CHANGES.md, "P2.8's storage routes differ from Part 5.6") but P2 hasn't built it yet;
- * only the per-project `GET /projects/{project_id}/events` is live (BLOCKERS.md). When it lands,
- * take the ApiClient and call `client.GET('/events')`, as `listProjects` in lots.ts does.
- */
-export function listEvents(): Promise<MOCK_EventResponse[]> {
-  return MOCK_listEvents()
+/** `GET /events`: real (P2.8, storage/router.py). Every event, every project, every account. */
+export async function listEvents(client: ApiClient): Promise<EventResponse[]> {
+  return unwrap(await client.GET('/events'))
 }
 
-/** `GET /disposition-signoffs`. MOCKED, same status as `GET /events` above. */
-export function listDispositionSignoffs(): Promise<MOCK_DispositionRecord[]> {
-  return MOCK_listDispositionSignoffs()
+/** `GET /disposition-signoffs`: real (P2.8, storage/router.py). */
+export async function listDispositionSignoffs(client: ApiClient): Promise<DispositionRecord[]> {
+  return unwrap(await client.GET('/disposition-signoffs'))
 }

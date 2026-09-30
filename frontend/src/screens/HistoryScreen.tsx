@@ -8,9 +8,10 @@ import {
   listDispositionSignoffs,
   listEvents,
   SIGNOFFS_QUERY_KEY,
+  type DispositionRecord,
+  type EventResponse,
 } from '../api/history'
 import { listProjects, PROJECTS_QUERY_KEY } from '../api/lots'
-import type { MOCK_DispositionRecord, MOCK_EventResponse } from '../api/mocks'
 import { displayNameFor } from '../auth/accounts'
 import { ChevronDownIcon, ChevronUpIcon } from '../shell/icons'
 import { pathToPart } from './registry'
@@ -25,14 +26,15 @@ import {
 import { VerdictBadge } from './VerdictBadge'
 
 type Entry =
-  | { kind: 'event'; key: string; at: number; event: MOCK_EventResponse }
-  | { kind: 'disposition'; key: string; at: number; record: MOCK_DispositionRecord }
+  | { kind: 'event'; key: string; at: number; event: EventResponse }
+  | { kind: 'disposition'; key: string; at: number; record: DispositionRecord }
 
-const TYPE_LABELS: Record<MOCK_EventResponse['event_type'] | 'disposition', string> = {
+const TYPE_LABELS: Record<EventResponse['event_type'] | 'disposition', string> = {
   ingest: 'Ingest',
   checkpoint_add: 'Checkpoint Added',
   analysis_run: 'Analysis Run',
   config_change: 'Config Change',
+  timing_flag: 'Timing Flag',
   disposition: 'Disposition',
 }
 
@@ -90,7 +92,7 @@ function genericDescription(payload: Record<string, unknown>): string {
   return parts.length > 0 ? parts.join('; ') : 'No details recorded'
 }
 
-function describeEvent(event: MOCK_EventResponse, lot: string): string {
+function describeEvent(event: EventResponse, lot: string): string {
   const p = event.payload
   switch (event.event_type) {
     case 'ingest': {
@@ -144,6 +146,10 @@ function describeEvent(event: MOCK_EventResponse, lot: string): string {
         return `Dual sign-off completed: ${label} ${change}${who}`
       }
       break
+    }
+    case 'timing_flag': {
+      if (typeof p.message !== 'string') break
+      return p.message
     }
   }
   return genericDescription(p)
@@ -298,7 +304,7 @@ function uniqueKeys(keys: string[]): string[] {
  * Events and sign-offs as one timeline, newest first. Equal (or unparseable) timestamps keep
  * server order; an unparseable timestamp sorts as the oldest instead of scrambling the sort.
  */
-function timeline(events: MOCK_EventResponse[], signoffs: MOCK_DispositionRecord[]): Entry[] {
+function timeline(events: EventResponse[], signoffs: DispositionRecord[]): Entry[] {
   const eventKeys = uniqueKeys(events.map((e) => `e:${e.event_id}`))
   const signoffKeys = uniqueKeys(
     signoffs.map((r) => `d:${r.project_id}:${r.component_id}:${r.account_id}:${r.timestamp}`),
@@ -331,10 +337,10 @@ function timeline(events: MOCK_EventResponse[], signoffs: MOCK_DispositionRecord
  */
 export function HistoryScreen() {
   const client = useApiClient()
-  const events = useQuery({ queryKey: EVENTS_QUERY_KEY, queryFn: () => listEvents() })
+  const events = useQuery({ queryKey: EVENTS_QUERY_KEY, queryFn: () => listEvents(client) })
   const signoffs = useQuery({
     queryKey: SIGNOFFS_QUERY_KEY,
-    queryFn: () => listDispositionSignoffs(),
+    queryFn: () => listDispositionSignoffs(client),
   })
   // Only to name each project's lot. If it fails, the log still shows, with project ids.
   const projects = useQuery({ queryKey: PROJECTS_QUERY_KEY, queryFn: () => listProjects(client) })
