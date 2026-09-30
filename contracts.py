@@ -303,6 +303,51 @@ class ConfirmedOutcome(Base):
 
 
 # ---------------------------------------------------------------------------
+# Block 3B Part 2: additive explainability chart payload (E4 steps 1-4). Simple typed rows, not
+# explain/models.py's local Pydantic models (that module is deliberately not contracts.py - see its
+# own docstring), so the generated frontend TS client sees a plain, readable shape.
+# ---------------------------------------------------------------------------
+
+
+class ShapContributionRow(BaseModel):
+    feature: str
+    value: float
+    shap_value: float
+
+
+class MCDContributionRow(BaseModel):
+    parameter: str
+    contribution: float
+
+
+class EcodDimensionRow(BaseModel):
+    dimension: str
+    score: float
+
+
+class ZScoreTableRow(BaseModel):
+    parameter: str
+    value: float
+    lot_median: float
+    z: float
+
+
+class PartExplanation(BaseModel):
+    """Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the
+    text/notes for that one part. Every field optional/defaulted - a PASS part gets none of this
+    (AnalysisResults.part_explanations only ever holds non-PASS parts, Part 3g)."""
+
+    shap_contributions: list[ShapContributionRow] = []
+    mcd_contributions: list[MCDContributionRow] = []
+    ecod_dimensions: list[EcodDimensionRow] = []
+    zscore_table: list[ZScoreTableRow] = []
+    explanation_sentence: str | None = None
+    confidence_qualifier: str | None = None
+    severity_cap_note: str | None = None
+    unavailable_forecast_note: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # 5.6 REST API - request and response models
 # ---------------------------------------------------------------------------
 
@@ -318,6 +363,11 @@ class AnalysisResults(BaseModel):
     # through to a dashboard reload - not just the upload response (LotUploadResponse.insufficient_data_components).
     # Default [] so existing constructors and stored rows without the field keep working (CONTRACT_CHANGES.md).
     insufficient_data_components: list[str] = []
+    # Block 3B Part 2 (additive, CONTRACT_CHANGES.md 2026-09-30): keyed by component_id, one
+    # PartExplanation per non-PASS assessment (E4 steps 1-9) - a PASS part has no entry, not an
+    # empty one. Defaults so a pre-Block-3B stored row still parses.
+    part_explanations: dict[str, PartExplanation] = {}
+    explanation_summary: str = ""  # E4 step 7's lot-level rollup template
 
 
 class LoginRequest(BaseModel):
@@ -377,6 +427,9 @@ class PartDetailResponse(BaseModel):
     staleness_note: str | None  # E4 step 10
     disposition_history: list[DispositionRecord]
     confirmed_outcomes: list[ConfirmedOutcomeRecord]
+    # Additive (Block 3B, CONTRACT_CHANGES.md 2026-09-30): the chart-bearing counterpart to the flat
+    # text fields above, which predate this block and stay as-is for backward compatibility.
+    explanation: PartExplanation | None = None
 
 
 class DispositionRequest(BaseModel):
