@@ -4,34 +4,18 @@ import { Link, useParams } from 'react-router-dom'
 import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
 import { downloadReport, generateDpaWorkOrder, getLotSummary } from '../api/lotDetail'
-import type {
-  MOCK_DPAWorkOrderResponse,
-  MOCK_RiskAssessment,
-  TEMP_LotSummaryResponse,
-} from '../api/mocks'
+import type { MOCK_DPAWorkOrderResponse } from '../api/mocks'
+import type { components } from '../api/schema'
 import { BarChartIcon, ClipboardIcon, DownloadIcon, TrendUpIcon } from '../shell/icons'
 import { pathToPart } from './registry'
 import { VerdictBadge } from './VerdictBadge'
 
-/** Non-PASS assessments - `assessments` isn't documented as flagged-only, so this never assumes it. */
-function flaggedAssessments(data: TEMP_LotSummaryResponse): MOCK_RiskAssessment[] {
-  return data.assessments.filter((a) => a.verdict !== 'PASS')
-}
+type LotSummaryResponse = components['schemas']['LotSummaryResponse']
+type RiskAssessment = components['schemas']['RiskAssessment']
 
-/** E4 step 7: a template over already-computed per-part outputs, not a new model. */
-function lotLevelSummary(data: TEMP_LotSummaryResponse): string {
-  const flagged = flaggedAssessments(data)
-  if (flagged.length === 0) return `0 of ${data.lot_size} parts flagged. Lot is clean.`
-  const counts = new Map<string, number>()
-  for (const a of flagged) counts.set(a.worst_parameter, (counts.get(a.worst_parameter) ?? 0) + 1)
-  const topParameter = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
-  const reviewCount = flagged.filter((a) => a.verdict === 'WATCH').length
-  const rejectCount = flagged.filter((a) => a.verdict === 'REJECT').length
-  const parts: string[] = []
-  if (reviewCount > 0) parts.push(`${reviewCount} crossing REVIEW`)
-  if (rejectCount > 0) parts.push(`${rejectCount} crossing REJECT`)
-  const tail = parts.length > 0 ? `, ${parts.join(' and ')}` : ''
-  return `${flagged.length} of ${data.lot_size} parts flagged, concentrated in ${topParameter.toLowerCase()}${tail}.`
+/** Non-PASS assessments - `assessments` isn't documented as flagged-only, so this never assumes it. */
+function flaggedAssessments(data: LotSummaryResponse): RiskAssessment[] {
+  return data.assessments.filter((a) => a.verdict !== 'PASS')
 }
 
 function RankedList({
@@ -43,7 +27,7 @@ function RankedList({
   title: string
   icon: ReactNode
   countLabel: string
-  rows: MOCK_RiskAssessment[]
+  rows: RiskAssessment[]
 }) {
   const headingId = useId()
   return (
@@ -148,7 +132,7 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
 
   const summary = useQuery({
     queryKey: ['lot-summary', lotId],
-    queryFn: () => getLotSummary(lotId),
+    queryFn: () => getLotSummary(client, lotId),
   })
 
   const report = useMutation({
@@ -264,19 +248,20 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
 
       {data && (
         <>
+          {data.insufficient_data_components.length > 0 && (
+            <div className="banner" role="status">
+              {data.insufficient_data_components.length} component
+              {data.insufficient_data_components.length === 1 ? '' : 's'} have insufficient data
+              and were not analysed:{' '}
+              <span className="mono">{data.insufficient_data_components.join(', ')}</span>
+            </div>
+          )}
+
           <section className="card lot-summary" aria-label="Lot summary">
             <div className="lot-summary-grid">
               <div>
                 <p className="summary-label">Lot ID</p>
                 <p className="mono summary-value">{lotId}</p>
-              </div>
-              <div>
-                <p className="summary-label">Part Number</p>
-                <p className="mono summary-value">{data.part_number}</p>
-              </div>
-              <div>
-                <p className="summary-label">Manufacturer</p>
-                <p className="summary-value">{data.manufacturer}</p>
               </div>
               <div>
                 <p className="summary-label">Overall Verdict</p>
@@ -290,8 +275,7 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
               <div>
                 <p className="summary-label">Screening Summary</p>
                 <p className="summary-value">
-                  Flagged Parts: <span className="mono">{flaggedAssessments(data).length}</span> of{' '}
-                  <span className="mono">{data.lot_size}</span>
+                  Flagged Parts: <span className="mono">{flaggedAssessments(data).length}</span>
                 </p>
               </div>
               <div>
@@ -301,7 +285,9 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
                 </p>
               </div>
             </div>
-            <p className="lot-summary-note">{lotLevelSummary(data)}</p>
+            {data.explanation_summary && (
+              <p className="lot-summary-note">{data.explanation_summary}</p>
+            )}
           </section>
 
           {dpaResult && <DpaResultPanel result={dpaResult} />}

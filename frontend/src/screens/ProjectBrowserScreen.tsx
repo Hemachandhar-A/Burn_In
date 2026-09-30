@@ -99,7 +99,7 @@ export function ProjectBrowserScreen() {
   const statuses = useQueries({
     queries: (projects.data ?? []).map((p) => ({
       queryKey: ['lot-summary', p.lot_id],
-      queryFn: () => getLotSummary(p.lot_id),
+      queryFn: () => getLotSummary(client, p.lot_id),
     })),
   })
 

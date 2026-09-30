@@ -1,19 +1,16 @@
 import type { ApiClient } from './client'
-import { ApiError, errorMessages } from './errors'
-import {
-  MOCK_generateDpaWorkOrder,
-  MOCK_getLotSummary,
-  type MOCK_DPAWorkOrderResponse,
-  type TEMP_LotSummaryResponse,
-} from './mocks'
+import { ApiError, errorMessages, unwrap } from './errors'
+import { MOCK_generateDpaWorkOrder, type MOCK_DPAWorkOrderResponse } from './mocks'
+import type { components } from './schema'
 
-/**
- * `GET /lots/{lot_id}`. MOCKED: not in the live OpenAPI schema (P5.3, BLOCKERS.md). When it
- * lands, regenerate the client and make this take the ApiClient and call
- * `client.GET('/lots/{lot_id}', { params: { path: { lot_id: lotId } } })`.
- */
-export function getLotSummary(lotId: string): Promise<TEMP_LotSummaryResponse> {
-  return MOCK_getLotSummary(lotId)
+export type LotSummaryResponse = components['schemas']['LotSummaryResponse']
+
+/** `GET /lots/{lot_id}`: real (P5.3/5.6, fusion/router.py). */
+export async function getLotSummary(
+  client: ApiClient,
+  lotId: string,
+): Promise<LotSummaryResponse> {
+  return unwrap(await client.GET('/lots/{lot_id}', { params: { path: { lot_id: lotId } } }))
 }
 
 /**
