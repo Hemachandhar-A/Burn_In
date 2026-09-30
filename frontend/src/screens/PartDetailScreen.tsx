@@ -193,12 +193,18 @@ function ShapCard({ rows }: { rows: ShapContributionRow[] }) {
   )
 }
 
+/**
+ * The checkpoint the z-score table is computed at. A constant for now: the response carries no
+ * field naming it. Block 5F switches this to the backend field once it is merged.
+ */
+const ZSCORE_CHECKPOINT_HOURS = 24
+
 function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
   if (rows.length === 0) return null
   return (
-    <section className="card drift-matrix" aria-label="24h z-score table">
+    <section className="card drift-matrix" aria-label={`${ZSCORE_CHECKPOINT_HOURS}h z-score table`}>
       <header className="card-header">
-        <h2 className="card-title">24h Z-Score Table</h2>
+        <h2 className="card-title">{ZSCORE_CHECKPOINT_HOURS}h Z-Score Table</h2>
         <span className="card-aside">METHOD: ROBUST MEDIAN ABSOLUTE DEVIATION (MAD)</span>
       </header>
       <table className="table">
@@ -206,10 +212,10 @@ function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
           <tr>
             <th scope="col">Parameter</th>
             <th scope="col" className="numeric">
-              Value (24h)
+              Value ({ZSCORE_CHECKPOINT_HOURS}h)
             </th>
             <th scope="col" className="numeric">
-              Lot Median (24h)
+              Lot Median ({ZSCORE_CHECKPOINT_HOURS}h)
             </th>
             <th scope="col" className="numeric">
               Robust Z-Score

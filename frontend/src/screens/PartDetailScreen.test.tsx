@@ -282,6 +282,14 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(traces().map((t) => t.name)).toEqual(['Module B Forecast (168h)'])
   })
 
+  test('the z-score table is labelled with its checkpoint', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.getByRole('heading', { name: '24h Z-Score Table' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Value (24h)' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Lot Median (24h)' })).toBeInTheDocument()
+  })
+
   test('the chart never shows NaN, undefined or null labels', async () => {
     setup()
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
