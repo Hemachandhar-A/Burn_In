@@ -453,13 +453,21 @@ def test_get_part_detail_never_calls_run_full_pipeline():
         assert mock_run.call_count == 0
 
 
-def test_registered_routes_include_parts_detail_and_exclude_capa_and_worklist():
-    """Part 4d: the real app (api/main.py), not the local test app - GET /parts/{component_id}
-    must now be reachable; /capa* and the settings worklist routes are still absent (capa/router.py
-    is not registered yet, per api/main.py's own router list)."""
+def test_registered_routes_include_parts_detail_and_the_four_planned_capa_routes_and_exclude_the_unplanned_ones():
+    """Part 4d, updated by Block 4a-resume R1: the real app (api/main.py), not the local test app -
+    GET /parts/{component_id} is reachable, as are the four E13 routes Block 4a registered
+    (capa.router.planned_router: confirmed-outcome, worklist, corrective-status, dpa-work-order).
+    capa.router.router's three pre-existing, unplanned TEMP_ routes (/capa, /capa/{id}/resolve,
+    /audit/export) are still absent - that router was never registered (CONTRACT_CHANGES.md,
+    2026-09-30 Block 4a Part 6a)."""
     from api.main import app as real_app
     paths = real_app.openapi()["paths"]
     assert "/parts/{component_id}" in paths
     assert "get" in paths["/parts/{component_id}"]
-    assert not any(p.startswith("/capa") for p in paths)
-    assert "/settings/worklist" not in paths
+    assert "post" in paths["/parts/{component_id}/confirmed-outcome"]
+    assert "get" in paths["/settings/worklist"]
+    assert "get" in paths["/settings/corrective-status"]
+    assert "post" in paths["/lots/{lot_id}/dpa-work-order"]
+    assert "/capa" not in paths
+    assert "/capa/{id}/resolve" not in paths
+    assert "/audit/export" not in paths
