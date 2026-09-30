@@ -2,7 +2,10 @@
 (AGENTS.md rule 1 - nothing here re-derives a detector's own math). Fixed inputs only, no randomness
 (rule 9)."""
 from contracts import ModuleBResult, RiskAssessment
-from explain.text import confidence_qualifier, explanation_sentence, explanation_summary, severity_cap_note
+from explain.text import (
+    confidence_qualifier, explanation_sentence, explanation_summary, severity_cap_note,
+    unavailable_forecast_note,
+)
 
 
 def test_explanation_sentence_golden_part_module_a_and_b():
@@ -242,3 +245,27 @@ def test_severity_cap_note_unrecognized_reason_raises():
     import pytest
     with pytest.raises(ValueError):
         severity_cap_note("some_new_reason_nobody_told_this_file_about", "WATCH")
+
+
+# --- Part 3e: unavailable_forecast_note (E4 step 9) -----------------------------------------------
+
+def test_unavailable_forecast_note_none_when_module_b_did_not_run():
+    assert unavailable_forecast_note(None) is None
+
+
+def test_unavailable_forecast_note_none_when_forecast_available():
+    module_b = _module_b(forecast_unavailable=False)
+    assert unavailable_forecast_note(module_b) is None
+
+
+def test_unavailable_forecast_note_set_when_forecast_unavailable():
+    module_b = _module_b(
+        parameter="custom_param", forecast_unavailable=True, predicted_168h=None,
+        interval_lower=None, interval_upper=None, physics_baseline_prediction=None,
+        physics_disagreement_gap=None, drift_rate=None, exceeds_safety_slope=None,
+        safety_slope=None, lower_bound_exceeds_safety_slope=None,
+    )
+    note = unavailable_forecast_note(module_b)
+    assert note is not None
+    assert "custom_param" in note
+    assert "unavailable" in note.lower()

@@ -162,3 +162,17 @@ def severity_cap_note(cap_reason: str | None, final_verdict: str) -> str | None:
         )
 
     raise ValueError(f"unrecognized severity_cap_reason {cap_reason!r}")
+
+
+def unavailable_forecast_note(module_b: ModuleBResult | None) -> str | None:
+    """E4 step 9: an explicit note in place of the trajectory chart when Module B declined to
+    forecast (module_b/predictor.py's forecast_unavailable=True - a parameter outside the trained
+    three, no calibrated model for it, or a non-finite required input). None when Module B did not
+    run at all, or ran and produced a real forecast - never a note claiming unavailability that
+    isn't true."""
+    if module_b is None or not module_b.forecast_unavailable:
+        return None
+    return (
+        f"Drift prediction unavailable for {module_b.parameter}: outside Module B's trained "
+        f"parameter set, no calibrated model, or an invalid required input."
+    )
