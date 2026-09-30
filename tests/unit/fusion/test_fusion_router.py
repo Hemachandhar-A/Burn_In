@@ -6,11 +6,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 from fusion.router import router as fusion_router
+from identity.router import router as identity_router
+from identity.auth import create_access_token
 from storage import repository
 from datetime import datetime, UTC
 
 app = FastAPI()
 app.include_router(fusion_router)
+app.include_router(identity_router)
 client = TestClient(app)
 
 
@@ -164,3 +167,230 @@ def test_get_lot_summary_parses_an_old_stored_row_without_insufficient_data_comp
     resp = client.get(f"/lots/{lot_id}")
     assert resp.status_code == 200
     assert resp.json()["insufficient_data_components"] == []
+
+
+# --- Block 3B Part 4: GET /parts/{component_id} ----------------------------------------------------
+
+def _seed_account(uid):
+    account_id = f"tester-{uid}"
+    repository.save_account(account_id, "Tester", "Quality Engineer", "hash")
+    return account_id
+
+
+def _auth_headers(account_id):
+    token = create_access_token(account_id, "Quality Engineer")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _module_a_result(component_id, lot_id, parameter="leakage", tier="REJECT"):
+    from contracts import ModuleAResult
+    return ModuleAResult(
+        component_id=component_id, lot_id=lot_id, parameter=parameter, robust_z=4.2,
+        mcd_distance=None, isolation_forest_score=None, ecod_score=0.9,
+        explainable_tags={"robust_z": True, "mcd": False, "isolation_forest": False, "ecod": False},
+        direction="above_median", severity_tier=tier, severity_cap_reason=None,
+        combined_severity=0.95, explainable_corroboration=True,
+    )
+
+
+def _module_b_result(component_id, lot_id, parameter="leakage", forecast_unavailable=False):
+    from contracts import ModuleBResult
+    if forecast_unavailable:
+        return ModuleBResult(
+            component_id=component_id, lot_id=lot_id, parameter=parameter, predicted_168h=None,
+            interval_lower=None, interval_upper=None, physics_baseline_prediction=None,
+            physics_disagreement_gap=None, drift_rate=None, exceeds_safety_slope=None,
+            safety_slope=None, lower_bound_exceeds_safety_slope=None, forecast_unavailable=True,
+        )
+    return ModuleBResult(
+        component_id=component_id, lot_id=lot_id, parameter=parameter, predicted_168h=69.0,
+        interval_lower=60.0, interval_upper=78.0, physics_baseline_prediction=65.0,
+        physics_disagreement_gap=4.0, drift_rate=1.38, exceeds_safety_slope=True, safety_slope=1.0,
+        lower_bound_exceeds_safety_slope=True, forecast_unavailable=False,
+    )
+
+
+def _seed_lot_with_results(project_id, lot_id, part_number, account_id, results, created_at=None):
+    repository.save_project(project_id, lot_id, part_number, created_at or datetime.now(UTC), account_id)
+    raw_data = {"lot_id": lot_id, "part_number": part_number, "status": "COMPLETE", "readings": [], "account_id": account_id}
+    return repository.save_analysis_run(project_id, raw_data, results)
+
+
+def test_get_part_detail_flagged_part():
+    from contracts import AnalysisResults, LotDisposition, PartExplanation, RiskAssessment
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-flagged-{uid}"
+    account_id = _seed_account(uid)
+    results = AnalysisResults(
+        assessments=[RiskAssessment(
+            component_id="GOLDEN-045", lot_id=lot_id, verdict="REJECT", module_a_rank=1.0,
+            module_b_rank=1.0, worst_parameter="leakage", module_a_ran=True, module_b_ran=True,
+            predicted_168h=69.0, actual_168h=None, explanation_sentence=None,
+        )],
+        disposition=LotDisposition(lot_id=lot_id, status="COMPLETE", pda_result=0.1, verdict="HOLD", is_forecast=False),
+        module_a_results={"GOLDEN-045": _module_a_result("GOLDEN-045", lot_id)},
+        module_b_results={"GOLDEN-045": _module_b_result("GOLDEN-045", lot_id)},
+        part_explanations={"GOLDEN-045": PartExplanation(
+            explanation_sentence="Part GOLDEN-045: leakage at 24h is 4.2 robust-sigma above lot median.",
+            confidence_qualifier="high confidence",
+        )},
+    )
+    _seed_lot_with_results(lot_id, lot_id, "PN-GOLDEN", account_id, results)
+
+    resp = client.get("/parts/GOLDEN-045", headers=_auth_headers(account_id))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["module_a"]["component_id"] == "GOLDEN-045"
+    assert data["module_b"]["predicted_168h"] == 69.0
+    assert data["explanation_sentence"] == "Part GOLDEN-045: leakage at 24h is 4.2 robust-sigma above lot median."
+    assert data["confidence_qualifier"] == "high confidence"
+
+
+def test_get_part_detail_pass_part_within_normal_range():
+    from contracts import AnalysisResults, LotDisposition, RiskAssessment
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-pass-{uid}"
+    account_id = _seed_account(uid)
+    results = AnalysisResults(
+        assessments=[RiskAssessment(
+            component_id="C-PASS", lot_id=lot_id, verdict="PASS", module_a_rank=5.0,
+            module_b_rank=5.0, worst_parameter="iddq", module_a_ran=True, module_b_ran=True,
+            predicted_168h=12.0, actual_168h=12.1, explanation_sentence=None,
+        )],
+        disposition=LotDisposition(lot_id=lot_id, status="COMPLETE", pda_result=0.0, verdict="ACCEPT", is_forecast=False),
+        module_a_results={"C-PASS": _module_a_result("C-PASS", lot_id, parameter="iddq", tier="PASS")},
+        module_b_results={"C-PASS": _module_b_result("C-PASS", lot_id, parameter="iddq")},
+        # no part_explanations entry for a PASS part.
+    )
+    _seed_lot_with_results(lot_id, lot_id, "PN-1", account_id, results)
+
+    resp = client.get("/parts/C-PASS", headers=_auth_headers(account_id))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["explanation_sentence"] == "within normal range"
+    assert data["severity_cap_note"] is None
+    assert data["explanation"]["shap_contributions"] == []
+    assert data["explanation"]["mcd_contributions"] == []
+    assert data["explanation"]["ecod_dimensions"] == []
+    assert data["explanation"]["zscore_table"] == []
+
+
+def test_get_part_detail_unknown_component_404():
+    uid = str(uuid.uuid4())
+    account_id = _seed_account(uid)
+    resp = client.get("/parts/NO-SUCH-COMPONENT", headers=_auth_headers(account_id))
+    assert resp.status_code == 404
+
+
+def test_get_part_detail_requires_auth():
+    resp = client.get("/parts/anything")
+    assert resp.status_code in (401, 403)
+
+
+def test_get_part_detail_ambiguous_component_resolves_to_most_recent_or_named_lot():
+    from contracts import AnalysisResults, LotDisposition, RiskAssessment
+
+    uid = str(uuid.uuid4())
+    account_id = _seed_account(uid)
+    shared_component = f"SHARED-{uid}"
+    lot_old = f"lot-old-{uid}"
+    lot_new = f"lot-new-{uid}"
+
+    def _results_for(lot_id, parameter):
+        return AnalysisResults(
+            assessments=[RiskAssessment(
+                component_id=shared_component, lot_id=lot_id, verdict="WATCH", module_a_rank=1.0,
+                module_b_rank=1.0, worst_parameter=parameter, module_a_ran=True, module_b_ran=True,
+                predicted_168h=None, actual_168h=None, explanation_sentence=None,
+            )],
+            disposition=LotDisposition(lot_id=lot_id, status="COMPLETE", pda_result=0.0, verdict="HOLD", is_forecast=False),
+            module_a_results={shared_component: _module_a_result(shared_component, lot_id, parameter=parameter, tier="REVIEW")},
+            module_b_results={shared_component: _module_b_result(shared_component, lot_id, parameter=parameter)},
+        )
+
+    _seed_lot_with_results(lot_old, lot_old, "PN-OLD", account_id, _results_for(lot_old, "iddq"),
+                            created_at=datetime(2020, 1, 1, tzinfo=UTC))
+    _seed_lot_with_results(lot_new, lot_new, "PN-NEW", account_id, _results_for(lot_new, "prop_delay"),
+                            created_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    resp_default = client.get(f"/parts/{shared_component}", headers=_auth_headers(account_id))
+    assert resp_default.status_code == 200
+    assert resp_default.json()["module_a"]["lot_id"] == lot_new
+
+    resp_scoped = client.get(f"/parts/{shared_component}", params={"lot_id": lot_old}, headers=_auth_headers(account_id))
+    assert resp_scoped.status_code == 200
+    assert resp_scoped.json()["module_a"]["lot_id"] == lot_old
+
+
+def test_get_part_detail_disposition_history_after_post_disposition():
+    from contracts import AnalysisResults, LotDisposition, RiskAssessment
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-disp-{uid}"
+    account_id = _seed_account(uid)
+    account_id2 = _seed_account(uid + "-b")
+    results = AnalysisResults(
+        assessments=[RiskAssessment(
+            component_id="C-DISP", lot_id=lot_id, verdict="WATCH", module_a_rank=1.0,
+            module_b_rank=1.0, worst_parameter="iddq", module_a_ran=True, module_b_ran=True,
+            predicted_168h=None, actual_168h=None, explanation_sentence=None,
+        )],
+        disposition=LotDisposition(lot_id=lot_id, status="COMPLETE", pda_result=0.0, verdict="HOLD", is_forecast=False),
+        module_a_results={"C-DISP": _module_a_result("C-DISP", lot_id, parameter="iddq", tier="REVIEW")},
+        module_b_results={"C-DISP": _module_b_result("C-DISP", lot_id, parameter="iddq")},
+    )
+    run = _seed_lot_with_results(lot_id, lot_id, "PN-1", account_id, results)
+
+    post_resp = client.post(
+        f"/parts/C-DISP/disposition",
+        params={"project_id": lot_id, "analysis_run_id": run.analysis_run_id},
+        json={"verdict": "HOLD", "rationale": "retest requested"},
+        headers=_auth_headers(account_id),
+    )
+    assert post_resp.status_code == 200
+
+    resp = client.get("/parts/C-DISP", headers=_auth_headers(account_id))
+    assert resp.status_code == 200
+    history = resp.json()["disposition_history"]
+    assert len(history) == 1
+    assert history[0]["verdict"] == "HOLD"
+    assert history[0]["rationale"] == "retest requested"
+
+
+def test_get_part_detail_never_calls_run_full_pipeline():
+    from contracts import AnalysisResults, LotDisposition, RiskAssessment
+
+    uid = str(uuid.uuid4())
+    lot_id = f"lot-norecompute-{uid}"
+    account_id = _seed_account(uid)
+    results = AnalysisResults(
+        assessments=[RiskAssessment(
+            component_id="C-NR", lot_id=lot_id, verdict="PASS", module_a_rank=1.0, module_b_rank=1.0,
+            worst_parameter="iddq", module_a_ran=True, module_b_ran=True, predicted_168h=None,
+            actual_168h=None, explanation_sentence=None,
+        )],
+        disposition=LotDisposition(lot_id=lot_id, status="COMPLETE", pda_result=0.0, verdict="ACCEPT", is_forecast=False),
+        module_a_results={"C-NR": _module_a_result("C-NR", lot_id, parameter="iddq", tier="PASS")},
+        module_b_results={"C-NR": _module_b_result("C-NR", lot_id, parameter="iddq")},
+    )
+    _seed_lot_with_results(lot_id, lot_id, "PN-1", account_id, results)
+
+    with patch("fusion.pipeline.run_full_pipeline") as mock_run:
+        mock_run.side_effect = Exception("GET /parts/{id} must never re-run the pipeline")
+        resp = client.get("/parts/C-NR", headers=_auth_headers(account_id))
+        assert resp.status_code == 200
+        assert mock_run.call_count == 0
+
+
+def test_registered_routes_include_parts_detail_and_exclude_capa_and_worklist():
+    """Part 4d: the real app (api/main.py), not the local test app - GET /parts/{component_id}
+    must now be reachable; /capa* and the settings worklist routes are still absent (capa/router.py
+    is not registered yet, per api/main.py's own router list)."""
+    from api.main import app as real_app
+    paths = real_app.openapi()["paths"]
+    assert "/parts/{component_id}" in paths
+    assert "get" in paths["/parts/{component_id}"]
+    assert not any(p.startswith("/capa") for p in paths)
+    assert "/settings/worklist" not in paths
