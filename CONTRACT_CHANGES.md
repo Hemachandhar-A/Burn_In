@@ -565,3 +565,12 @@ Entry format:
 - Resolved by Block 4c Part 3a (ids added to `PartDetailResponse`). The frontend now calls the real route with `project_id`/`analysis_run_id` from the response; `MOCK_submitDisposition` is deleted.
 - Backend behaviour observed while wiring it (`identity/router.py::create_disposition`), no change requested: the same-account 400 ("Dual sign-off requires two distinct account IDs...") fires only for a second REJECT on the same `analysis_run_id`; ACCEPT/HOLD have no duplicate check. `rationale` is not validated (empty string accepted), so the UI does not require it. There is no "finalized" state for a part disposition: the route only appends sign-offs, so the UI shows the history and a distinct-account count and nothing more.
 - Status: RESOLVED.
+## 2026-09-30 - Lead (G5 gate, Block 4b)
+
+- **No contract change.** `explain.text.explanation_sentence` gained two keyword-only, defaulted args (`module_a`, `module_a_checkpoint`); `fusion/pipeline.py` passes them. The sentence now quotes `ModuleAResult.robust_z` (Module A's max-|z| across checkpoints - golden 15.75 at 0h) and names that checkpoint, instead of the 24h table row (15.53). `PartExplanation.zscore_table` is still the 24h table (it carries no checkpoint label).
+- **OPEN findings (production code, not fixed here, pinned as `xfail(strict=True)` in `tests/integration/test_g5_routes.py`):**
+  1. `GET /lots/{lot_id}` (`fusion/router.py:25`) has no `get_current_account`; Part 5.6 says auth required.
+  2. `POST /parts/{component_id}/disposition` (`identity/router.py:41`) never checks the component/project/run exist - unknown ids return 200.
+  3. Every P2 route (`ingestion/router.py`, `storage/router.py`, `report/router.py`) is unauthenticated although Part 5.6 marks them required (their docstrings say "identity not merged yet" - never revisited).
+  4. Unplanned route `GET /lots/{lot_id}/quality` is registered (unauthenticated).
+  5. `fusion/gate.py` never assigns Module B a REVIEW tier (only PASS/REJECT), so E12's "both cross REVIEW" table row is unreachable in code.
