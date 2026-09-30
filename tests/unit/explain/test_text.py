@@ -38,7 +38,7 @@ def test_explanation_sentence_golden_part_module_a_and_b():
     assert "leakage at 24h is 4.2 robust-sigma above lot median" in sentence
     assert "median = 10" in sentence and "value = 45" in sentence
     assert "Predicted 168h drift exceeds the calibrated safety slope by 38%" in sentence
-    assert "Primary driver: delta_24h" in sentence
+    assert "Primary driver: 0h-to-24h change" in sentence
 
 
 def test_explanation_sentence_below_median_direction_worded_correctly():
@@ -69,7 +69,7 @@ def test_explanation_sentence_module_b_only_part():
     sentence = explanation_sentence("C9", zscore_row=None, module_b=module_b, shap=shap)
     assert sentence == (
         "Part C9: Predicted 168h drift exceeds the calibrated safety slope by 38%. "
-        "Primary driver: delta_24h."
+        "Primary driver: 0h-to-24h change."
     )
 
 
@@ -85,6 +85,49 @@ def test_explanation_sentence_module_b_under_slope_worded_correctly():
     sentence = explanation_sentence("C2", zscore_row=None, module_b=module_b, shap=None)
     assert "Predicted 168h drift is under the calibrated safety slope by 50%" in sentence
     assert "Primary driver" not in sentence
+
+
+def test_primary_driver_humanizes_every_feature_name():
+    """B2b: every module_b.model.FEATURE_NAMES entry gets a human-readable label in the "Primary
+    driver: ..." clause, not the raw feature name."""
+    from module_b.model import FEATURE_NAMES
+    from explain.models import FeatureContribution, ShapExplanation
+    from explain.text import _FEATURE_NAME_LABELS
+    from contracts import ModuleBResult
+
+    module_b = ModuleBResult(
+        component_id="C1", lot_id="L1", parameter="leakage", predicted_168h=50.0,
+        interval_lower=45.0, interval_upper=55.0, physics_baseline_prediction=48.0,
+        physics_disagreement_gap=2.0, drift_rate=1.38, exceeds_safety_slope=True, safety_slope=1.0,
+        lower_bound_exceeds_safety_slope=True, forecast_unavailable=False,
+    )
+    for feature in FEATURE_NAMES:
+        shap = ShapExplanation(
+            component_id="C1", parameter="leakage", horizon="24h", base_value=10.0,
+            model_prediction=50.0,
+            contributions=[FeatureContribution(feature=feature, value=1.0, shap_value=1.0)],
+        )
+        sentence = explanation_sentence("C1", zscore_row=None, module_b=module_b, shap=shap)
+        assert f"Primary driver: {_FEATURE_NAME_LABELS[feature]}." in sentence
+        assert feature not in sentence
+
+
+def test_primary_driver_falls_back_to_raw_name_for_an_unrecognized_feature():
+    from explain.models import FeatureContribution, ShapExplanation
+    from contracts import ModuleBResult
+
+    module_b = ModuleBResult(
+        component_id="C1", lot_id="L1", parameter="leakage", predicted_168h=50.0,
+        interval_lower=45.0, interval_upper=55.0, physics_baseline_prediction=48.0,
+        physics_disagreement_gap=2.0, drift_rate=1.38, exceeds_safety_slope=True, safety_slope=1.0,
+        lower_bound_exceeds_safety_slope=True, forecast_unavailable=False,
+    )
+    shap = ShapExplanation(
+        component_id="C1", parameter="leakage", horizon="24h", base_value=10.0, model_prediction=50.0,
+        contributions=[FeatureContribution(feature="some_future_feature", value=1.0, shap_value=1.0)],
+    )
+    sentence = explanation_sentence("C1", zscore_row=None, module_b=module_b, shap=shap)
+    assert "Primary driver: some_future_feature." in sentence
 
 
 def test_explanation_sentence_module_a_only_part_no_module_b_clause():
