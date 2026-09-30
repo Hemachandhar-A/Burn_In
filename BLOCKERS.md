@@ -46,3 +46,24 @@ Entry format:
   asking P2 to build against an unmerged branch.
 
 ---
+
+## 2026-09-30 Lead - RESOLVED: P5 blocked on P3.3/P4.3/P2.6
+- Blocked on: the entry above, "2026-09-25 P5 - Blocked on P3.3/P4.3 and P2.6" - `p3-module-a` (P3.3) and `p4-module-b` (P4.3) were not on `develop`, and P2.6 (`p2-ingestion`) wasn't merged either.
+- What was tried: all three landed on `develop` since - P3.3 in `ae61640` ("Merge p3-module-a into develop: Module A's final merge (P3.0-P3.3 complete)"), P4.3 in `40bdd13` ("P4.3: E3 steps 6-7 - real module_b.predict returning full ModuleBResult"), and P2.6 in `4b62a10` ("Merge p2-ingestion into develop: three P2-flagged ingestion fixes"), all reachable from the `p5-fusion`/`develop` merge `dbd6c85` (`git log --oneline --all` confirms all three SHAs).
+- Status: RESOLVED.
+
+---
+
+## 2026-09-30 Lead - RESOLVED: P2.5 blocked on fusion
+- Blocked on: the entry above, "2026-09-25 P2 - P2.5 still blocked after P2.6/P2.7/P2.8" - `ingestion/router.py` calling `fusion.run_full_pipeline` then `storage.save_analysis_run`/`storage.log_event` needed P5's `fusion/` merged into `develop`.
+- What was tried: confirmed directly in the code now on `develop` (post `dbd6c85`) - `ingestion/router.py`'s `_run_pipeline_and_persist` calls `run_full_pipeline(dataset, ScreeningConfig())` (imported from `fusion.pipeline`) and then `repository.save_analysis_run(...)`. Part A's independent verification of this same merge (A4/A5 this session) exercised this exact path end to end against real fusion output.
+- Status: RESOLVED.
+
+---
+
+## 2026-09-30 Lead - RESOLVED: scripts/seed.py's documented invocation can't import storage/
+- Blocked on: the entry above, "2026-09-25 P2 - scripts/seed.py's documented invocation can't import storage/" - `python scripts/seed.py` (and `uv run python scripts/seed.py`) fails with `No module named 'storage'` because running a script by file path puts `scripts/` on `sys.path[0]`, not the repo root.
+- What was tried: reproduced against a throwaway DB (`DATABASE_URL=sqlite:///./_tmp_seed.db`) - `uv run python scripts/seed.py` still fails with exactly `No module named 'storage'`. `.venv/Scripts/python.exe -m scripts.seed` (module invocation) runs clean and seeds both accounts ("seeded a.sharma (Quality Engineer)", "seeded r.mehta (Reliability Engineer)"), same fix the 2026-09-25 entry already identified. Per AGENTS.md rule 3/this session's ruling, only `scripts/seed.py`'s docstring was changed (`python -m scripts.seed`, run from the project root) - no code touched.
+- Status: RESOLVED.
+
+---
