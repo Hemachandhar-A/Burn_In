@@ -1,0 +1,136 @@
+Burn-In Anomaly
+
+SIH 26170 SYSTEM
+
+WORKSPACE
+
+Ingest
+Lot Dashboard
+Part Detail
+Project Browser
+History
+Settings
+
+A. Sharma
+
+Quality Engineer
+
+/
+PART DETAIL
+DEMO-COMPLETE-01-0023
+DUT IDENTIFIER DEMO-COMPLETE-01-0023
+
+PRIMARY TARGET PARAMETER
+
+prop_delay
+REJECT
+
+LOT: DEMO-COMPLETE-01
+
+Burn-In Parameter Trajectory (Measured & Module B Forecast)
+
+Parameter: prop_delay
+
+4.08
+4.307
+4.417
+4.459
+4.6392
+0h
+24h
+96h
+168h
+3.8
+4
+4.2
+4.4
+4.6
+4.8
+5
+Measured
+Lot Median
+Module B Forecast (168h)
+Safety Slope Threshold
+Hours
+prop_delay
+Diagnostic Explanation
+BORDERLINE - RECOMMEND RETEST
+
+Part DEMO-COMPLETE-01-0023: prop_delay at 96h is 1.9 robust-sigma above lot median. Predicted 168h drift exceeds the calibrated safety slope by 29%. Primary driver: 0h-to-96h change.
+
+Model vs. Physics Disagreement
++4.8% DISPARITY
+
+PHYSICS BASELINE
+
+4.4253
+
+Power-law extrapolation baseline
+
+LIVE ML MODEL
+
+4.6392
+
+Gradient-boosted regression
+
+NET DISAGREEMENT GAP
+
++0.2139
+
+SHAP Feature Contribution
+
+Module B's drift-prediction model, per feature
+
+delta_96h - 0.337
++0.1187
+value_0h - 4.08
++0.02
+delta_24h - 0.227
++0.0128
+offset_0h - 0.314
++0.0109
+lot_drift_24h - 0.079
++0.0089
+offset_24h - 0.462
++0.0014
+elapsed_24h - 24
++0
+elapsed_96h - 96
++0
+24h Z-Score Table
+METHOD: ROBUST MEDIAN ABSOLUTE DEVIATION (MAD)
+PARAMETER	VALUE (24H)	LOT MEDIAN (24H)	ROBUST Z-SCORE
+iddq	7.19	6.45	+0.7805 σ
+leakage	4.27	3.41	+1.4512 σ
+prop_delay	4.307	3.845	+1.4957 σ
+MCD Parameter Contribution
+
+Minimum Covariance Determinant (Mahalanobis distance share)
+
+D² = 3.9661
+prop_delay
+2.996
+leakage
+2.9687
+iddq
+0.2851
+ECOD Dimension Score
+
+Empirical Cumulative Distribution Outlier Detection
+
+O_SCORE = 4.6803
+value_0h
+score = 1.9459
+value_24h
+score = 2.7344
+prop_delay
+
+Record reviewer Accept / Hold for Retest / Reject decision and technical disposition rationale.
+
+No sign-offs recorded yet.
+
+Technical Disposition Rationale (optional)
+Accept
+Hold for Retest
+Reject
+Record Confirmed Outcome

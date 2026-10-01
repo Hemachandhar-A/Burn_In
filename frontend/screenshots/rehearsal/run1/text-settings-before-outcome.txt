@@ -1,0 +1,38 @@
+Burn-In Anomaly
+
+SIH 26170 SYSTEM
+
+WORKSPACE
+
+Ingest
+Lot Dashboard
+(Ingest or open a lot first)
+Part Detail
+(Open a part from a lot first)
+Project Browser
+History
+Settings
+
+A. Sharma
+
+Quality Engineer
+
+/
+SETTINGS
+Settings
+
+Global detection thresholds under dual sign-off, the confirmed-outcome worklist, and corrective feedback status.
+
+Loading settings…
+
+Corrective Feedback Status
+
+Computed live from confirmed physical-analysis outcomes each time this screen opens.
+
+Computing…
+
+Worklist
+
+Dispositions awaiting a confirmed outcome from destructive physical analysis. Tracking only; DPA work orders are generated per lot on the Lot Dashboard.
+
+Loading worklist…

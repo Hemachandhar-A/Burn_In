@@ -1,0 +1,33 @@
+Burn-In Anomaly
+
+SIH 26170 SYSTEM
+
+WORKSPACE
+
+Ingest
+Lot Dashboard
+(Ingest or open a lot first)
+Part Detail
+(Open a part from a lot first)
+Project Browser
+History
+Settings
+
+A. Sharma
+
+Quality Engineer
+
+/
+PROJECT BROWSER
+Project Browser
+
+Every lot on record. Open one to reload its Lot Dashboard from its most recent analysis run.
+
+LOT ID
+	PART NUMBER
+	STATUS
+	CREATED DATE
+	CREATED BY
+
+DEMO-EARLY-01	DEMO-PN	Loading…	2026-10-01	A. Sharma
+DEMO-COMPLETE-01	DEMO-PN	Loading…	2026-10-01	A. Sharma
