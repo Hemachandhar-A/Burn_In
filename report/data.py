@@ -28,8 +28,8 @@ _TRIGGER_EVENT_TYPES = {"ingest", "checkpoint_add"}
 _METHODOLOGY_SUMMARY = (
     "Parts were screened using two complementary modules. Module A flags components that are "
     "statistically anomalous relative to their own lot, even when every reading is inside the "
-    "part's datasheet limit, combining a robust per-parameter z-score and Minimum Covariance "
-    "Determinant (MCD) distance. The detector also supports an Isolation Forest score from a pooled "
+    "part's datasheet limit, combining a robust per-parameter z-score, Minimum Covariance "
+    "Determinant (MCD) distance and an ECOD outlier score. The detector also supports an Isolation Forest score from a pooled "
     "cross-lot reference, but the live pipeline supplies no such reference, so that score does not "
     "contribute in this build; a REJECT verdict requires corroboration from an explainable "
     "detector (z-score or MCD). Module B forecasts each part's 168-hour reading from its 0h/24h readings "

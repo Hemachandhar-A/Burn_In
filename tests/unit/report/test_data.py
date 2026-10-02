@@ -284,6 +284,6 @@ def test_methodology_sentence_states_only_what_the_live_pipeline_executes():
     from report.data import _METHODOLOGY_SUMMARY as text
 
     assert "pooled cross-lot Isolation Forest score" not in text
-    assert "combining a robust per-parameter z-score and Minimum Covariance Determinant" in text
+    assert "combining a robust per-parameter z-score, Minimum Covariance Determinant (MCD) distance and an ECOD outlier score" in text
     assert "does not contribute in this build" in text
     assert "corroboration from an explainable detector (z-score or MCD)" in text
