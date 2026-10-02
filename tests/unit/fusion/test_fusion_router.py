@@ -298,7 +298,7 @@ def test_get_part_detail_in_progress_part_returns_200_module_a_none():
         module_b_results={"C-INPROG": _module_b_result("C-INPROG", lot_id, parameter="iddq")},
         part_explanations={"C-INPROG": PartExplanation(
             explanation_sentence="Part C-INPROG: predicted 168h drift exceeds the safety slope.",
-            confidence_qualifier="borderline - recommend retest",
+            confidence_qualifier="forecast borderline: the prediction interval spans the safety slope - recommend retest",
         )},
     )
     _seed_lot_with_results(lot_id, lot_id, "PN-INPROG", account_id, results)
