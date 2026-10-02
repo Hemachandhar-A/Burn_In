@@ -117,10 +117,31 @@ async function main() {
     const summary = async () =>
       (await page.locator('.summary-grid, .lot-summary, section.screen').first().innerText()).replace(/\s+/g, ' ').match(/OVERALL VERDICT.{0,120}?PDA: [\d.]+%/i)?.[0] ?? '?'
     const first = await summary()
+    firstPaint = {
+      chips: await page.locator('.forecast-chip').count(),
+      text: (await page.locator('section.screen').first().innerText()).replace(/\s+/g, ' '),
+    }
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1200)
     return [first, await summary()]
   }
+
+  let firstPaint = { chips: 0, text: '' }
+  /** Ground truth for the ranked lists: the API's own ranks (1 = most severe), read with a fresh token. */
+  async function apiRanks(lotId: string) {
+    const login = await page.request.post(`${BASE}/auth/login`, { data: { account_id: 'a.sharma', pin: '1234' } })
+    const token = (await login.json()).access_token
+    const res = await page.request.get(`${BASE}/lots/${encodeURIComponent(lotId)}`, { headers: { Authorization: `Bearer ${token}` } })
+    const body = await res.json()
+    const flagged = (body.assessments as Array<Record<string, unknown>>).filter((a) => a.verdict !== 'PASS')
+    const order = (ran: string, rank: string) =>
+      flagged
+        .filter((a) => a[ran])
+        .sort((a, b) => (a[rank] as number) - (b[rank] as number) || String(a.component_id).localeCompare(String(b.component_id)))
+        .map((a) => String(a.component_id))
+    return { a: order('module_a_ran', 'module_a_rank'), b: order('module_b_ran', 'module_b_rank') }
+  }
+  const listIds = (n: number) => page.locator('.ranked-list').nth(n).locator('tbody tr td a').allInnerTexts()
 
   const t0All = performance.now()
   let reportDoneAt = 0
@@ -156,6 +177,16 @@ async function main() {
     topPart = (await first.innerText().catch(() => '')) || ''
     const lastLink = await page.locator('.ranked-list').first().locator('tbody tr td a').last().innerText().catch(() => '')
     notes.push(`first row of "By Outlier Severity": ${topPart}; last row: ${lastLink}`)
+    const want = await apiRanks(COMPLETE)
+    for (const [n, label] of [[0, 'By Outlier Severity'], [1, 'By Drift Risk']] as const) {
+      const got = await listIds(n)
+      const exp = n === 0 ? want.a : want.b
+      notes.push(`${label}: ${got.length} rows, first ${got[0] ?? '-'}, last ${got[got.length - 1] ?? '-'}`)
+      if (got.length !== exp.length || got.some((id, i) => id !== exp[i])) {
+        throw new Error(`${label} is not in rank order (rank 1 first): got ${got.slice(0, 3)} expected ${exp.slice(0, 3)}`)
+      }
+    }
+    if (want.a.length === 0) throw new Error('no Module A rows to check the order of')
     await shot('03-lot-dashboard-complete')
   })
 
@@ -243,6 +274,9 @@ async function main() {
     const text = (await dump('dashboard-live-0h24h')).replace(/\s+/g, ' ')
     notes.push(text.match(/Overall Verdict.{0,50}/i)?.[0] ?? 'no verdict')
     notes.push(`Forecast chip: ${(await page.locator('.forecast-chip').count()) > 0}`)
+    const msg = text.includes('Module A runs when the lot is Complete.')
+    notes.push(`Module A message: ${msg}`)
+    if (!msg) throw new Error('in-progress dashboard lacks "Module A runs when the lot is Complete."')
     await shot('08b-live-dashboard-in-progress')
   })
 
@@ -262,6 +296,9 @@ async function main() {
     const [f10, s10] = await openLot(LIVE)
     notes.push(`first paint: ${f10}`)
     notes.push(`settled: ${s10}`)
+    const stale = firstPaint.chips > 0 || /LOT_ON_TRACK|LOT_AT_RISK|STOP_RUN_RECOMMENDED|IN_PROGRESS|In[- ]Progress/i.test(firstPaint.text)
+    notes.push(`first paint stale forecast: ${stale}; COMPLETE shown at first paint: ${/COMPLETE/i.test(firstPaint.text)}`)
+    if (stale || !/COMPLETE/i.test(firstPaint.text)) throw new Error('dashboard showed the previous (forecast) run right after the 168h upload')
     const text = (await dump('dashboard-live-168h')).replace(/\s+/g, ' ')
     notes.push(text.match(/Overall Verdict.{0,50}/i)?.[0] ?? 'no verdict')
     notes.push(`PDA ${text.match(/PDA: [\d.]+%/)?.[0]}; Forecast chip: ${(await page.locator('.forecast-chip').count()) > 0}`)
