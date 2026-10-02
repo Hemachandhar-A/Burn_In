@@ -35,11 +35,13 @@ function RankedList({
   icon,
   countLabel,
   rows,
+  emptyText = 'No parts flagged by this module.',
 }: {
   title: string
   icon: ReactNode
   countLabel: string
   rows: RiskAssessment[]
+  emptyText?: string
 }) {
   const headingId = useId()
   return (
@@ -54,7 +56,7 @@ function RankedList({
         </span>
       </header>
       {rows.length === 0 ? (
-        <p className="card-note">No parts flagged by this module.</p>
+        <p className="card-note">{emptyText}</p>
       ) : (
         <table className="table" aria-labelledby={headingId}>
           <thead>
@@ -339,6 +341,11 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
               icon={<BarChartIcon />}
               countLabel="outliers"
               rows={byModuleA}
+              emptyText={
+                data.disposition.is_forecast
+                  ? 'Module A runs when the lot is Complete.'
+                  : undefined
+              }
             />
             <RankedList
               title="By Drift Risk"

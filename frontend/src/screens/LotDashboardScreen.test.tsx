@@ -190,6 +190,23 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
     expect(ids('By Drift Risk')).toEqual(['C-0', 'C-2', 'C-3', 'C-1'])
   })
 
+  test('an in-progress lot says Module A runs when Complete; a Complete lot with no flags keeps the old text', async () => {
+    const inProgress = SUMMARY({
+      assessments: [],
+      disposition: { ...SUMMARY().disposition, status: 'IN_PROGRESS', is_forecast: true },
+    })
+    const first = setup('/lots/LOT-2024-8841', { body: inProgress })
+    await screen.findByText('Module A runs when the lot is Complete.')
+    // Only Module B's panel keeps the old text.
+    expect(screen.getAllByText('No parts flagged by this module.')).toHaveLength(1)
+    first.unmount()
+
+    setup('/lots/LOT-2024-8841', { body: SUMMARY({ assessments: [] }) })
+    await screen.findByText('PDA: 5.19%')
+    expect(screen.getAllByText('No parts flagged by this module.')).toHaveLength(2)
+    expect(screen.queryByText('Module A runs when the lot is Complete.')).toBeNull()
+  })
+
   test('a ranked-list row links to that component’s Part Detail screen', async () => {
     setup()
     await screen.findByText('PDA: 5.19%')
