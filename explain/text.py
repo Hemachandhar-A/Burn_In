@@ -43,7 +43,8 @@ def _humanize_feature(feature: str) -> str:
 _PHYSICS_DISAGREEMENT_HALF_WIDTH_MULTIPLIER: float = 1.0
 
 _HIGH_CONFIDENCE = "high confidence"
-_BORDERLINE = "borderline - recommend retest"
+_BORDERLINE_INTERVAL = "forecast borderline: the prediction interval spans the safety slope - recommend retest"
+_BORDERLINE_PHYSICS = "forecast borderline: the physics baseline disagrees with the forecast - recommend retest"
 
 
 def explanation_sentence(
@@ -128,7 +129,9 @@ def confidence_qualifier(module_b: ModuleBResult | None) -> str | None:
         half_width = abs(module_b.interval_upper - module_b.interval_lower) / 2.0
         physics_agrees = module_b.physics_disagreement_gap <= half_width * _PHYSICS_DISAGREEMENT_HALF_WIDTH_MULTIPLIER
 
-    return _HIGH_CONFIDENCE if (interval_agrees and physics_agrees) else _BORDERLINE
+    if not interval_agrees:
+        return _BORDERLINE_INTERVAL
+    return _HIGH_CONFIDENCE if physics_agrees else _BORDERLINE_PHYSICS
 
 
 def _missing_components_sentence(insufficient_data_components: list[str]) -> str | None:

@@ -27,7 +27,9 @@ resolved on `develop` (`RiskAssessment` now carries `module_a_ran`, `module_b_ra
 persisted as-is (`results.model_dump_json()` in the repository) - no reshaping step, so module ranks and
 `worst_parameter` reach `GET /lots/{lot_id}` intact.
 """
+import csv
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -39,7 +41,7 @@ from generator.lot import generate_lot
 from ingestion import store
 from ingestion.merge import compute_status, merge_checkpoint
 from ingestion.offset import apply_tester_offset_correction
-from ingestion.parsing import IngestionValidationError, parse_lot_csv
+from ingestion.parsing import _ALIASES, IngestionValidationError, parse_lot_csv, parse_wide_lot_csv
 from ingestion.quality import QualityFlag, check_missing_checkpoints, run_quality_checks
 from ingestion.units import normalize_readings
 from storage import repository
@@ -126,6 +128,38 @@ def _normalize_and_correct(
     return apply_tester_offset_correction(normalized, reference_expected)
 
 
+_LOT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def _check_lot_id(lot_id: str) -> None:
+    """A lot id is a URL path segment and a storage key: 1-64 chars of letters, digits, '.', '_', '-', starting with a
+    letter or digit (so '.' and '..' can never match). Anything else is a 422 before any state is written."""
+    if _LOT_ID_PATTERN.fullmatch(lot_id) is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "lot_id must be 1 to 64 characters of letters, digits, '.', '_' or '-', "
+                "starting with a letter or digit, and not '.' or '..'"
+            ),
+        )
+
+
+def _parse_csv_by_layout(raw: bytes, **metadata) -> list:
+    """Long layout if the header carries parameter and value columns, else the pinned wide layout if it carries
+    component_id and checkpoint_hour; a header matching neither is a 422 naming the expected columns."""
+    header_line = raw.decode("utf-8-sig", errors="replace").splitlines()[:1]
+    fields = next(csv.reader(header_line), []) if header_line else []
+    canonical = {_ALIASES.get(h.strip().lower().replace(" ", "").replace("-", "").replace("_", "")) for h in fields}
+    if {"parameter", "value"} <= canonical:
+        return parse_lot_csv(raw, **metadata)
+    if {"component_id", "checkpoint_hour"} <= canonical:
+        return parse_wide_lot_csv(raw, **metadata)
+    raise IngestionValidationError([
+        "unrecognised CSV layout: expected either long columns (component_id, parameter, checkpoint_hour, value, unit) "
+        "or wide columns (component_id, checkpoint_hour, then one '<parameter>_<unit>' column per parameter, e.g. iddq_uA)"
+    ])
+
+
 @router.post("/lots", response_model=LotUploadResponse)
 async def upload_lot(
     file: UploadFile,
@@ -137,6 +171,7 @@ async def upload_lot(
     test_date: str | None = Form(default=None),  # CONTRACT_CHANGES.md: no frozen field yet
     reference_expected_json: str | None = Form(default=None),  # E7 step 8, see ingestion/offset.py
 ) -> LotUploadResponse:
+    _check_lot_id(lot_id)
     if store.get(lot_id) is not None:
         raise HTTPException(
             status_code=409,
@@ -148,7 +183,7 @@ async def upload_lot(
 
     raw = await file.read()
     try:
-        readings = parse_lot_csv(
+        readings = _parse_csv_by_layout(
             raw, lot_id=lot_id, part_number=part_number, manufacturer=manufacturer, date_code=date_code
         )
     except IngestionValidationError as exc:
@@ -202,7 +237,7 @@ async def upload_checkpoint(
     first = existing.readings[0]  # upload_lot never stores a lot with zero readings
     raw = await file.read()
     try:
-        new_readings = parse_lot_csv(
+        new_readings = _parse_csv_by_layout(
             raw, lot_id=existing.lot_id, part_number=existing.part_number,
             manufacturer=first.manufacturer, date_code=first.date_code,
         )

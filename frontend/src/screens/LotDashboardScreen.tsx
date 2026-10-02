@@ -24,16 +24,24 @@ function flaggedAssessments(data: LotSummaryResponse): RiskAssessment[] {
   return data.assessments.filter((a) => a.verdict !== 'PASS')
 }
 
+/** Rank 1 is the most severe, so ascending; ties broken by component id ascending. */
+function byRank(key: 'module_a_rank' | 'module_b_rank') {
+  return (a: RiskAssessment, b: RiskAssessment) =>
+    a[key] - b[key] || (a.component_id < b.component_id ? -1 : a.component_id > b.component_id ? 1 : 0)
+}
+
 function RankedList({
   title,
   icon,
   countLabel,
   rows,
+  emptyText = 'No parts flagged by this module.',
 }: {
   title: string
   icon: ReactNode
   countLabel: string
   rows: RiskAssessment[]
+  emptyText?: string
 }) {
   const headingId = useId()
   return (
@@ -48,7 +56,7 @@ function RankedList({
         </span>
       </header>
       {rows.length === 0 ? (
-        <p className="card-note">No parts flagged by this module.</p>
+        <p className="card-note">{emptyText}</p>
       ) : (
         <table className="table" aria-labelledby={headingId}>
           <thead>
@@ -187,12 +195,12 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
   const byModuleA = data
     ? [...data.assessments]
         .filter((a) => a.module_a_ran && a.verdict !== 'PASS')
-        .sort((a, b) => b.module_a_rank - a.module_a_rank)
+        .sort(byRank('module_a_rank'))
     : []
   const byModuleB = data
     ? [...data.assessments]
         .filter((a) => a.module_b_ran && a.verdict !== 'PASS')
-        .sort((a, b) => b.module_b_rank - a.module_b_rank)
+        .sort(byRank('module_b_rank'))
     : []
 
   return (
@@ -333,6 +341,11 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
               icon={<BarChartIcon />}
               countLabel="outliers"
               rows={byModuleA}
+              emptyText={
+                data.disposition.is_forecast
+                  ? 'Module A runs when the lot is Complete.'
+                  : undefined
+              }
             />
             <RankedList
               title="By Drift Risk"

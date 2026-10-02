@@ -90,7 +90,7 @@ function hours(value: unknown): string | null {
 function genericDescription(payload: Record<string, unknown>): string {
   const parts = Object.entries(payload).map(([k, v]) => {
     const text =
-      typeof v === 'number' ? (formatNumber(v) ?? String(v)) : typeof v === 'object' ? JSON.stringify(v) : String(v)
+      typeof v === 'number' ? (formatNumber(v) ?? String(v)) : typeof v === 'object' ? JSON.stringify(v, (_k, x) => (typeof x === 'number' ? Number(formatNumber(x) ?? x) : x)) : String(v)
     return `${k}: ${text}`
   })
   return parts.length > 0 ? parts.join('; ') : 'No details recorded'

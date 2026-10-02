@@ -1,0 +1,103 @@
+{
+  "rows": [
+    {
+      "step": "01 login as a.sharma",
+      "result": "OK",
+      "seconds": 3,
+      "consoleErrors": 0,
+      "notes": ""
+    },
+    {
+      "step": "02 project browser lists both lots",
+      "result": "OK",
+      "seconds": 0.7,
+      "consoleErrors": 0,
+      "notes": "DEMO-COMPLETE-01: true; DEMO-EARLY-01: true"
+    },
+    {
+      "step": "03 open DEMO-COMPLETE-01 dashboard",
+      "result": "OK",
+      "seconds": 0.8,
+      "consoleErrors": 0,
+      "notes": "no verdict text | PDA: 7.79% | first row of \"By Outlier Severity\": DEMO-COMPLETE-01-0023; last row: DEMO-COMPLETE-01-0004"
+    },
+    {
+      "step": "04 generate DPA work order",
+      "result": "OK",
+      "seconds": 0.8,
+      "consoleErrors": 0,
+      "notes": "DPA Work Order 3 OF 3 RECOMMENDED DEMO-COMPLETE-01-0004 Highest combined severity in the lot (1.00). DEMO-COMPLETE-01-0014 Highest-uncertainty part near the WATCH/REJECT boundary (Module B interval width 2.84). DEMO-COMPLETE-01-0001 Unflagged control part (PASS verdict, combined severity 0.59) for comparison."
+    },
+    {
+      "step": "05 open top part (first row of By Outlier Severity)",
+      "result": "OK",
+      "seconds": 2.3,
+      "consoleErrors": 0,
+      "notes": "url /parts/DEMO-COMPLETE-01-0023 | plotly charts: 1"
+    },
+    {
+      "step": "06 sign-offs: a.sharma, same-account repeat, r.mehta",
+      "result": "OK",
+      "seconds": 3.4,
+      "consoleErrors": 1,
+      "notes": "same-account message: Dual sign-off requires two distinct account IDs, not two role labels"
+    },
+    {
+      "step": "07 confirmed outcome + settings worklist",
+      "result": "OK",
+      "seconds": 3.9,
+      "consoleErrors": 0,
+      "notes": "before: Worklist Dispositions awaiting a confirmed outcome from destructive physical analysis. Tracking only; DPA work orders are generated per lot on the Lot Dashboard. Loading worklist… | after: Worklist Dispositions awaiting a confirmed outcome from destructive physical analysis. Tracking only; DPA work orders are generated per lot on the Lot Dashboard. No dispositions are awaiting a confirmed outcome. | status: OK"
+    },
+    {
+      "step": "08 ingest live_0h_24h.csv as LIVE-01",
+      "result": "OK",
+      "seconds": 9.5,
+      "consoleErrors": 0,
+      "notes": "result: New lot uploaded Lot ID LIVE-01 Part Number DEMO-PN Lot status IN_PROGRESS Readings 462 Open Lot Dashboard for LIVE-01 | no verdict | Forecast chip: true; in-progress wording: false"
+    },
+    {
+      "step": "09 upload live_96h.csv as checkpoint",
+      "result": "OK",
+      "seconds": 2.8,
+      "consoleErrors": 0,
+      "notes": "result: Checkpoint merged Lot ID LIVE-01 Part Number DEMO-PN Lot status IN_PROGRESS Readings 693 Open Lot Dashboard for LIVE-01 | no verdict | PDA PDA: 2.60%"
+    },
+    {
+      "step": "10 upload live_168h.csv as checkpoint -> complete",
+      "result": "FAIL",
+      "seconds": 2.8,
+      "consoleErrors": 0,
+      "notes": "result: Checkpoint merged Lot ID LIVE-01 Part Number DEMO-PN Lot status COMPLETE Readings 924 Open Lot Dashboard for LIVE-01 | no verdict | PDA PDA: 3.90%; Forecast chip: true | Module A ranking rows: 0 | ERROR: Module A ranking did not appear"
+    },
+    {
+      "step": "11 download report PDF",
+      "result": "OK",
+      "seconds": 2,
+      "consoleErrors": 0,
+      "notes": "RPT-88E15B7AE4.pdf: 29176 bytes, header \"%PDF-\""
+    },
+    {
+      "step": "12 history shows the events",
+      "result": "OK",
+      "seconds": 1.7,
+      "consoleErrors": 0,
+      "notes": "ingest: true | checkpoint_add: false | analysis_run: false | timing_flag: false | Sign-offs occurred: true"
+    },
+    {
+      "step": "13 hard refresh lands on login",
+      "result": "OK",
+      "seconds": 1,
+      "consoleErrors": 0,
+      "notes": "url after reload: /login"
+    },
+    {
+      "step": "14 request failure shows a visible error",
+      "result": "OK",
+      "seconds": 8.4,
+      "consoleErrors": 4,
+      "notes": "alert: Could not load this lot. No readable response from the API server. Check that the backend is running; if it is, its log shows the error. Retry"
+    }
+  ],
+  "loginToReportMinutes": "0.53"
+}

@@ -1,0 +1,72 @@
+Burn-In Anomaly
+
+SIH 26170 SYSTEM
+
+WORKSPACE
+
+Ingest
+Lot Dashboard
+Part Detail
+Project Browser
+History
+Settings
+
+A. Sharma
+
+Quality Engineer
+
+/
+LOT DASHBOARD
+LIVE-01
+Lot Dashboard
+
+Lot-level screening overview and dual-module severity triage
+
+Generate Report
+
+LOT ID
+
+LIVE-01
+
+PART NUMBER
+
+DEMO-PN
+
+MANUFACTURER
+
+Northvale Semiconductor
+
+DATE CODE
+
+2603
+
+TEST DATE
+
+2026-10-01
+
+OVERALL VERDICT
+
+LOT AT RISK
+FORECAST
+
+SCREENING SUMMARY
+
+Flagged Parts:
+2
+
+PDA METRIC
+
+PDA: 2.60%
+
+2 of 77 parts flagged, spread across iddq (1), prop_delay (1).
+
+By Outlier Severity
+N=0 OUTLIERS
+
+No parts flagged by this module.
+
+By Drift Risk
+N=2 TRACES
+COMPONENT ID	PARAMETER NAME	SEVERITY
+LIVE-01-0044	prop_delay	REJECT
+LIVE-01-0070	iddq	REJECT

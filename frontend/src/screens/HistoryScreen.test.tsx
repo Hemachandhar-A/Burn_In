@@ -272,6 +272,24 @@ describe('HistoryScreen (E6 screen 6)', () => {
     expect(await screen.findByText('source: script; rows: 12')).toBeInTheDocument()
   })
 
+  test('long floats in an event payload, including nested ones, go through the number formatter', async () => {
+    renderWithApi(<HistoryScreen />, {
+      fetch: server(
+        [
+          {
+            ...EVENTS[0],
+            payload: { verdict: 'REJECT', pda_result: 0.06493827160493827, detail: { x: 1.23456789 } },
+          },
+        ],
+        [],
+      ),
+    })
+
+    expect(
+      await screen.findByText('verdict: REJECT; pda_result: 0.0649; detail: {"x":1.2346}'),
+    ).toBeInTheDocument()
+  })
+
   test('an unknown project id is shown as the id, not hidden', async () => {
     renderWithApi(<HistoryScreen />, { fetch: server([{ ...EVENTS[2], project_id: 'p-gone' }], []) })
 

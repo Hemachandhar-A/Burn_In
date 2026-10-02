@@ -300,6 +300,24 @@ describe('Ingest screen (E6 screen 2, E7)', () => {
   })
 })
 
+describe('Ingest cache hygiene', () => {
+  test('a successful upload drops that lot’s cached dashboard queries before the dashboard link is offered', async () => {
+    const { queryClient } = setup({ 'POST /lots': { body: uploaded() } })
+    queryClient.setQueryData(['lot-summary', 'LOT-9'], { stale: true })
+    queryClient.setQueryData(['project', 'LOT-9'], { stale: true })
+    queryClient.setQueryData(['part-detail', 'C1', 'LOT-9'], { stale: true })
+    queryClient.setQueryData(['lot-summary', 'LOT-OTHER'], { keep: true })
+    choose(lotInput(), csv('lot-9.csv'))
+    fillMetadata()
+    fireEvent.click(commit())
+    await screen.findByRole('region', { name: 'Ingestion result' })
+    expect(queryClient.getQueryData(['lot-summary', 'LOT-9'])).toBeUndefined()
+    expect(queryClient.getQueryData(['project', 'LOT-9'])).toBeUndefined()
+    expect(queryClient.getQueryData(['part-detail', 'C1', 'LOT-9'])).toBeUndefined()
+    expect(queryClient.getQueryData(['lot-summary', 'LOT-OTHER'])).toEqual({ keep: true })
+  })
+})
+
 describe('Ingest edge cases', () => {
   test.each([
     ['A/B', 'Lot ID can’t contain “/”'],

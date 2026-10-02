@@ -276,3 +276,14 @@ def test_analysis_history_trigger_derived_from_preceding_event(repository):
 
     report = data.build_report_data("proj-1")
     assert report.analysis_history[0].trigger == "ingest"
+
+
+def test_methodology_sentence_states_only_what_the_live_pipeline_executes():
+    """fusion/pipeline.py calls module_a_detect(frames) with no prior_frames, so no Isolation Forest is
+    fitted and its score is 0.0 on the live path; the sentence must not say it contributes."""
+    from report.data import _METHODOLOGY_SUMMARY as text
+
+    assert "pooled cross-lot Isolation Forest score" not in text
+    assert "combining a robust per-parameter z-score, Minimum Covariance Determinant (MCD) distance and an ECOD outlier score" in text
+    assert "does not contribute in this build" in text
+    assert "corroboration from an explainable detector (z-score or MCD)" in text

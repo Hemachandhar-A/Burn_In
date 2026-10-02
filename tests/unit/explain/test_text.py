@@ -194,14 +194,14 @@ def test_confidence_qualifier_borderline_when_interval_band_disagrees():
     # Point estimate says exceeds, but the interval's lower bound does not - the interval is wide
     # enough that narrowing it slightly could flip the call.
     module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=False)
-    assert confidence_qualifier(module_b) == "borderline - recommend retest"
+    assert confidence_qualifier(module_b) == "forecast borderline: the prediction interval spans the safety slope - recommend retest"
 
 
 def test_confidence_qualifier_borderline_when_physics_disagreement_exceeds_half_interval_width():
     # interval width 10.0 -> half-width 5.0; physics gap 5.01 is just past the boundary.
     module_b = _module_b(exceeds_safety_slope=True, lower_bound_exceeds_safety_slope=True,
                           interval_lower=45.0, interval_upper=55.0, physics_disagreement_gap=5.01)
-    assert confidence_qualifier(module_b) == "borderline - recommend retest"
+    assert confidence_qualifier(module_b) == "forecast borderline: the physics baseline disagrees with the forecast - recommend retest"
 
 
 def test_confidence_qualifier_high_confidence_exactly_at_physics_boundary():
