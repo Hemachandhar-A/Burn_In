@@ -3,6 +3,8 @@ import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } fr
 import { Link } from 'react-router-dom'
 import { useApiClient } from '../api/ApiClientContext'
 import { describeFailure } from '../api/errors'
+import { EVENTS_QUERY_KEY } from '../api/history'
+import { WORKLIST_QUERY_KEY } from '../api/settings'
 import {
   ensureReadable,
   listProjects,
@@ -437,6 +439,13 @@ export function IngestScreen() {
     setOutcomes((o) => [...o, outcome])
     rememberLot(outcome.response.lot_id)
     const { lot_id, status } = outcome.response
+    // Drop (not just mark stale) everything cached for this lot, so the dashboard never flashes the previous run.
+    queryClient.removeQueries({ queryKey: ['lot-summary', lot_id] })
+    queryClient.removeQueries({ queryKey: ['project', lot_id] })
+    queryClient.removeQueries({ queryKey: ['part-detail'] })
+    void queryClient.invalidateQueries({ queryKey: EVENTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: WORKLIST_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY })
     setAnnouncement((a) =>
       `${a} ${OUTCOME_LABEL[outcome.kind]}: ${lot_id}, status ${status}.`.trim(),
     )
