@@ -4,8 +4,8 @@ isolated DB, the committed live demo CSVs). Part 7.4: this file is new; no exist
 
   * route-level checkpoint rules  - missing 96h is allowed and flagged, a missing 24h is INSUFFICIENT_DATA
   * determinism through the route - the same CSV into two lots gives the same verdict and PDA (rule 9)
-  * wide-format CSV through POST /lots, and a lot_id no later route can address - both are documented OPEN gaps
-    (BLOCKERS.md 2026-09-26 P1) and are pinned here as strict xfail so that fixing them turns the test green
+  * wide-format CSV through POST /lots, and a lot_id no later route can address - were OPEN gaps
+    (BLOCKERS.md 2026-09-26 P1), fixed in session 7b (F4/F5) and pinned here as ordinary tests
   * frontend rule 14 - no raw fetch outside the generated-client wrapper, no `any` in the typed API layer
   * no route carries a stub - the OpenAPI paths are all real, authenticated routers
 """
@@ -104,8 +104,6 @@ def _wide_csv() -> bytes:
     return buf.getvalue().encode()
 
 
-@pytest.mark.xfail(strict=True, reason="BLOCKERS.md 2026-09-26 P1: POST /lots never calls parse_wide_lot_csv "
-                                       "(the pinned E7 step 1 layout is rejected with 422)")
 def test_wide_format_csv_is_accepted_through_the_route_and_equals_long(client):
     assert _upload(client, "G7-LONG", _live_0h_24h()).status_code == 200
     wide = _upload(client, "G7-WIDE", _wide_csv())
@@ -114,8 +112,6 @@ def test_wide_format_csv_is_accepted_through_the_route_and_equals_long(client):
     assert a["disposition"]["pda_result"] == b["disposition"]["pda_result"]
 
 
-@pytest.mark.xfail(strict=True, reason="BLOCKERS.md 2026-09-26 P1: POST /lots accepts lot ids that no later route "
-                                       "can address (the server should answer 422)")
 @pytest.mark.parametrize("lot_id", ["A/B", ".."])
 def test_unaddressable_lot_ids_are_refused_by_the_server(client, lot_id):
     assert _upload(client, lot_id, _live_0h_24h()).status_code == 422
