@@ -1,0 +1,94 @@
+"""scripts/load_demo_lots.py: loads both demo lots through the real routes, idempotently, into whatever DB is configured."""
+import pytest
+from argon2 import PasswordHasher
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from scripts import load_demo_lots as demo
+
+
+@pytest.fixture
+def db(tmp_path, monkeypatch):
+    from ingestion import store
+    from storage import database, repository
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'demo.db'}")
+    session_local = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(database, "engine", engine)
+    monkeypatch.setattr(database, "SessionLocal", session_local)
+    monkeypatch.setattr(repository, "SessionLocal", session_local)
+    repository.init_db()
+    store.clear()
+    repository.save_account("a.sharma", "A. Sharma", "Quality Engineer", PasswordHasher().hash("1234"))
+    yield
+    store.clear()
+
+
+def _headers(client):
+    token = client.post("/auth/login", json={"account_id": "a.sharma", "pin": "1234"}).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_loads_both_lots_then_second_run_skips(db, capsys):
+    assert demo.main([]) == 0
+    first = capsys.readouterr().out
+    assert f"loaded {demo.COMPLETE_LOT_ID}: status COMPLETE" in first
+    assert f"loaded {demo.EARLY_LOT_ID}: status IN_PROGRESS" in first
+
+    assert demo.main([]) == 0
+    second = capsys.readouterr().out
+    assert f"skipped {demo.COMPLETE_LOT_ID}" in second and f"skipped {demo.EARLY_LOT_ID}" in second
+    assert "loaded" not in second
+
+
+def test_lot_contents_match_the_seed_scan(db):
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    assert demo.main([]) == 0
+    client = TestClient(app)
+    h = _headers(client)
+    scan = demo.scan_complete_seed(demo.COMPLETE_SEED)
+    assert demo.qualifies_complete(scan)
+    done = client.get(f"/lots/{demo.COMPLETE_LOT_ID}", headers=h).json()
+    assert done["disposition"]["status"] == "COMPLETE" and done["disposition"]["is_forecast"] is False
+    assert done["disposition"]["verdict"] == scan["lot_verdict"]
+    assert done["disposition"]["pda_result"] == pytest.approx(scan["pda"])
+    assert sum(a["verdict"] != "PASS" for a in done["assessments"]) == scan["flagged"]
+
+    early = client.get(f"/lots/{demo.EARLY_LOT_ID}", headers=h).json()
+    assert early["disposition"]["status"] == "IN_PROGRESS" and early["disposition"]["is_forecast"] is True
+    assert early["disposition"]["verdict"] in ("LOT_AT_RISK", "STOP_RUN_RECOMMENDED")
+    assert sum(a["verdict"] == "REJECT" for a in early["assessments"]) >= demo.MIN_B_REJECT
+
+
+def test_chosen_seeds_satisfy_their_selection_rules():
+    assert demo.qualifies(demo.scan_seed(demo.EARLY_SEED))
+    assert demo.qualifies_complete(demo.scan_complete_seed(demo.COMPLETE_SEED))
+
+
+@pytest.mark.skip(reason="BLOCKERS.md 2026-09-30 Lead: POST /lots normalizes the golden fixture's uA leakage to nA, Module B "
+                         "(calibrated on the generator's nA scale) then flags 37/77 parts: verdict REJECT, PDA 0.49, not HOLD 0.039")
+def test_golden_lot_through_the_route_is_hold(db):
+    import csv
+    import io
+
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+    from harness.golden import golden_lot
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["component_id", "parameter", "checkpoint_hour", "value", "unit"])
+    for r in golden_lot().readings:
+        w.writerow([r.component_id, r.parameter, r.checkpoint_hour, r.value, r.unit])
+    client = TestClient(app)
+    h = _headers(client)
+    up = client.post("/lots", headers=h, files={"file": ("g.csv", buf.getvalue().encode(), "text/csv")},
+                     data={"lot_id": "GOLDEN-T", "part_number": "PN-GOLDEN", "manufacturer": "GOLDEN-MFR",
+                           "date_code": "2601", "account_id": "a.sharma"})
+    assert up.status_code == 200
+    d = client.get("/lots/GOLDEN-T", headers=h).json()["disposition"]
+    assert d["verdict"] == "HOLD" and 0.03 < d["pda_result"] < 0.05

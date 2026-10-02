@@ -186,7 +186,13 @@ I am [Person]. Continuing [track]. Session: [session name from Part 10]. Objecti
 git checkout [my track's branch from Part 8's table] — confirm with git branch that I'm actually on it,
 not develop or wherever the last session left off. git log --oneline -10 && git status. Read my
 directory's existing code and tests. Confirm this session's prerequisite (from Part 10) is actually
-closed before starting.
+closed before starting. If the prerequisite is a session on someone else's branch: run
+git fetch origin && git log origin/develop --oneline -10 before doing anything else. If its work is
+visible there, get it into my branch with git rebase origin/develop (a rebase, not git pull), and
+push my branch with git push --force-with-lease (never plain push, never --force) when the session
+closes. If it is NOT visible there, it hasn't landed — ask directly (or check CONTRACT_CHANGES.md /
+BLOCKERS.md) rather than start and build against a branch missing what I need. Never guess from
+elapsed time. Full reasoning: the Git section below.
 </orient>
 <task>
 [Paste the specific Part 7.3 checklist row(s) this session targets.]
@@ -196,14 +202,77 @@ Test first. Stay in my owned directories. Log contract gaps, never guess or edit
 the generated client by hand.
 </rules>
 <end_of_session>
-Commit and push whatever isn't already pushed from this session's incremental commits — including if
+Commit and push (git push --force-with-lease if this session rebased) whatever isn't already pushed from this session's incremental commits — including if
 this session isn't actually finished, marked plainly as in-progress if so. Report: what's built, which
 Part 7.3 rows now pass (or which screens passed screenshot-verification), any CONTRACT_CHANGES.md or
 BLOCKERS.md entries added, which session is next and whether its prerequisite is met.
 </end_of_session>
 ```
 
+## Ongoing session prompt — frontend track
+
+Same shape as the generic ongoing prompt above, with what the frontend track needs and backend sessions don't: design fidelity against approved screen images, and per-route mock-vs-real decisions instead of a database or algorithm to build against. Reusable for every remaining frontend session — fill in the bracketed parts, everything else stays as written below.
+
+```
+<goal>
+I am P1. Continuing the frontend track. Session: [session name from Part 10, e.g. "P1.11 — Lot Dashboard
++ Part Detail"]. Screens this session: [list them].
+</goal>
+
+<orient>
+git checkout p1-frontend && git fetch origin && git rebase origin/develop — confirm with git branch.
+Check every backend route this session's screens need, one at a time, against /docs or the OpenAPI
+schema directly — not git log, not a status message from anyone, only the live schema counts. List them:
+[route: needed for which screen]. For each: real → wire through the regenerated client (run
+npm run generate-client first if contracts.py has changed since my last session; take develop's
+committed openapi.json/schema.d.ts on any rebase conflict, never hand-merge generated files). Not real →
+a hand-typed MOCK_<TypeName> in frontend/src/api/mocks.ts, matching contracts.py's Pydantic model
+field-for-field. No global flag for this — each screen's API call is written once, calling whichever is
+actually true for that specific route today; when the route goes live, that one function gets edited to
+call the real client, not toggled.
+</orient>
+
+<design_fidelity>
+Attached: this session's screen image(s). Design tokens, constant across every screen — sample the
+images for exact values, this is the anchor so sessions built days apart don't drift:
+- Background: white / very light slate. Dark panel (Login only): deep navy-graphite.
+- Severity colors — green/amber/red — used only for PASS/WATCH/REJECT-family badges, never decorative.
+- One grotesque sans for all UI text; monospace only for real data values (IDs, measurements,
+  timestamps), never for labels or headers.
+- Thin 1px borders, minimal-to-no shadow.
+Both the image and essential-features.md E6 are binding — where they conflict, ask, don't guess.
+</design_fidelity>
+
+<responsive_scope>
+Desktop/laptop range only, roughly 1280px–1920px+ — not mobile breakpoints. No horizontal scroll on
+tables or charts at any width in range; layout doesn't break at in-between widths.
+</responsive_scope>
+
+<accessibility_baseline>
+Every interactive element keyboard-reachable. Form inputs have real labels, not placeholder-as-label.
+Color is never the only severity signal — badge text carries the meaning, color reinforces it.
+</accessibility_baseline>
+
+<close_out>
+Screenshot-verify each screen against its attached image and against E6 — both, not either alone. Commit
+and push --force-with-lease after each screen passes, not saved for one commit at the end. Also log each
+new MOCK_<TypeName> as a BLOCKERS.md entry — blocked on: [route], what was tried: hand-typed mock per
+[screen]. When the real route lands, whoever resolves it marks the entry resolved and does the swap in
+the same session — not left for later. Report: which screens closed, which routes were real vs. mocked
+this session, which MOCK_ types are now stale and need swapping once their real route lands, next
+session and its prerequisite.
+</close_out>
+```
+
 ## Git
+
+**Checking a prerequisite that lives on someone else's branch.** Part 10 names a prerequisite session, but nothing in git says "P2.4 is done" — you have to look. Run `git fetch origin`, then `git log origin/develop --oneline -10`. If the prerequisite session's work isn't visible there, it hasn't merged into `develop`, and starting now means building against a branch that's missing what you need. If it's unclear, ask directly or check `CONTRACT_CHANGES.md` / `BLOCKERS.md` — don't guess from how much time has passed.
+
+**A merged session is not the same as a live, reachable route.** `git log origin/develop` only confirms a session's *commits* merged. It does not confirm that a router is registered in `api/main.py`, or that its routes are reachable. If your prerequisite is a route (an endpoint you need to call, or that the frontend's generated client is built from), confirm it directly: open `/docs` on a running app, or read the OpenAPI schema (`app.openapi()['paths']`, or `frontend/src/api/openapi.json` after regenerating). If the route is missing there, treat the prerequisite as not met, even though the session shows as merged, and ask the Lead. Registering a router in `api/main.py` is part of the same merge that introduces it, so a missing route is a merge gap, not something to work around.
+
+**Getting a landed prerequisite into your own branch is a rebase, not a pull.** `git pull` merges `develop` into your branch with a merge commit, which is not what "rebase onto `develop` daily" means. The correct sequence is `git fetch origin`, then `git rebase origin/develop`.
+
+**Pushing a rebased branch needs `git push --force-with-lease`, not a plain push.** A rebase rewrites history, so the remote rejects an ordinary push — every time anyone rebases, which is often given the daily-rebase rule. Use `--force-with-lease` specifically, not `--force`: it fails safely if someone else pushed to the branch since your last fetch, instead of silently overwriting their work.
 
 **Backend tracks:** branch per track (e.g. `p3-module-a`), off `develop`. Rebase onto `develop` daily, regardless of merge order position, and **push the rebased branch back to the remote every time** — a rebase that stays local doesn't help the Lead, who can only merge what's actually on the remote. PR into `develop` only when your Part 7.3 checklist is fully green and one other person has reviewed.
 

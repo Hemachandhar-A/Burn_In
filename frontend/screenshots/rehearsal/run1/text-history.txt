@@ -1,0 +1,66 @@
+Burn-In Anomaly
+
+SIH 26170 SYSTEM
+
+WORKSPACE
+
+Ingest
+Lot Dashboard
+Part Detail
+Project Browser
+History
+Settings
+
+A. Sharma
+
+Quality Engineer
+
+/
+HISTORY
+History
+
+Append-only event and disposition log across every project, the same for every account.
+
+TIMESTAMP (UTC)	ACCOUNT	EVENT TYPE	DESCRIPTION
+2026-10-01 04:55:46	A. Sharma	Analysis Run	
+verdict: REJECT; pda_result: 0.0649
+
+2026-10-01 04:55:45	A. Sharma	Checkpoint Added	
+reading_count: 924; status: COMPLETE
+
+2026-10-01 04:55:43	A. Sharma	Analysis Run	
+verdict: LOT_AT_RISK; pda_result: 0.039
+
+2026-10-01 04:55:42	A. Sharma	Checkpoint Added	
+reading_count: 693; status: IN_PROGRESS
+
+2026-10-01 04:55:40	A. Sharma	Analysis Run	
+verdict: LOT_AT_RISK; pda_result: 0.026
+
+2026-10-01 04:55:33	A. Sharma	Ingest	
+reading_count: 462; status: IN_PROGRESS
+
+2026-10-01 04:55:27	R. Mehta	Disposition	
+
+DEMO-COMPLETE-01-0023 on DEMO-COMPLETE-01 REJECT “Concur: reject.” (against analysis run run-95925b4c7d35)
+
+
+2026-10-01 04:55:27	R. Mehta	Timing Flag	
+Sign-offs occurred < 2 minutes apart.
+
+2026-10-01 04:55:24	A. Sharma	Disposition	
+
+DEMO-COMPLETE-01-0023 on DEMO-COMPLETE-01 REJECT “Leakage drift confirmed at 24h.” (against analysis run run-95925b4c7d35)
+
+
+2026-10-01 04:52:54	A. Sharma	Analysis Run	
+verdict: LOT_AT_RISK; pda_result: 0.1429
+
+2026-10-01 04:52:53	A. Sharma	Ingest	
+reading_count: 462; status: IN_PROGRESS
+
+2026-10-01 04:52:53	A. Sharma	Analysis Run	
+verdict: REJECT; pda_result: 0.0779
+
+2026-10-01 04:52:44	A. Sharma	Ingest	
+reading_count: 924; status: COMPLETE

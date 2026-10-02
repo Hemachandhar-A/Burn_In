@@ -1,0 +1,2637 @@
+{
+  "components": {
+    "schemas": {
+      "Body_load_demo_lot_lots_demo_post": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id"
+        ],
+        "title": "Body_load_demo_lot_lots_demo_post",
+        "type": "object"
+      },
+      "Body_upload_checkpoint_lots__lot_id__checkpoints_post": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "reference_expected_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Expected Json"
+          }
+        },
+        "required": [
+          "file",
+          "account_id"
+        ],
+        "title": "Body_upload_checkpoint_lots__lot_id__checkpoints_post",
+        "type": "object"
+      },
+      "Body_upload_lot_lots_post": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "date_code": {
+            "title": "Date Code",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "manufacturer": {
+            "title": "Manufacturer",
+            "type": "string"
+          },
+          "part_number": {
+            "title": "Part Number",
+            "type": "string"
+          },
+          "reference_expected_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Expected Json"
+          },
+          "test_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Date"
+          }
+        },
+        "required": [
+          "file",
+          "lot_id",
+          "part_number",
+          "manufacturer",
+          "date_code",
+          "account_id"
+        ],
+        "title": "Body_upload_lot_lots_post",
+        "type": "object"
+      },
+      "ConfirmedOutcomeRecord": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "analysis_run_id": {
+            "title": "Analysis Run Id",
+            "type": "string"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "confirmed_outcome": {
+            "enum": [
+              "Confirmed Good",
+              "Confirmed Defective",
+              "Unknown"
+            ],
+            "title": "Confirmed Outcome",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "component_id",
+          "account_id",
+          "confirmed_outcome",
+          "note",
+          "recorded_at",
+          "analysis_run_id"
+        ],
+        "title": "ConfirmedOutcomeRecord",
+        "type": "object"
+      },
+      "ConfirmedOutcomeRequest": {
+        "properties": {
+          "confirmed_outcome": {
+            "enum": [
+              "Confirmed Good",
+              "Confirmed Defective",
+              "Unknown"
+            ],
+            "title": "Confirmed Outcome",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "confirmed_outcome"
+        ],
+        "title": "ConfirmedOutcomeRequest",
+        "type": "object"
+      },
+      "CorrectiveStatusResponse": {
+        "properties": {
+          "confirmed_outcome_count": {
+            "title": "Confirmed Outcome Count",
+            "type": "integer"
+          },
+          "fn_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fn Rate"
+          },
+          "fp_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fp Rate"
+          },
+          "status": {
+            "enum": [
+              "OK",
+              "CEILING_EXCEEDED",
+              "INSUFFICIENT_DATA"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmed_outcome_count",
+          "status"
+        ],
+        "title": "CorrectiveStatusResponse",
+        "type": "object"
+      },
+      "DPARecommendation": {
+        "properties": {
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "reason"
+        ],
+        "title": "DPARecommendation",
+        "type": "object"
+      },
+      "DPAWorkOrderResponse": {
+        "properties": {
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/DPARecommendation"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recommendations"
+        ],
+        "title": "DPAWorkOrderResponse",
+        "type": "object"
+      },
+      "DispositionRecord": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "analysis_run_id": {
+            "title": "Analysis Run Id",
+            "type": "string"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ACCEPT",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "component_id",
+          "account_id",
+          "verdict",
+          "rationale",
+          "timestamp",
+          "analysis_run_id"
+        ],
+        "title": "DispositionRecord",
+        "type": "object"
+      },
+      "DispositionRequest": {
+        "properties": {
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ACCEPT",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "rationale"
+        ],
+        "title": "DispositionRequest",
+        "type": "object"
+      },
+      "EcodDimensionRow": {
+        "properties": {
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "dimension",
+          "score"
+        ],
+        "title": "EcodDimensionRow",
+        "type": "object"
+      },
+      "EventResponse": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "enum": [
+              "ingest",
+              "checkpoint_add",
+              "analysis_run",
+              "config_change",
+              "timing_flag"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "project_id",
+          "account_id",
+          "event_type",
+          "timestamp",
+          "payload"
+        ],
+        "title": "EventResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "pin": {
+            "title": "Pin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "pin"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "LotDisposition": {
+        "properties": {
+          "is_forecast": {
+            "title": "Is Forecast",
+            "type": "boolean"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "pda_result": {
+            "title": "Pda Result",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "IN_PROGRESS",
+              "COMPLETE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "LOT_ON_TRACK",
+              "LOT_AT_RISK",
+              "STOP_RUN_RECOMMENDED",
+              "ACCEPT",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lot_id",
+          "status",
+          "pda_result",
+          "verdict",
+          "is_forecast"
+        ],
+        "title": "LotDisposition",
+        "type": "object"
+      },
+      "LotSummaryResponse": {
+        "properties": {
+          "assessments": {
+            "items": {
+              "$ref": "#/components/schemas/RiskAssessment"
+            },
+            "title": "Assessments",
+            "type": "array"
+          },
+          "disposition": {
+            "$ref": "#/components/schemas/LotDisposition"
+          },
+          "explanation_summary": {
+            "default": "",
+            "title": "Explanation Summary",
+            "type": "string"
+          },
+          "insufficient_data_components": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Insufficient Data Components",
+            "type": "array"
+          },
+          "module_a_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModuleAResult"
+            },
+            "default": {},
+            "title": "Module A Results",
+            "type": "object"
+          },
+          "module_b_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModuleBResult"
+            },
+            "default": {},
+            "title": "Module B Results",
+            "type": "object"
+          },
+          "part_explanations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PartExplanation"
+            },
+            "default": {},
+            "title": "Part Explanations",
+            "type": "object"
+          }
+        },
+        "required": [
+          "assessments",
+          "disposition"
+        ],
+        "title": "LotSummaryResponse",
+        "type": "object"
+      },
+      "LotUploadResponse": {
+        "properties": {
+          "insufficient_data_components": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Insufficient Data Components",
+            "type": "array"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "part_number": {
+            "title": "Part Number",
+            "type": "string"
+          },
+          "reading_count": {
+            "title": "Reading Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "IN_PROGRESS",
+              "COMPLETE"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lot_id",
+          "part_number",
+          "status",
+          "reading_count"
+        ],
+        "title": "LotUploadResponse",
+        "type": "object"
+      },
+      "MCDContributionRow": {
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "contribution"
+        ],
+        "title": "MCDContributionRow",
+        "type": "object"
+      },
+      "ModuleAResult": {
+        "properties": {
+          "combined_severity": {
+            "title": "Combined Severity",
+            "type": "number"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "above_median",
+              "below_median"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "ecod_score": {
+            "title": "Ecod Score",
+            "type": "number"
+          },
+          "explainable_corroboration": {
+            "title": "Explainable Corroboration",
+            "type": "boolean"
+          },
+          "explainable_tags": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Explainable Tags",
+            "type": "object"
+          },
+          "isolation_forest_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isolation Forest Score"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "mcd_distance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcd Distance"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          },
+          "robust_z": {
+            "title": "Robust Z",
+            "type": "number"
+          },
+          "severity_cap_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Cap Reason"
+          },
+          "severity_tier": {
+            "enum": [
+              "PASS",
+              "REVIEW",
+              "REJECT"
+            ],
+            "title": "Severity Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "lot_id",
+          "parameter",
+          "robust_z",
+          "mcd_distance",
+          "isolation_forest_score",
+          "ecod_score",
+          "explainable_tags",
+          "direction",
+          "severity_tier",
+          "severity_cap_reason",
+          "combined_severity",
+          "explainable_corroboration"
+        ],
+        "title": "ModuleAResult",
+        "type": "object"
+      },
+      "ModuleBResult": {
+        "properties": {
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "drift_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drift Rate"
+          },
+          "exceeds_safety_slope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exceeds Safety Slope"
+          },
+          "forecast_unavailable": {
+            "title": "Forecast Unavailable",
+            "type": "boolean"
+          },
+          "interval_lower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Lower"
+          },
+          "interval_upper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Upper"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "lower_bound_exceeds_safety_slope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Bound Exceeds Safety Slope"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          },
+          "physics_baseline_prediction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physics Baseline Prediction"
+          },
+          "physics_disagreement_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physics Disagreement Gap"
+          },
+          "predicted_168h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted 168H"
+          },
+          "safety_slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Slope"
+          }
+        },
+        "required": [
+          "component_id",
+          "lot_id",
+          "parameter",
+          "predicted_168h",
+          "interval_lower",
+          "interval_upper",
+          "physics_baseline_prediction",
+          "physics_disagreement_gap",
+          "drift_rate",
+          "exceeds_safety_slope",
+          "safety_slope",
+          "lower_bound_exceeds_safety_slope",
+          "forecast_unavailable"
+        ],
+        "title": "ModuleBResult",
+        "type": "object"
+      },
+      "PartDetailResponse": {
+        "properties": {
+          "analysis_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Run Id"
+          },
+          "component_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Id"
+          },
+          "confidence_qualifier": {
+            "title": "Confidence Qualifier",
+            "type": "string"
+          },
+          "confirmed_outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmedOutcomeRecord"
+            },
+            "title": "Confirmed Outcomes",
+            "type": "array"
+          },
+          "disposition_history": {
+            "items": {
+              "$ref": "#/components/schemas/DispositionRecord"
+            },
+            "title": "Disposition History",
+            "type": "array"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartExplanation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation_sentence": {
+            "title": "Explanation Sentence",
+            "type": "string"
+          },
+          "lot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Id"
+          },
+          "module_a": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleAResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "module_b": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleBResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "severity_cap_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Cap Note"
+          },
+          "staleness_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Note"
+          },
+          "unavailable_forecast_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Forecast Note"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PASS",
+                  "WATCH",
+                  "REJECT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "explanation_sentence",
+          "confidence_qualifier",
+          "severity_cap_note",
+          "unavailable_forecast_note",
+          "staleness_note",
+          "disposition_history",
+          "confirmed_outcomes"
+        ],
+        "title": "PartDetailResponse",
+        "type": "object"
+      },
+      "PartExplanation": {
+        "description": "Per-component explainability payload (E4 steps 1-9): the four chart mechanisms plus the\ntext/notes for that one part. Every field optional/defaulted - a PASS part gets none of this\n(AnalysisResults.part_explanations only ever holds non-PASS parts, Part 3g).",
+        "properties": {
+          "confidence_qualifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Qualifier"
+          },
+          "ecod_dimensions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EcodDimensionRow"
+            },
+            "title": "Ecod Dimensions",
+            "type": "array"
+          },
+          "explanation_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Sentence"
+          },
+          "mcd_contributions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MCDContributionRow"
+            },
+            "title": "Mcd Contributions",
+            "type": "array"
+          },
+          "severity_cap_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Cap Note"
+          },
+          "shap_contributions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ShapContributionRow"
+            },
+            "title": "Shap Contributions",
+            "type": "array"
+          },
+          "trajectory": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TrajectoryPoint"
+            },
+            "title": "Trajectory",
+            "type": "array"
+          },
+          "unavailable_forecast_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Forecast Note"
+          },
+          "zscore_table": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ZScoreTableRow"
+            },
+            "title": "Zscore Table",
+            "type": "array"
+          }
+        },
+        "title": "PartExplanation",
+        "type": "object"
+      },
+      "PendingSettingChange": {
+        "properties": {
+          "field": {
+            "enum": [
+              "fn_fp_cost_ratio",
+              "pda_threshold",
+              "confirmed_outcome_fn_ceiling"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "proposed_by": {
+            "title": "Proposed By",
+            "type": "string"
+          },
+          "proposed_value": {
+            "title": "Proposed Value",
+            "type": "number"
+          },
+          "signed_off_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed Off By"
+          }
+        },
+        "required": [
+          "field",
+          "proposed_value",
+          "proposed_by",
+          "signed_off_by"
+        ],
+        "title": "PendingSettingChange",
+        "type": "object"
+      },
+      "ProjectSummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "date_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Code"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manufacturer"
+          },
+          "part_number": {
+            "title": "Part Number",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "test_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Date"
+          }
+        },
+        "required": [
+          "project_id",
+          "lot_id",
+          "part_number",
+          "created_at",
+          "created_by"
+        ],
+        "title": "ProjectSummary",
+        "type": "object"
+      },
+      "RiskAssessment": {
+        "properties": {
+          "actual_168h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual 168H"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "explanation_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Sentence"
+          },
+          "lot_id": {
+            "title": "Lot Id",
+            "type": "string"
+          },
+          "module_a_ran": {
+            "title": "Module A Ran",
+            "type": "boolean"
+          },
+          "module_a_rank": {
+            "title": "Module A Rank",
+            "type": "number"
+          },
+          "module_b_ran": {
+            "title": "Module B Ran",
+            "type": "boolean"
+          },
+          "module_b_rank": {
+            "title": "Module B Rank",
+            "type": "number"
+          },
+          "predicted_168h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted 168H"
+          },
+          "verdict": {
+            "enum": [
+              "PASS",
+              "WATCH",
+              "REJECT"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "worst_parameter": {
+            "title": "Worst Parameter",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "lot_id",
+          "verdict",
+          "module_a_rank",
+          "module_b_rank",
+          "worst_parameter",
+          "module_a_ran",
+          "module_b_ran",
+          "predicted_168h",
+          "actual_168h",
+          "explanation_sentence"
+        ],
+        "title": "RiskAssessment",
+        "type": "object"
+      },
+      "SettingsProposalRequest": {
+        "properties": {
+          "field": {
+            "enum": [
+              "fn_fp_cost_ratio",
+              "pda_threshold",
+              "confirmed_outcome_fn_ceiling"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "proposed_value": {
+            "title": "Proposed Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "field",
+          "proposed_value"
+        ],
+        "title": "SettingsProposalRequest",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "confirmed_outcome_fn_ceiling": {
+            "title": "Confirmed Outcome Fn Ceiling",
+            "type": "number"
+          },
+          "fn_fp_cost_ratio": {
+            "title": "Fn Fp Cost Ratio",
+            "type": "number"
+          },
+          "pda_threshold": {
+            "title": "Pda Threshold",
+            "type": "number"
+          },
+          "pending_changes": {
+            "items": {
+              "$ref": "#/components/schemas/PendingSettingChange"
+            },
+            "title": "Pending Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fn_fp_cost_ratio",
+          "pda_threshold",
+          "confirmed_outcome_fn_ceiling",
+          "pending_changes"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
+      },
+      "SettingsSignoffRequest": {
+        "properties": {
+          "field": {
+            "enum": [
+              "fn_fp_cost_ratio",
+              "pda_threshold",
+              "confirmed_outcome_fn_ceiling"
+            ],
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "SettingsSignoffRequest",
+        "type": "object"
+      },
+      "ShapContributionRow": {
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "shap_value": {
+            "title": "Shap Value",
+            "type": "number"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "feature",
+          "shap_value"
+        ],
+        "title": "ShapContributionRow",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "account_id",
+          "role"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "TrajectoryPoint": {
+        "description": "Block 4c Part 3b: one measured checkpoint of a part's worst parameter over burn-in - built at\nanalysis time from the stored FeatureFrame, one point per checkpoint that actually has a value\n(never a guessed/NaN one - rule 7, and the same discipline the earlier SHAP null bug required).",
+        "properties": {
+          "checkpoint_hour": {
+            "title": "Checkpoint Hour",
+            "type": "integer"
+          },
+          "lot_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Median"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "checkpoint_hour",
+          "value"
+        ],
+        "title": "TrajectoryPoint",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WorklistResponse": {
+        "properties": {
+          "pending": {
+            "items": {
+              "$ref": "#/components/schemas/DispositionRecord"
+            },
+            "title": "Pending",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pending"
+        ],
+        "title": "WorklistResponse",
+        "type": "object"
+      },
+      "ZScoreTableRow": {
+        "properties": {
+          "lot_median": {
+            "title": "Lot Median",
+            "type": "number"
+          },
+          "parameter": {
+            "title": "Parameter",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "z": {
+            "title": "Z",
+            "type": "number"
+          }
+        },
+        "required": [
+          "parameter",
+          "value",
+          "lot_median",
+          "z"
+        ],
+        "title": "ZScoreTableRow",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Burn-In Screening API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/disposition-signoffs": {
+      "get": {
+        "description": "Global feed across every project - History screen (E6 screen 6). Same resolution\nas get_all_events above.",
+        "operationId": "get_all_disposition_signoffs_disposition_signoffs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "component_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Component Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispositionRecord"
+                  },
+                  "title": "Response Get All Disposition Signoffs Disposition Signoffs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get All Disposition Signoffs",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/events": {
+      "get": {
+        "description": "Global feed across every project - History screen (E6 screen 6). CONTRACT_CHANGES.md\n2026-09-26 \"Routers registered; P2.8's storage routes differ from Part 5.6\" - added\nalongside the per-project route above, not instead of it.",
+        "operationId": "get_all_events_events_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventResponse"
+                  },
+                  "title": "Response Get All Events Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get All Events",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/lots": {
+      "post": {
+        "operationId": "upload_lot_lots_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_lot_lots_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Lot",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/lots/demo": {
+      "post": {
+        "description": "E7 step 2: a synthetic demo lot, so the system is demonstrable without a file on hand.\nA fresh lot_id per call (so repeat clicks don't collide); the generator's own seed/family\ndefaults otherwise, so the demo lot is deterministic given that lot_id (AGENTS.md rule 9).",
+        "operationId": "load_demo_lot_lots_demo_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_load_demo_lot_lots_demo_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Load Demo Lot",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/lots/{lot_id}": {
+      "get": {
+        "operationId": "get_lot_summary_lots__lot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Lot Summary",
+        "tags": [
+          "fusion"
+        ]
+      }
+    },
+    "/lots/{lot_id}/checkpoints": {
+      "post": {
+        "operationId": "upload_checkpoint_lots__lot_id__checkpoints_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_checkpoint_lots__lot_id__checkpoints_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Checkpoint",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/lots/{lot_id}/dpa-work-order": {
+      "post": {
+        "description": "E13 step 5: up to 3 recommended parts for destructive physical analysis, on a COMPLETE lot\nonly (a lot still IN_PROGRESS has no final verdict tier to select against - 409, not a guess).",
+        "operationId": "create_dpa_work_order_lots__lot_id__dpa_work_order_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DPAWorkOrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Dpa Work Order",
+        "tags": [
+          "CAPA"
+        ]
+      }
+    },
+    "/lots/{lot_id}/quality": {
+      "get": {
+        "description": "E7 step 7, surfaced separately from `LotUploadResponse` - that response model is frozen\n(`contracts.py`) with no field for quality flags; logged in CONTRACT_CHANGES.md rather than\nhand-edited. Not a contract type itself, so no `response_model` - plain JSON.",
+        "operationId": "get_quality_flags_lots__lot_id__quality_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Quality Flags Lots  Lot Id  Quality Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Quality Flags",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/lots/{lot_id}/report": {
+      "post": {
+        "operationId": "generate_report_lots__lot_id__report_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot_id",
+            "required": true,
+            "schema": {
+              "title": "Lot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Report",
+        "tags": [
+          "report"
+        ]
+      }
+    },
+    "/parts/{component_id}": {
+      "get": {
+        "operationId": "get_part_detail_parts__component_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "component_id",
+            "required": true,
+            "schema": {
+              "title": "Component Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lot Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Part Detail",
+        "tags": [
+          "fusion"
+        ]
+      }
+    },
+    "/parts/{component_id}/confirmed-outcome": {
+      "post": {
+        "description": "E13 step 1: records a confirmed real-world outcome for a part, linked to the analysis_run_id\nof the latest stored run containing it (never the disposition itself - this measures whether the\nmodel's verdict tier was right, a different question from whether the human's disposition was).\nAppend-only: never touches disposition_signoffs. No event is logged - see CONTRACT_CHANGES.md,\nthis block: none of the five event_type literal values fits this action, and AGENTS.md rule 3\nforbids inventing a new one here.",
+        "operationId": "create_confirmed_outcome_parts__component_id__confirmed_outcome_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "component_id",
+            "required": true,
+            "schema": {
+              "title": "Component Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lot Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmedOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmedOutcomeRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Confirmed Outcome",
+        "tags": [
+          "CAPA"
+        ]
+      }
+    },
+    "/parts/{component_id}/disposition": {
+      "post": {
+        "operationId": "create_disposition_parts__component_id__disposition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "component_id",
+            "required": true,
+            "schema": {
+              "title": "Component Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "analysis_run_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Disposition",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/projects": {
+      "get": {
+        "operationId": "list_projects_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSummary"
+                  },
+                  "title": "Response List Projects Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Projects",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/projects/{project_id}": {
+      "get": {
+        "operationId": "get_project_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/projects/{project_id}/disposition-signoffs": {
+      "get": {
+        "operationId": "get_disposition_signoffs_projects__project_id__disposition_signoffs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "component_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Component Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispositionRecord"
+                  },
+                  "title": "Response Get Disposition Signoffs Projects  Project Id  Disposition Signoffs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Disposition Signoffs",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/projects/{project_id}/events": {
+      "get": {
+        "operationId": "get_project_events_projects__project_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventResponse"
+                  },
+                  "title": "Response Get Project Events Projects  Project Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project Events",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "operationId": "get_settings_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/settings/corrective-status": {
+      "get": {
+        "description": "E13 steps 6-8: live-computed on every call, nothing stored, nothing to dismiss. The ceiling\nread here is the live Settings value (post dual sign-off), via identity.router's own state\nfunction - never re-derived from raw events a second time.",
+        "operationId": "get_corrective_status_settings_corrective_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectiveStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Corrective Status",
+        "tags": [
+          "CAPA"
+        ]
+      }
+    },
+    "/settings/propose": {
+      "post": {
+        "operationId": "propose_setting_settings_propose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingSettingChange"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose Setting",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/settings/signoff": {
+      "post": {
+        "operationId": "signoff_setting_settings_signoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsSignoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Signoff Setting",
+        "tags": [
+          "Auth",
+          "Settings",
+          "Disposition"
+        ]
+      }
+    },
+    "/settings/worklist": {
+      "get": {
+        "description": "E13 step 4: \"N dispositions awaiting a confirmed outcome\" - tracking only, changes nothing.",
+        "operationId": "get_worklist_settings_worklist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorklistResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Worklist",
+        "tags": [
+          "CAPA"
+        ]
+      }
+    }
+  }
+}

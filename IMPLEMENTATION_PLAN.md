@@ -167,7 +167,7 @@ Written by P1's harness to `config/harness_thresholds.yaml` (session P1.7, once 
 class Reading(BaseModel):
     component_id: str; lot_id: str; part_number: str
     manufacturer: str; date_code: str
-    parameter: Literal["iddq", "leakage", "prop_delay"]
+    parameter: str           # str, not Literal: an unrecognized parameter is a VALID Reading (context.md 5.9)
     checkpoint_hour: float   # explicit numeric, not an assumed 0/24/96/168 — context.md 5.9
     value: float; unit: str
 
@@ -177,37 +177,68 @@ class LotDataset(BaseModel):
     account_id: str          # ingestion attribution — context.md 7.3
 
 class FeatureFrame(BaseModel):
+    # One frame per (component, parameter) pair — value_* are scalars, so the frame is already parameter-scoped.
     component_id: str; lot_id: str
+    part_number: str; parameter: str    # part_number lets Module B pick its per-part-number model; parameter says which one this frame is about
     value_0h: float; value_24h: float; value_96h: float | None
+    value_168h: float | None            # populated only on a Complete lot — Module A screens the full series post-hoc (context.md 7.1); Module B never reads it
     delta_24h: float; delta_96h: float | None
+    delta_168h: float | None
+    # Pooled-fallback semantics: when used_pooled_fallback=True (< 30 parts) these are the pooled cross-lot
+    # reference median for this part number if one was supplied, else this lot's own median (still flagged) —
+    # not always the lot's own median. Module B's input vector carries the same two values with the same meaning.
     lot_median_0h: float; lot_median_24h: float
-    robust_z: dict[str, float]          # per parameter, per checkpoint
+    robust_z: dict[str, float]          # keyed per checkpoint label ("0h", "24h", "96h", "168h") — parameter is the frame's own field
     lot_size: int; used_pooled_fallback: bool   # < 30 parts — context.md 5.16
-    elapsed_hours: list[float]
+    elapsed_hours: dict[str, float]     # actual elapsed hours keyed by checkpoint label ("0h", "24h", "96h", "168h") — a bare list couldn't say which entry was which
 ```
 
-**Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it; `FeatureFrame` fields feeding Module B are `None` for that parameter, which Module B's contract (5.3) must treat as "forecast unavailable," never as zero or a silent drop.
+**Unrecognized-parameter handling (`context.md` 5.9):** a `parameter` value outside `{iddq, leakage, prop_delay}` is a valid `Reading` — Module A must accept it. `FeatureFrame` is always built with real, populated values for any parameter present in the readings, recognized or not — it never goes `None` for an unrecognized parameter. "Unrecognized" is expressed on Module B's output instead: `ModuleBResult` (5.3) carries `forecast_unavailable=True` and `predicted_168h=None` (and the other forecast fields `None`), which downstream must treat as "forecast unavailable," never as zero or a silent drop.
+
+**Wide-format CSV layout (pinned — implemented by P2's `parse_wide_lot_csv`, no longer provisional).** One row per (`component_id`, `checkpoint_hour`). Two fixed columns, `component_id` and `checkpoint_hour`, where `checkpoint_hour` is a **numeric column, never a column-name suffix** — a jittered 23.6h read has no `iddq_24h` column to live in. Then one value column per parameter, named `<parameter>_<unit>` (e.g. `iddq_uA`, `leakage_nA`, `prop_delay_ns`); the unit is the text after the last underscore, so a parameter name may itself contain underscores. A blank cell means no reading for that parameter at that checkpoint — skipped, not an error. Lot-level metadata (`lot_id`, `part_number`, `manufacturer`, `date_code`, `test_date`) is **not** a column: it comes from the ingestion metadata form (E7 step 1), matching how the long format is handled. Long format is `Reading`'s fields used verbatim, one row per `Reading`. Both parse to the identical `list[Reading]` for the same data (P2's 7.3 wide/long equivalence test).
 
 ## 5.3 Features → Module A / Module B (P2 → P3, P4)
 
 ```python
+class ModuleBInput(BaseModel):
+    # FeatureFrame minus value_168h / delta_168h — 168h is Module B's prediction target, so it is absent by
+    # construction (AGENTS.md rule 6), not filtered by convention. Built only via to_module_b_input(frame).
+    component_id: str; lot_id: str
+    part_number: str; parameter: str    # part_number selects the per-part-number model
+    value_0h: float; value_24h: float; value_96h: float | None
+    delta_24h: float; delta_96h: float | None
+    # Pooled-fallback semantics: when used_pooled_fallback=True (< 30 parts) these are the pooled cross-lot
+    # reference median for this part number if one was supplied, else this lot's own median (still flagged).
+    lot_median_0h: float; lot_median_24h: float
+    robust_z: dict[str, float]          # "0h"/"24h"/"96h" keys only — never "168h"
+    lot_size: int; used_pooled_fallback: bool
+    elapsed_hours: dict[str, float]     # "0h"/"24h"/"96h" keys only — never "168h"
+
+def to_module_b_input(frame: FeatureFrame) -> ModuleBInput:
+    """Drops value_168h/delta_168h and strips the "168h" key from robust_z and elapsed_hours (the two
+    open-ended dicts that would otherwise carry the target through on a Complete lot)."""
+
 class ModuleAResult(BaseModel):
-    component_id: str; parameter: str
+    component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot
     robust_z: float; mcd_distance: float | None   # None if lot < 30 (5-feature MCD ceiling — context.md 4.2)
     isolation_forest_score: float | None            # None on a part number's first-ever lot (cold start)
     ecod_score: float
-    explainable_tags: dict[str, bool]   # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": True}
+    explainable_tags: dict[str, bool]   # {"robust_z": True, "mcd": True, "isolation_forest": False, "ecod": False}
     direction: Literal["above_median", "below_median"]   # feeds the direction-awareness cap — context.md 4.2
     severity_tier: Literal["PASS", "REVIEW", "REJECT"]
     severity_cap_reason: str | None     # populated if capped — context.md 5.16, 6.2
+    combined_severity: float            # E2 step 5's max-combined percentile (0–1) — flagged missing twice (P1 P1.7, P5 P5.2), CONTRACT_CHANGES.md
+    explainable_corroboration: bool     # True iff an explainable-tagged detector (robust_z/mcd) reached or tied combined_severity — a property of the whole detector set, not a single "worst detector"; E12 step 2's gate keys off this
 
 class ModuleBResult(BaseModel):
-    component_id: str; parameter: str
+    component_id: str; lot_id: str; parameter: str   # lot_id: component IDs are only unique within a lot
     predicted_168h: float | None        # None if parameter outside trained three
     interval_lower: float | None; interval_upper: float | None
     physics_baseline_prediction: float | None
     physics_disagreement_gap: float | None
     drift_rate: float | None; exceeds_safety_slope: bool | None
+    safety_slope: float | None          # calibrated threshold drift_rate was compared against (E3 step 7's "threshold used"); same units as drift_rate; None whenever drift_rate/exceeds_safety_slope are. E4's "exceeds by 38%" is (drift_rate - safety_slope) / safety_slope, computed where the sentence is built (P5's explainability), not stored
+    lower_bound_exceeds_safety_slope: bool | None  # conservative counterpart: the same comparison with interval_lower in place of predicted_168h — STOP_RUN_RECOMMENDED (E12 step 5, context.md 5.18) keys off this, not exceeds_safety_slope; None whenever exceeds_safety_slope/safety_slope are
     forecast_unavailable: bool          # explicit flag — context.md 5.9
 ```
 
@@ -219,6 +250,11 @@ class RiskAssessment(BaseModel):
     verdict: Literal["PASS", "WATCH", "REJECT"]
     module_a_rank: float; module_b_rank: float   # two separate rankings, never fused — context.md 6.3
     worst_parameter: str
+    # Per-component detail the stored run diff (context.md 5.15) and the report need; required-but-nullable
+    module_a_ran: bool; module_b_ran: bool       # whether each module scored this component in this run
+    predicted_168h: float | None                 # Module B's forecast; None when unavailable
+    actual_168h: float | None                    # measured 168h once it exists (forecast resolved into an actual); else None
+    explanation_sentence: str | None             # E4 step 5's sentence; None until the explainability engine produces it
 
 class LotDisposition(BaseModel):
     lot_id: str; status: Literal["IN_PROGRESS", "COMPLETE"]
@@ -234,7 +270,7 @@ class LotDisposition(BaseModel):
 
 ```python
 def save_account(account_id: str, display_name: str, role: str, pin_hash: str) -> Account: ...
-def save_project(project_id: str, lot_id: str, part_number: str, created_by: str) -> Project: ...
+def save_project(project_id: str, lot_id: str, part_number: str, test_date: datetime, created_by: str) -> Project: ...
 def save_disposition_signoff(project_id: str, component_id: str, analysis_run_id: str,
                              account_id: str, verdict: str, rationale: str) -> DispositionSignoff: ...
 def save_confirmed_outcome(project_id: str, component_id: str, analysis_run_id: str, account_id: str,
@@ -264,6 +300,7 @@ class Project(Base):
     project_id: Mapped[str] = mapped_column(primary_key=True)
     lot_id: Mapped[str] = mapped_column(index=True)
     part_number: Mapped[str]
+    test_date: Mapped[datetime]        # lot-level physical test date from the ingestion metadata form (E7 step 1); distinct from created_at
     created_at: Mapped[datetime]
     created_by: Mapped[str] = mapped_column(ForeignKey("accounts.account_id"))
 
@@ -335,6 +372,7 @@ class TokenResponse(BaseModel):
 class LotUploadResponse(BaseModel):
     lot_id: str; part_number: str
     status: Literal["IN_PROGRESS", "COMPLETE"]; reading_count: int
+    insufficient_data_components: list[str] = []   # component_ids with no 0h or 24h reading for some parameter (INSUFFICIENT_DATA, E7 step 7) — they get no FeatureFrame, so they must be visible here, never a silent drop (R7)
 
 class LotSummaryResponse(AnalysisResults):
     pass
@@ -422,9 +460,11 @@ class DPAWorkOrderResponse(BaseModel):
 | `POST /parts/{component_id}/disposition` | `DispositionRequest` | `DispositionRecord` | required | `identity/router.py` (P5) |
 | `POST /parts/{component_id}/confirmed-outcome` | `ConfirmedOutcomeRequest` | `ConfirmedOutcomeRecord` | required | `capa/router.py` (P5) |
 | `GET /projects` | — | `list[ProjectSummary]` | required | `storage/router.py` (P2) |
-| `GET /projects/{project_id}` | — | `ProjectDataResponse` | required | `storage/router.py` (P2) |
+| `GET /projects/{project_id}` | — | `ProjectSummary` | required | `storage/router.py` (P2) |
 | `GET /events` | — | `list[EventResponse]` | required | `storage/router.py` (P2) |
 | `GET /disposition-signoffs` | — | `list[DispositionRecord]` | required | `storage/router.py` (P2) |
+| `GET /projects/{project_id}/events` | — | `list[EventResponse]` | required | `storage/router.py` (P2) — per-project variant, additional to the global `GET /events` above, not a replacement |
+| `GET /projects/{project_id}/disposition-signoffs` | — | `list[DispositionRecord]` | required | `storage/router.py` (P2) — per-project variant, additional to the global `GET /disposition-signoffs` above, optional `component_id` filter |
 | `GET /settings` | — | `SettingsResponse` | required | `identity/router.py` (P5) |
 | `POST /settings/propose` | `SettingsProposalRequest` | `PendingSettingChange` | required | `identity/router.py` (P5) |
 | `POST /settings/signoff` | `SettingsSignoffRequest` | `SettingsResponse` | required | `identity/router.py` (P5) |
@@ -552,6 +592,7 @@ Daily rebase regardless of position in the order; conflicts caught daily are min
 - [ ] Every field consumed/produced matches `contracts.py` exactly, or a `CONTRACT_CHANGES.md` entry exists for the gap — on the frontend, every API call goes through the generated client, never a hand-written `fetch`
 - [ ] 7.3's checklist for this stage is fully covered
 - [ ] No edits outside this person's owned directory
+- [ ] If the branch adds or changes a router, its `app.include_router(...)` in `api/main.py` is part of **this same merge** — never a separate follow-up. A router that exists and passes its own tests but isn't registered is not a live route: it is absent from the OpenAPI schema, so the frontend's generated client has nothing to build against. The Lead makes the `api/main.py` edit in the merge commit (or the merge is not complete); after merging, confirm the routes appear in `/docs` or the OpenAPI schema.
 
 ---
 
@@ -624,7 +665,7 @@ Each section below is written to be read on its own — with `AGENTS.md` and `co
 - **Session P2.3** *(prereq: P1.4)*: E7 steps 6–11 (normalization, quality checks, offset correction, cross-lot scope enforcement, unrecognized-parameter handling, attribution) against real data. Ingestion's 7.3 row green.
 - **Session P2.4** *(prereq: P2.3 — closes G3 together with P2.6)*: E8 steps 1–5 (deltas, robust stats, <30 fallback, z-scores, joint feature vector). Features' 7.3 row green. Real `FeatureFrame` handed to P3/P4.
 - **Session P2.5** *(prereq: P2.3, P2.4, Lead L1, P5.1 for the orchestrator stub)*: `ingestion/router.py` — replaces P2.1's stub route. `POST /lots` and `POST /lots/{lot_id}/checkpoints` now call `fusion.run_full_pipeline` (5.7 — stub or real, whichever exists) after a successful save, then `storage.save_analysis_run(...)` to persist the result, then `storage.log_event("analysis_run", ...)`. This wiring is what makes G3's exit criterion ("P2's storage repository API is callable") actually mean something end-to-end, not just that the functions exist in isolation.
-- **Session P2.6** *(prereq: P2.1 — must land before P5.4 needs it)*: E11 steps 4–8 (`project_data`+diff, `events`, `disposition_signoffs`, `confirmed_outcomes`, full repository API).
+- **Session P2.6** *(prereq: P2.1 — must land before P5.4 needs it)*: E11 steps 4–8 (`project_data`+diff, `events`, `disposition_signoffs`, `confirmed_outcomes`, full repository API). **Also** `query_readings_by_part_number` (or a stats-returning equivalent: per `(part_number, parameter, checkpoint_label)` median and robust sigma across *other* lots of that part number) — the cross-lot pooled reference E8 step 3's small-lot fallback needs, and which `features.compute()`'s `pooled_reference` argument is fed from. Previously unassigned to any session, not merely undocumented; it reads across `project_data.raw_data` for other projects sharing a `part_number`, a different query shape from E11 steps 4–8's own tables.
 - **Session P2.7** *(prereq: P2.4, P2.6)*: E9 steps 1–3 (report template, Analysis History section, `fpdf2` render) → steps 4–6 + `report/router.py`.
 - **Session P2.8** *(prereq: P2.6)*: `storage/router.py` — projects, events, disposition-signoffs read routes.
 

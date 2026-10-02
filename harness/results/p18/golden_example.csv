@@ -1,0 +1,6 @@
+method,evaluable,flagged,score,tier,note
+static_limits,True,False,0.9,,45 uA against the 50 uA datasheet max - inside the limit
+fixed_delta,True,False,0.0,,the part reads 45 uA at every checkpoint - it never drifts
+static_pat,False,False,,,no pooled reference population exists for this part number
+dynamic_pat,True,True,2.6250000000000004,,lot-relative limits - catches a static level outlier
+module_a,True,True,1.0,REJECT,max-combined within-lot severity; tier from config/harness_thresholds.yaml
