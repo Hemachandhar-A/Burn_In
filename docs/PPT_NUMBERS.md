@@ -13,6 +13,15 @@ cost-sensitive thresholds and cross-lot reasoning that those baselines do not ha
 All figures: held-out benchmark of **9,779 parts, 521 defective**, five generator families, seed 2026, judged on the full
 0h-168h Complete-lot series; cost is per part at FN:FP 10:1 (`harness/results/p18/comparison.md`, header).
 
+**CONFIGURATION NOTE - benchmark versus live demo (Module A).** The benchmark ran Module A with a pooled cross-lot
+reference and the Isolation Forest **active**: `harness/scoring.py:155-164` (`run_module_a`) calls
+`detect(frames, prior_frames=list(history))` for each lot, where the history is every earlier lot of the same held-out
+family (a family's first lot is a cold start with no forest). The live demo runs Module A **without** it:
+`fusion/pipeline.py:72` calls `module_a_detect(frames)` with no `prior_frames`, so no forest is fitted and the score is the
+max of robust z, MCD and ECOD only (all 77 Module A results of DEMO-COMPLETE-01 have `isolation_forest_score` = None). On a
+4-lot sample (family `baseline`, 308 parts, seed 2026) the two configurations flag 63 versus 56 parts. Every Module A figure
+below is therefore the benchmark configuration, not a measurement of the demo (DISCLOSURES #7). Say so if asked.
+
 ## Claims
 
 | # | Claim text (slide wording) | Exact numbers | Source (file / column) | Caveat |
