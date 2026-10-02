@@ -24,6 +24,12 @@ function flaggedAssessments(data: LotSummaryResponse): RiskAssessment[] {
   return data.assessments.filter((a) => a.verdict !== 'PASS')
 }
 
+/** Rank 1 is the most severe, so ascending; ties broken by component id ascending. */
+function byRank(key: 'module_a_rank' | 'module_b_rank') {
+  return (a: RiskAssessment, b: RiskAssessment) =>
+    a[key] - b[key] || (a.component_id < b.component_id ? -1 : a.component_id > b.component_id ? 1 : 0)
+}
+
 function RankedList({
   title,
   icon,
@@ -187,12 +193,12 @@ function LotDashboardForLot({ lotId }: { lotId: string }) {
   const byModuleA = data
     ? [...data.assessments]
         .filter((a) => a.module_a_ran && a.verdict !== 'PASS')
-        .sort((a, b) => b.module_a_rank - a.module_a_rank)
+        .sort(byRank('module_a_rank'))
     : []
   const byModuleB = data
     ? [...data.assessments]
         .filter((a) => a.module_b_ran && a.verdict !== 'PASS')
-        .sort((a, b) => b.module_b_rank - a.module_b_rank)
+        .sort(byRank('module_b_rank'))
     : []
 
   return (

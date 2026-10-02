@@ -167,6 +167,29 @@ describe('Lot Dashboard screen (E6 screen 3)', () => {
     expect(driftRows).toEqual(['DUT-008'])
   })
 
+  test('ranked lists put rank 1 (most severe) first and the highest rank number last', async () => {
+    const row = (id: string, a: number, b: number) => ({
+      ...SUMMARY().assessments[0],
+      component_id: id,
+      module_a_rank: a,
+      module_b_rank: b,
+      module_b_ran: true,
+    })
+    setup('/lots/LOT-2024-8841', {
+      body: SUMMARY({
+        assessments: [row('C-3', 3, 2), row('C-1', 1, 3), row('C-2', 2, 1), row('C-0', 2, 1)],
+      }),
+    })
+    await screen.findByText('PDA: 5.19%')
+    const ids = (name: string) =>
+      within(screen.getByRole('table', { name }))
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => within(r).getAllByRole('cell')[0].textContent)
+    expect(ids('By Outlier Severity')).toEqual(['C-1', 'C-0', 'C-2', 'C-3'])
+    expect(ids('By Drift Risk')).toEqual(['C-0', 'C-2', 'C-3', 'C-1'])
+  })
+
   test('a ranked-list row links to that component’s Part Detail screen', async () => {
     setup()
     await screen.findByText('PDA: 5.19%')
