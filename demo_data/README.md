@@ -27,8 +27,7 @@ Accounts: `a.sharma` / `1234` and `r.mehta` / `5678`. On the Login screen pick t
 1. Sign in as **A. Sharma**. **Project Browser** (left menu) lists both preloaded lots; click **DEMO-COMPLETE-01**.
 2. **Lot Dashboard**: verdict badge, `PDA: ...%`, `Flagged Parts`, the one-sentence summary, the metadata panel and the two
    ranked lists (**By Outlier Severity** = Module A, **By Drift Risk** = Module B).
-   *Known issue (G7, to be fixed in Session 7b):* both lists currently show the **least** severe flagged part first; the
-   most severe part (`module_a_rank` 1) is the last row. Until fixed, click the **last** row for the top part.
+   Rank 1 (the most severe flagged part) is the first row of each list.
 3. Click **Generate DPA Work Order**: up to 3 parts, each with its reason.
 4. Click a part ID in a ranked list -> **Part Detail**: sentence, confidence qualifier, trajectory chart, 24h Z-Score
    Table, SHAP / MCD / ECOD charts.
@@ -53,13 +52,12 @@ Accounts: `a.sharma` / `1234` and `r.mehta` / `5678`. On the Login screen pick t
    Under **Upload Lot CSV** choose `live_0h_24h.csv` (click the drop zone, or drag the file), then **Commit Batch**.
    The result panel says "New lot uploaded ... IN_PROGRESS, 462 readings"; click **Open Lot Dashboard for LIVE-01**.
 8. The dashboard shows `LOT AT RISK` with a **FORECAST** chip (never a final verdict), a small Module B list and an empty
-   Module A list ("No parts flagged by this module": Module A only runs on a Complete lot).
+   Module A list ("Module A runs when the lot is Complete.").
 9. **Ingest** again, same metadata (Lot ID `LIVE-01`); under **Add Checkpoint Reading** click **Select file**, choose
    `live_96h.csv`, **Commit Batch** -> "Checkpoint merged ... IN_PROGRESS, 693 readings"; the dashboard shows the forecast
    refreshed (2 flagged, PDA 2.60% -> 3 flagged, PDA 3.90%).
 10. Same again with `live_168h.csv` -> "COMPLETE, 924 readings": the dashboard becomes `REJECT`, PDA 6.49%, 13 of 77
-    flagged, and the **By Outlier Severity** (Module A) list appears. *The dashboard may show the previous (forecast)
-    numbers for about a second before the refreshed ones replace them; wait for the refresh.*
+    flagged, and the **By Outlier Severity** (Module A) list appears; the dashboard shows the new result straight away.
 11. **Generate Report** (top right of the dashboard) downloads `RPT-<id>.pdf` (about 29 KB, 8 pages).
 12. **History** lists Ingest, Checkpoint Added, Analysis Run, Disposition and Timing Flag rows.
 13. A page refresh returns to the Login screen (the token lives in memory only, by design).
