@@ -172,13 +172,51 @@ def heavytail() -> int:
     return 0
 
 
+def verify_v1f() -> int:
+    """Session I2c: re-run the published protocol with V1F (MCD leg only from 77 parts) and compare part by part with the
+    V1 run saved by I2a (parts_absolute_live.csv.gz). All benchmark lots have 77 parts, so the scores must be identical."""
+    from harness import scoring as hs
+    from harness import variants as hv
+    from harness.held_out import generate_held_out_sets
+    from module_a.scoring import ScoringConfig
+    from module_a.settings import MCD_MIN_PARTS_ABSOLUTE
+
+    cfg = ScoringConfig(calibration="absolute", combination="max", review_threshold=REVIEW_T, reject_threshold=REJECT_T,
+                        mcd_min_parts=MCD_MIN_PARTS_ABSOLUTE)
+    tables = []
+    for name, test_set in generate_held_out_sets(seed=SEED).items():
+        scores = hs.variant_part_scores(hs.run_module_a(test_set, scoring=cfg))
+        t = test_set.labels().merge(scores, on=["lot_id", "component_id"], how="left", validate="one_to_one")
+        tables.append(t.rename(columns={"score": "v1f_score"}))
+        print(f"{name}: {len(t)} parts", flush=True)
+    v1f = pd.concat(tables, ignore_index=True)
+    v1 = pd.read_csv(absolute_path())
+    m = v1.merge(v1f[["lot_id", "component_id", "v1f_score"]], on=["lot_id", "component_id"], validate="one_to_one")
+    assert len(m) == len(v1) == len(v1f)
+    max_diff = float((m["absolute_score"] - m["v1f_score"]).abs().max())
+    m["v1f_review_flagged"] = m["v1f_score"] >= REVIEW_T
+    m["v1f_reject_flagged"] = m["v1f_score"] >= REJECT_T
+    out = {"parts": len(m), "max_abs_score_difference_v1_vs_v1f": max_diff,
+           "review_flags_identical": bool((m["v1f_review_flagged"] == m["absolute_review_flagged"]).all()),
+           "reject_flags_identical": bool((m["v1f_reject_flagged"] == m["absolute_reject_flagged"]).all()),
+           "lot_sizes": sorted(m.groupby("lot_id").size().unique().tolist())}
+    for tier in ("review", "reject"):
+        out[f"v1f_{tier}"] = hv.lot_bootstrap_metrics(m, f"v1f_{tier}_flagged")
+    (OUT / "v1f").mkdir(parents=True, exist_ok=True)
+    (OUT / "v1f" / "published_protocol_v1f.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
+    print(json.dumps(out, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("what", choices=("absolute", "report", "heavytail"))
+    ap.add_argument("what", choices=("absolute", "report", "heavytail", "v1f"))
     args = ap.parse_args(argv)
     if args.what == "absolute":
         run_absolute()
         return 0
+    if args.what == "v1f":
+        return verify_v1f()
     return report() if args.what == "report" else heavytail()
 
 
