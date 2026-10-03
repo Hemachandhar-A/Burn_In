@@ -1,0 +1,74 @@
+{
+  "module_a_review": {
+    "C1_recall_exceeds_static_limits_static_pat_dynamic_pat": {
+      "holds": true,
+      "breaks": []
+    },
+    "C2_cost_beats_static_limits": {
+      "holds": false,
+      "breaks": [
+        "prev_1"
+      ]
+    },
+    "C3_flag_rate_at_least_10pct_at_1pct_prevalence": {
+      "holds": true,
+      "flag_rate_at_prev_1": 0.18181818181818182,
+      "flag_rate_all_settings": {
+        "baseline": 0.18329004329004328,
+        "noise_x0.5": 0.18363636363636363,
+        "noise_x2": 0.18606060606060607,
+        "prev_1": 0.18181818181818182,
+        "prev_3": 0.18069264069264068,
+        "prev_8": 0.18761904761904763,
+        "exp_low": 0.18346320346320347,
+        "exp_high": 0.18199134199134198,
+        "lot_30": 0.19644444444444445,
+        "lot_150": 0.16982222222222224
+      }
+    }
+  },
+  "module_a_reject": {
+    "C1_recall_exceeds_static_limits_static_pat_dynamic_pat": {
+      "holds": true,
+      "breaks": []
+    },
+    "C2_cost_beats_static_limits": {
+      "holds": false,
+      "breaks": [
+        "prev_1"
+      ]
+    },
+    "C3_flag_rate_at_least_10pct_at_1pct_prevalence": {
+      "holds": true,
+      "flag_rate_at_prev_1": 0.15411255411255412,
+      "flag_rate_all_settings": {
+        "baseline": 0.15324675324675324,
+        "noise_x0.5": 0.15393939393939393,
+        "noise_x2": 0.15437229437229438,
+        "prev_1": 0.15411255411255412,
+        "prev_3": 0.1523809523809524,
+        "prev_8": 0.15800865800865802,
+        "exp_low": 0.15341991341991343,
+        "exp_high": 0.15333333333333332,
+        "lot_30": 0.19377777777777777,
+        "lot_150": 0.1468
+      }
+    }
+  },
+  "C4_dynamic_pat_precision_above_0.9": {
+    "holds": true,
+    "breaks": [],
+    "precision": {
+      "baseline": 0.9911764705882353,
+      "noise_x0.5": 0.9940828402366864,
+      "noise_x2": 0.9880952380952381,
+      "prev_1": 0.9565217391304348,
+      "prev_3": 0.9824561403508771,
+      "prev_8": 0.9949152542372881,
+      "exp_low": 0.9911764705882353,
+      "exp_high": 0.9911764705882353,
+      "lot_30": 0.9635036496350365,
+      "lot_150": 0.9968701095461658
+    }
+  }
+}

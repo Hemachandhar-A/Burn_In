@@ -153,21 +153,36 @@ def part_detector_scores(results: Sequence[ModuleAResult]) -> pd.DataFrame:
     return pct.groupby(_PART_KEY, sort=False)[list(DETECTORS)].max().reset_index()
 
 
-def run_module_a(test_set: HeldOutTestSet) -> list[ModuleAResult]:
-    """module_a's detect() once per lot, in lot order, each lot's history being every earlier lot of the set."""
+def run_module_a(test_set: HeldOutTestSet, *, pooled_reference: bool = True,
+                 max_history: int | None = None) -> list[ModuleAResult]:
+    """module_a's detect() once per lot, in lot order, each lot's history being every earlier lot of the set.
+
+    Defaults reproduce the published benchmark configuration exactly. Two optional measurement switches:
+    `pooled_reference=False` passes no prior_frames - the LIVE configuration, where the app's pipeline
+    (fusion.run_full_pipeline) calls detect(frames) with no pooled reference so the Isolation Forest is
+    inactive; `max_history=K` limits the history to the K most recent earlier lots of the set."""
+    if max_history is not None and (isinstance(max_history, bool) or not isinstance(max_history, int)
+                                    or max_history < 1):
+        raise ValueError(f"max_history must be an int >= 1 or None, got {max_history!r}")
     results: list[ModuleAResult] = []
-    history = []
+    history: list[list] = []  # one frame list per earlier lot, oldest first
     for lot in test_set.lots:
         frames = compute(lot.dataset)
-        results += module_a_detect.detect(frames, prior_frames=list(history))
-        history += frames
+        if pooled_reference:
+            earlier = history if max_history is None else history[-max_history:]
+            prior = [f for lot_frames in earlier for f in lot_frames]
+        else:
+            prior = []
+        results += module_a_detect.detect(frames, prior_frames=prior)
+        history.append(frames)
     return results
 
 
-def module_a_table(test_set: HeldOutTestSet, results: Sequence[ModuleAResult] | None = None) -> pd.DataFrame:
+def module_a_table(test_set: HeldOutTestSet, results: Sequence[ModuleAResult] | None = None, *,
+                   pooled_reference: bool = True, max_history: int | None = None) -> pd.DataFrame:
     """One row per part: family, ground truth and the four detectors' part-level percentiles."""
     if results is None:
-        results = run_module_a(test_set)
+        results = run_module_a(test_set, pooled_reference=pooled_reference, max_history=max_history)
     labels = test_set.labels()
     parts = part_detector_scores(results)
     table = labels.merge(parts, on=_PART_KEY, how="left", validate="one_to_one")

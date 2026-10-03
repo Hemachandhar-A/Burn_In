@@ -88,13 +88,16 @@ def add_module_a_flags(parts: pd.DataFrame, thresholds: HarnessThresholds) -> pd
 
 
 def part_table(sets: Mapping[str, HeldOutTestSet], thresholds: HarnessThresholds, *, seed: int,
-               n_reference_lots: int = PAT_REFERENCE_LOTS) -> pd.DataFrame:
-    """One row per held-out part: ground truth, Module A's severity, and every method's score/flag/evaluable."""
+               n_reference_lots: int = PAT_REFERENCE_LOTS, pooled_reference: bool = True,
+               max_history: int | None = None) -> pd.DataFrame:
+    """One row per held-out part: ground truth, Module A's severity, and every method's score/flag/evaluable.
+    `pooled_reference` / `max_history` select Module A's Isolation Forest history (scoring.run_module_a); the
+    defaults are the published benchmark configuration. The baselines are unaffected by either."""
     tables = []
     for test_set in sets.values():
         part_number = test_set.lots[0].dataset.part_number
         pat_limits = ib.fit_static_pat(reference_lots(seed, n_reference_lots, part_number))
-        module_a = scoring.module_a_table(test_set)
+        module_a = scoring.module_a_table(test_set, pooled_reference=pooled_reference, max_history=max_history)
         module_a["module_a_score"] = module_a[list(scoring.DETECTORS)].max(axis=1)
         module_a = module_a.drop(columns=list(scoring.DETECTORS))
         base = pd.concat([_baseline_parts(lot.dataset, pat_limits) for lot in test_set.lots], ignore_index=True)

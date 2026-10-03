@@ -1,0 +1,11 @@
+setting,rank_by_cost
+baseline,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
+noise_x0.5,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
+noise_x2,dynamic_pat < module_a_reject < module_a_review < fixed_delta < static_pat < static_limits
+prev_1,dynamic_pat < fixed_delta < static_pat < static_limits < module_a_reject < module_a_review
+prev_3,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
+prev_8,fixed_delta < module_a_review < dynamic_pat < module_a_reject < static_pat < static_limits
+exp_low,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
+exp_high,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
+lot_30,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
+lot_150,fixed_delta < dynamic_pat < module_a_reject < module_a_review < static_pat < static_limits
