@@ -1,0 +1,212 @@
+{
+  "V0": {
+    "S1": false,
+    "S1_parts": {
+      "P1": false,
+      "P2": true,
+      "p3": null,
+      "p4": null,
+      "p5": null
+    },
+    "S2": true,
+    "S3": false,
+    "S4": false,
+    "S5": true,
+    "values": {
+      "P1": 0.34324675324675324,
+      "recall": 0.9176854115729421,
+      "cost": 0.3291082251082251,
+      "prev1_cost": 0.33774891774891774,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": 0.0
+    },
+    "all": false,
+    "S6_informational": {
+      "recall": 0.8394458027709861,
+      "cost": 0.3781991341991342,
+      "S2": true,
+      "S3": false,
+      "S5": false
+    }
+  },
+  "V1": {
+    "S1": true,
+    "S1_parts": {
+      "P1": true,
+      "P2": true,
+      "p3": true,
+      "p4": true,
+      "p5": true
+    },
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "values": {
+      "P1": 0.048051948051948054,
+      "recall": 0.91306710133116,
+      "cost": 0.09645021645021645,
+      "prev1_cost": 0.04753246753246753,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": -0.18935064935064938
+    },
+    "all": true,
+    "S6_informational": {
+      "recall": 0.908720456397718,
+      "cost": 0.0965021645021645,
+      "S2": true,
+      "S3": true,
+      "S5": true
+    }
+  },
+  "V1-C1": {
+    "S1": false,
+    "S1_parts": {
+      "P1": false,
+      "P2": true,
+      "p3": true,
+      "p4": true,
+      "p5": true
+    },
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "values": {
+      "P1": 0.07448051948051948,
+      "recall": 0.9065471339309971,
+      "cost": 0.11911688311688312,
+      "prev1_cost": 0.07056277056277056,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": -0.17558441558441562
+    },
+    "all": false,
+    "S6_informational": {
+      "recall": 0.8951371909807118,
+      "cost": 0.12058874458874459,
+      "S2": true,
+      "S3": true,
+      "S5": true
+    }
+  },
+  "V1-C2": {
+    "S1": true,
+    "S1_parts": {
+      "P1": true,
+      "P2": true,
+      "p3": true,
+      "p4": true,
+      "p5": true
+    },
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "values": {
+      "P1": 0.020714285714285713,
+      "recall": 0.8810105949470253,
+      "cost": 0.09255411255411256,
+      "prev1_cost": 0.023376623376623377,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": -0.1974891774891775
+    },
+    "all": true,
+    "S6_informational": {
+      "recall": 0.8842705786471068,
+      "cost": 0.09676190476190476,
+      "S2": true,
+      "S3": true,
+      "S5": true
+    }
+  },
+  "V2k2": {
+    "S1": true,
+    "S1_parts": {
+      "P1": true,
+      "P2": true,
+      "p3": true,
+      "p4": true,
+      "p5": true
+    },
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "values": {
+      "P1": 0.048051948051948054,
+      "recall": 0.91306710133116,
+      "cost": 0.09645021645021645,
+      "prev1_cost": 0.04753246753246753,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": -0.18935064935064938
+    },
+    "all": true,
+    "S6_informational": {
+      "recall": 0.908720456397718,
+      "cost": 0.0965021645021645,
+      "S2": true,
+      "S3": true,
+      "S5": true
+    }
+  },
+  "V2k5": {
+    "S1": false,
+    "S1_parts": {
+      "P1": false,
+      "P2": true,
+      "p3": true,
+      "p4": true,
+      "p5": true
+    },
+    "S2": true,
+    "S3": false,
+    "S4": false,
+    "S5": true,
+    "values": {
+      "P1": 0.3451298701298701,
+      "recall": 0.9225753871230644,
+      "cost": 0.31885714285714284,
+      "prev1_cost": 0.33705627705627705,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": -0.002683982683982733
+    },
+    "all": false,
+    "S6_informational": {
+      "recall": 0.806574300461831,
+      "cost": 0.3862857142857143,
+      "S2": true,
+      "S3": false,
+      "S5": false
+    }
+  },
+  "V2k10": {
+    "S1": false,
+    "S1_parts": {
+      "P1": false,
+      "P2": true,
+      "p3": true,
+      "p4": true,
+      "p5": true
+    },
+    "S2": true,
+    "S3": false,
+    "S4": false,
+    "S5": true,
+    "values": {
+      "P1": 0.32292207792207794,
+      "recall": 0.9106221135560989,
+      "cost": 0.30403463203463205,
+      "prev1_cost": 0.31593073593073595,
+      "static_limits_prev1_cost": 0.09004329004329005,
+      "worst_family_extra_cost_vs_v0": -0.0025974025974025983
+    },
+    "all": false,
+    "S6_informational": {
+      "recall": 0.7948926922032057,
+      "cost": 0.37586147186147184,
+      "S2": true,
+      "S3": false,
+      "S5": false
+    }
+  }
+}

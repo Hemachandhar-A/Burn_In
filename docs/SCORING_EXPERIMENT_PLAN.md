@@ -212,3 +212,7 @@ S1 is decided by P1, which it is expected to fail.
 Re-scoring a variant on the robustness sequences is a cheap function of the cached raw scores, so S4 (prevalence 1%) is
 computed for ALL variants, not only the finalists, which lets the selection rule apply S4 as written. The finalists'
 robustness rows (prevalence 1%, 3%, noise x2) are the ones discussed in the result document.
+
+### D6 (after the results were known; exploratory, no decision rests on it)
+Two ablations were run to explain the result: V1 without the ECOD leg (identical to V1) and z-only / MCD-only (cost 0.1373
+and 0.0912). Files: `docs/evidence_data/scoring/exploratory_*.json`. They are described in `docs/SCORING_EXPERIMENT_RESULT.md`.
