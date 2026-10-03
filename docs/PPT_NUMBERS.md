@@ -120,3 +120,34 @@ target coverage: [np.float64(0.9)]
 lowest-coverage cell: different_noise_regime / leakage / 96h = 0.437
 ```
 
+
+## Added measurements (all on synthetic held-out data)
+
+Added in session M1 (`docs/EVIDENCE_MEASUREMENTS.md`, pre-registered in `docs/EVIDENCE_PLAN.md`). Nothing above this heading was
+changed. Every figure is synthetic-generator data; none of it says anything about real parts. Source column: files under
+`docs/evidence_data/`.
+
+| # | Claim text (slide wording) | Exact numbers | Source | Caveat |
+|---|---|---|---|---|
+| A1 | Module B's predicted 168h versus the measured 168h, against naive extrapolation | Relative MAE 4.88% (95% CI 4.52-5.27) against 5.25% for persistence, the best naive baseline (7.0% better). 200 lots (40 per family), 0h+24h readings | `module_b_mae_summary.csv` (family ALL, parameter ALL, mode 24h); `module_b_mae_verdict.json` | The pre-registered target was a 10% gain and it was NOT met (M1 = FAIL). 150-lot run: 8.0% (`module_b_mae_150lots_verdict.json`). |
+| A2 | Module B wins most family x parameter cells | Beats the best of five baselines in 12 of 15 cells at 24h and 13 of 15 at 96h (absolute MAE) | `module_b_mae_summary.csv` | The three losses at 24h are all `different_noise_regime`. Margins are about 2.5 to 10% per cell. |
+| A3 | Module B on defective parts | Relative MAE 27.8% on defective parts against 30.7% for persistence; 3.5% against 3.7% on healthy parts | `module_b_mae_summary.csv` columns `rel_mae_defective_pct`, `rel_mae_healthy_pct` | Most of the aggregate accuracy is on healthy parts. |
+| A4 | Module B interval coverage | Pooled coverage 0.78 against a 0.90 target (0h+24h); 0.55 on `different_noise_regime` | `module_b_mae_summary.csv` column `coverage` | Under-covers; consistent with DISCLOSURES #6. |
+| A5 | Module A in the configuration the app runs (no pooled reference, Isolation Forest inactive) | REVIEW: flag rate 0.183 (1,787 flagged), recall 0.814, precision 0.237, cost/part 0.239. REJECT (pre-cap): flag rate 0.154, recall 0.758, precision 0.262, cost/part 0.242. Same 9,779 parts / 521 defective as the published table | `live_benchmark/headline_live.csv` | Shipped thresholds, not re-tuned for this configuration. Replaces the 4-lot "63 versus 56" sample in the configuration note above as the measured difference. |
+| A6 | Published (pooled reference) versus live configuration | Cost/part REVIEW 0.283 versus 0.239 (difference 0.045, 95% CI 0.032-0.057); recall 0.841 versus 0.814; flag rate 0.243 versus 0.183 | `live_benchmark/headline_published.csv`, `headline_live.csv`, `per_family_published_minus_live.csv`, `decision.json` | By the pre-registered rule: "the Isolation Forest matters" (difference above 0.01 at REVIEW and REJECT), in the direction that the forest raises cost. |
+| A7 | The app and the harness compute the same Module A severities | 385 parts on 5 lots; maximum absolute difference of combined severity 0.0; 0 tier mismatches | `config_check.json` | Compares each part's worst-parameter result. |
+| A8 | Module A recall versus the three baselines under different generator assumptions | Module A REVIEW recall 0.784 to 0.978 across 10 settings, above static limits, static PAT and dynamic PAT in all 10 (claim C1 holds; REJECT tier holds) | `sensitivity/summary__live.csv`, `claims__live.json` | Settings: noise x0.5/x2, prevalence 1/3/8%, drift exponent range lower/higher, lot size 30/150, plus baseline; live configuration; 150 lots each. |
+| A9 | Module A's flag rate does not fall with prevalence | REVIEW flag rate 0.170 to 0.196 at all settings; at 1% prevalence precision 0.062 (recall 0.978) | `sensitivity/summary__live.csv` | Claim C3 holds. Structural, see DISCLOSURES #3. |
+| A10 | Where Module A's cost advantage over static limits breaks | At 1% prevalence cost/part REVIEW 0.173, REJECT 0.146 against 0.108 for static limits; Module A is cheaper at the other nine settings | `sensitivity/summary__live.csv`, `claims__live.json` (C2) | |
+| A11 | Dynamic PAT stays high-precision | Precision 0.957 or higher at every setting (lowest at 1% prevalence) | `sensitivity/summary__live.csv` (C4) | Its recall stays about 0.60 to 0.66. |
+
+### Added claims NOT to make
+
+- "Module B beats naive baselines by 10 percent or more", or "substantially". The measured gain is 7.0% (A1) and the pre-registered 10% target failed.
+- "Module B wins on every generator family." On `different_noise_regime` it loses to persistence by 10.6% (pooled relative MAE; 40-lot run).
+- "Module B forecasts defective parts accurately." Its error on defective parts is about 28% (A3).
+- "The Isolation Forest improves detection" or "cross-lot learning is demonstrated". On this data it costs more than it gains (A6); the generator has no campaign-level drift across lots to test it on.
+- "The published benchmark numbers describe the demo." The demo's configuration is A5.
+- "Module A is the cheapest method" under any setting: fixed delta limits or dynamic PAT are cheaper at every one of the ten settings.
+- "Module A holds up at low prevalence on cost." It does not beat static limits on cost at 1% prevalence (A10), and precision is 0.062 there.
+- "Robust to any generator assumption" or any statement about real data: the sweep varies values inside one generator structure.
