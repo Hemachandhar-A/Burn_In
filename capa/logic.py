@@ -10,7 +10,7 @@ from contracts import (
     ModuleAResult, ModuleBResult, Project, ProjectData,
 )
 from capa.models import TEMP_CapaRecord
-from module_a.settings import rarity_phrase
+from module_a.settings import severity_index_phrase
 from storage.repository import (
     query_confirmed_outcomes, query_events, log_event, query_disposition_signoffs, query_project_data,
     query_projects,
@@ -295,10 +295,10 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
     if severity_candidates:
         cid, severity = severity_candidates[0]
         chosen.append(cid)
-        rarity = rarity_phrase(a_results[cid].severity_log10p)
+        index_text = severity_index_phrase(a_results[cid].severity_log10p)
         recommendations.append(DPARecommendation(
             component_id=cid,
-            reason=f"Highest combined severity in the lot ({rarity if rarity is not None else f'{severity:.2f}'}).",
+            reason=f"Highest combined severity in the lot ({index_text if index_text is not None else f'{severity:.2f}'}).",
         ))
 
     # (ii) highest-uncertainty part nearest the WATCH/REJECT boundary.
@@ -331,9 +331,9 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
         cid = control_candidates[0]
         chosen.append(cid)
         severity = a_results[cid].combined_severity if cid in a_results else None
-        rarity = rarity_phrase(a_results[cid].severity_log10p) if cid in a_results else None
-        if rarity is not None:
-            reason = f"Unflagged control part (PASS verdict, {rarity}) for comparison."
+        index_text = severity_index_phrase(a_results[cid].severity_log10p) if cid in a_results else None
+        if index_text is not None:
+            reason = f"Unflagged control part (PASS verdict, {index_text}) for comparison."
         elif severity is not None:
             reason = f"Unflagged control part (PASS verdict, combined severity {severity:.2f}) for comparison."
         else:

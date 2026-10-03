@@ -96,7 +96,8 @@ def test_dpa_highest_severity_part_is_module_a_rank_one():
         recs = select_dpa_work_order(results)
         assert recs[0].reason.startswith("Highest combined severity in the lot (")
         assert recs[0].component_id == top.component_id
-        assert "1 in 10^" in recs[0].reason
+        assert "severity index " in recs[0].reason and "flag threshold 2.96" in recs[0].reason
+        assert "1 in" not in recs[0].reason and "healthy parts" not in recs[0].reason
         checked += 1
     assert checked >= 6
 

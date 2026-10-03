@@ -1,6 +1,6 @@
 """Session I2a: the MODULE_A_SCORING switch, the display transform and the additive contract field.
 
-(i) the default is rank and nothing changes; (iv) T is monotone; (vi) old stored JSON parses; the rarity phrasing."""
+(i) the default is rank and nothing changes; (iv) T is monotone; (vi) old stored JSON parses; the severity-index wording."""
 import json
 import math
 
@@ -13,7 +13,7 @@ from generator.lot import generate_lot
 from module_a.detect import detect
 from module_a.scoring import ScoringConfig
 from module_a.settings import (ABSOLUTE_REJECT_THRESHOLD, ABSOLUTE_REVIEW_THRESHOLD, DISPLAY_S0, display_transform,
-                               module_a_scoring, module_a_scoring_config, rarity_phrase)
+                               module_a_scoring, module_a_scoring_config, severity_index_phrase)
 
 
 def _absolute_cfg():
@@ -101,14 +101,15 @@ def test_old_stored_json_without_the_new_field_still_parses():
 
 @pytest.mark.parametrize("s,expect", [
     (None, None),
-    (0.3, "within the range of healthy parts"),
-    (6.2, "more extreme than about 1 in 10^6 healthy parts"),
-    (14.4, "more extreme than about 1 in 10^14 healthy parts"),
-    (15.0, "more extreme than 1 in 10^15 healthy parts or rarer"),
-    (55.0, "more extreme than 1 in 10^15 healthy parts or rarer"),
+    (0.3, "severity index 0.3; flag threshold 2.96"),
+    (5.1, "severity index 5.1; flag threshold 2.96"),
+    (14.44, "severity index 14.4; flag threshold 2.96"),
+    (55.0, "severity index 55.0; flag threshold 2.96"),
 ])
-def test_rarity_phrase(s, expect):
-    got = rarity_phrase(s)
-    assert (got is None) if expect is None else got.startswith(expect)
-    if expect is not None and s >= 1.0:
-        assert "near-Gaussian" in got
+def test_severity_index_phrase(s, expect):
+    """I2c: the V1 p-values are not calibrated, so s is shown as an INDEX with the flag threshold, never as a 'one in N' claim."""
+    got = severity_index_phrase(s)
+    assert got == expect
+    if got is not None:
+        for banned in ("1 in", "one in", "10^", "healthy parts", "Gaussian", "rarer", "probab"):
+            assert banned not in got

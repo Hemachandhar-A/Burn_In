@@ -35,8 +35,6 @@ MCD_MIN_PARTS_ABSOLUTE: int = 77
 DISPLAY_S0: float = 5.0
 _T_CEILING: float = 1.0 - 1e-12  # keep combined_severity strictly below 1.0
 
-RARITY_DISPLAY_CAP: int = 15  # "1 in 10^15 or rarer"
-
 _MODES = ("rank", "absolute")
 
 
@@ -67,12 +65,10 @@ def display_transform(s: float, s0: float = DISPLAY_S0) -> float:
     return min(-math.expm1(-s / s0), _T_CEILING)
 
 
-def rarity_phrase(s: float | None) -> str | None:
-    """Plain-language reading of s = -log10 p, with a display cap. None when there is no s (rank mode)."""
+def severity_index_phrase(s: float | None) -> str | None:
+    """Calibration-agnostic reading of s = -log10 p: the index and the flag threshold, with no probability or 'one in N'
+    claim (session I2c: V1's p-values are not calibrated; the thresholds act as tuned severity cutoffs near 77 parts).
+    None when there is no s (rank mode)."""
     if s is None:
         return None
-    if s < 1.0:
-        return "within the range of healthy parts"
-    if s >= RARITY_DISPLAY_CAP:
-        return f"more extreme than 1 in 10^{RARITY_DISPLAY_CAP} healthy parts or rarer, assuming a near-Gaussian healthy spread"
-    return f"more extreme than about 1 in 10^{int(round(s))} healthy parts, assuming a near-Gaussian healthy spread"
+    return f"severity index {s:.1f}; flag threshold {ABSOLUTE_REVIEW_THRESHOLD:.2f}"
