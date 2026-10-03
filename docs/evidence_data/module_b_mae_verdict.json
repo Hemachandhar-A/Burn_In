@@ -1,0 +1,91 @@
+{
+  "disjointness": {
+    "training_lots": 14,
+    "evaluation_lots": 200,
+    "training_seeds": "0..13",
+    "evaluation_seed": 7001,
+    "derived_lot_seed_overlap": 0
+  },
+  "lots_per_family": 40,
+  "seed": 7001,
+  "verdict": {
+    "strict_a_to_e": {
+      "best_baseline_pooled": "persistence",
+      "model_rel_mae_pct": 4.877414393381234,
+      "best_rel_mae_pct": 5.246365538014432,
+      "improvement_pct": 7.032509304962254,
+      "beats_by_10pct": false,
+      "held_out": {
+        "altered_correlation": {
+          "best_baseline": "fixed_power_law",
+          "model_rel_mae_pct": 3.385464814265013,
+          "best_rel_mae_pct": 3.740024802154759,
+          "ratio": 0.905198492885536,
+          "loses_by_more_than_10pct": false
+        },
+        "different_noise_regime": {
+          "best_baseline": "persistence",
+          "model_rel_mae_pct": 8.533619737738027,
+          "best_rel_mae_pct": 7.7141287307638216,
+          "ratio": 1.1062324775196049,
+          "loses_by_more_than_10pct": true
+        },
+        "higher_defect_prevalence": {
+          "best_baseline": "fixed_power_law",
+          "model_rel_mae_pct": 5.590044405903471,
+          "best_rel_mae_pct": 5.944630926497191,
+          "ratio": 0.9403518023275069,
+          "loses_by_more_than_10pct": false
+        },
+        "wider_drift_exponent": {
+          "best_baseline": "fixed_power_law",
+          "model_rel_mae_pct": 3.637648079500148,
+          "best_rel_mae_pct": 4.06514264780557,
+          "ratio": 0.8948389748300246,
+          "loses_by_more_than_10pct": false
+        }
+      },
+      "no_held_out_loss_over_10pct": false,
+      "M1_PASS": false
+    },
+    "brief_a_to_d": {
+      "best_baseline_pooled": "persistence",
+      "model_rel_mae_pct": 4.877414393381234,
+      "best_rel_mae_pct": 5.246365538014432,
+      "improvement_pct": 7.032509304962254,
+      "beats_by_10pct": false,
+      "held_out": {
+        "altered_correlation": {
+          "best_baseline": "fixed_power_law",
+          "model_rel_mae_pct": 3.385464814265013,
+          "best_rel_mae_pct": 3.740024802154759,
+          "ratio": 0.905198492885536,
+          "loses_by_more_than_10pct": false
+        },
+        "different_noise_regime": {
+          "best_baseline": "persistence",
+          "model_rel_mae_pct": 8.533619737738027,
+          "best_rel_mae_pct": 7.7141287307638216,
+          "ratio": 1.1062324775196049,
+          "loses_by_more_than_10pct": true
+        },
+        "higher_defect_prevalence": {
+          "best_baseline": "fixed_power_law",
+          "model_rel_mae_pct": 5.590044405903471,
+          "best_rel_mae_pct": 5.944630926497191,
+          "ratio": 0.9403518023275069,
+          "loses_by_more_than_10pct": false
+        },
+        "wider_drift_exponent": {
+          "best_baseline": "fixed_power_law",
+          "model_rel_mae_pct": 3.637648079500148,
+          "best_rel_mae_pct": 4.06514264780557,
+          "ratio": 0.8948389748300246,
+          "loses_by_more_than_10pct": false
+        }
+      },
+      "no_held_out_loss_over_10pct": false,
+      "M1_PASS": false
+    }
+  }
+}
