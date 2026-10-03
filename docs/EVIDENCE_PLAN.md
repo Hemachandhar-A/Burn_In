@@ -54,3 +54,9 @@ noise and the tester-offset sigma by the factor, quantisation untouched; (c) fix
 defect_prevalence_range = (p, p); (d) C1-C3 are judged for Module A at BOTH its REVIEW and REJECT operating points
 and reported separately; (e) the published (pooled-reference) configuration is run only if time allows, live is
 primary. Reason: the brief left these open.
+
+D3 (same time, before any sensitivity result). The brief says "10 runs besides the baseline", but the settings it
+lists are noise x0.5 and x2 (2), prevalence 1%, 3% and 8% (3), drift-exponent range lower and higher (2) and lot size
+30 and 150 (2): nine. Nothing else is listed, so nine non-baseline settings are run, plus the baseline = 10 settings.
+Operationalisation item 7 above says "11 settings (baseline + 10)"; read it as "10 settings (baseline + 9)".
+
