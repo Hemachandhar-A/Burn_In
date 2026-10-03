@@ -31,9 +31,10 @@ Accounts: `a.sharma` / `1234` and `r.mehta` / `5678`. On the Login screen pick t
 3. Click **Generate DPA Work Order**: up to 3 parts, each with its reason.
 4. Click a part ID in a ranked list -> **Part Detail**: sentence, confidence qualifier, trajectory chart, 24h Z-Score
    Table, SHAP / MCD / ECOD charts.
-5. Type a rationale, click **Reject** (first sign-off). Click **Reject** again as the same account -> the red message
+5. Every sign-off **requires a written rationale** (the backend answers 422 on an empty one, and the button stays disabled). Type a
+   rationale, click **Reject** (first sign-off); the **sign-off status badge** on Part Detail now reads "REJECT: awaiting second sign-off". Click **Reject** again as the same account -> the red message
    "Dual sign-off requires two distinct account IDs, not two role labels". Sign out, sign in as **R. Mehta**, open the same part
-   (Project Browser -> lot -> part), type a rationale, **Reject** -> "2 sign-off(s) recorded by distinct accounts".
+   (Project Browser -> lot -> part), type a rationale, **Reject** -> "2 sign-off(s) recorded by distinct accounts", and the status badge reads "REJECT: final" (the part is locked).
    Two sign-offs less than 2 minutes apart add a **Timing Flag** row to **History**.
 6. Sign back in as **A. Sharma**. **Settings** shows the worklist with that part and the Corrective Feedback Status
    `INSUFFICIENT DATA` (N=0). On the part: **Record Confirmed Outcome** -> choose **Confirmed Defective** -> **Confirm**.

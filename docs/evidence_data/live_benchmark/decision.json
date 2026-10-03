@@ -1,0 +1,8 @@
+{
+  "cost_published_minus_live": {
+    "module_a_review": 0.04468759586869823,
+    "module_a_reject": 0.03354126188771858
+  },
+  "threshold": 0.01,
+  "verdict": "the Isolation Forest matters"
+}

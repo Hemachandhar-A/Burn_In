@@ -38,6 +38,8 @@ bash scripts/dev.sh              # backend with --reload, plus `npm run dev` on 
 
 - Rehearsal click path (live upload of `demo_data/*.csv`): `demo_data/README.md`. Scripted version:
   `cd frontend && node scripts/rehearsal.ts` (see its header; needs a running demo and Playwright's Chromium).
+  Without Playwright's Chromium, set `PW_CHANNEL=msedge` (or `chrome`) to use the installed browser.
+- Run any script as a module so imports resolve: `uv run python -m scripts.evaluate --format markdown` (not `python scripts/evaluate.py`).
 - What to say about limitations: `docs/DISCLOSURES.md`. Numbers that may go on a slide, and the ones that may not:
   `docs/PPT_NUMBERS.md` (re-derive them with `python scripts/check_ppt_numbers.py`).
 - Open items and contract changes: `BLOCKERS.md`, `CONTRACT_CHANGES.md`.

@@ -197,6 +197,11 @@ class ModuleBResult(BaseModel):
     # whenever exceeds_safety_slope/safety_slope are.
     lower_bound_exceeds_safety_slope: bool | None
     forecast_unavailable: bool  # explicit flag - context.md 5.9
+    # F24 (CONTRACT_CHANGES.md): why the forecast is unavailable, in one line; None when it is available. Additive.
+    unavailable_reason: str | None = None
+    # F24 Part 3 (CONTRACT_CHANGES.md): the canonical unit of this parameter's values (predicted_168h, interval_*,
+    # physics_*; drift_rate and safety_slope are this unit per hour). None on an old stored result.
+    unit: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +342,7 @@ class ZScoreTableRow(BaseModel):
     value: float
     lot_median: float
     z: float
+    unit: str | None = None  # F24 Part 3: canonical unit of value and lot_median (z is dimensionless); None on old rows
 
 
 class TrajectoryPoint(BaseModel):
@@ -347,6 +353,7 @@ class TrajectoryPoint(BaseModel):
     checkpoint_hour: int
     value: float
     lot_median: float | None = None  # only 0h/24h frames carry a lot_median field; None at 96h/168h
+    unit: str | None = None  # F24 Part 3: canonical unit of value and lot_median; None on old stored points
 
 
 class PartExplanation(BaseModel):
@@ -470,6 +477,11 @@ class PartDetailResponse(BaseModel):
     project_id: str | None = None
     analysis_run_id: str | None = None
     verdict: Literal["PASS", "WATCH", "REJECT"] | None = None
+    # Additive (F24 Part 2, CONTRACT_CHANGES.md): the sign-off state of this part in analysis_run_id, derived from
+    # the stored sign-offs (identity/status.py). None on an old stored/cached response.
+    disposition_status: Literal[
+        "NONE", "ACCEPT_RECORDED", "HOLD_RECORDED", "REJECT_PENDING_SECOND", "REJECT_FINAL", "CONFLICT"
+    ] | None = None
 
 
 class DispositionRequest(BaseModel):

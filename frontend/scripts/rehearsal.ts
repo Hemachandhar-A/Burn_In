@@ -38,7 +38,8 @@ let current = 'startup'
 
 async function main() {
   await mkdir(OUT, { recursive: true })
-  const browser = await chromium.launch()
+  // PW_CHANNEL=msedge (or chrome) drives an installed browser instead of Playwright's own download.
+  const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {})
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true })
   const page = await context.newPage()
   page.on('console', (m) => {
@@ -206,7 +207,22 @@ async function main() {
     const text = await dump('part-detail')
     notes.push(`url ${page.url().split('#')[1]}`)
     notes.push(`plotly charts: ${await page.locator('.js-plotly-plot').count()}`)
+    // F24 Part 3: the unit is on the chart's y axis and in the explanation sentence, and the z-score headers carry it.
     await shot('05-part-detail-top')
+    const axis = String(
+      await page.evaluate(() => {
+        const gd = document.querySelector('.js-plotly-plot') as unknown as { _fullLayout?: { yaxis?: { title?: { text?: string } } } } | null
+        return gd?._fullLayout?.yaxis?.title?.text ?? ''
+      }),
+    ).trim()
+    notes.push(`y-axis title: "${axis}"`)
+    if (!/\((uA|nA|ns|us|mA|A)\)/.test(axis)) throw new Error(`the chart's y axis carries no unit: "${axis}"`)
+    const sentence = (await page.locator('.diagnostic-text').first().innerText()).replace(/\s+/g, ' ')
+    notes.push(`sentence: ${sentence.slice(0, 160)}`)
+    if (!/(uA|nA|ns|us|mA)/.test(sentence)) throw new Error(`the explanation sentence carries no unit: "${sentence}"`)
+    const zHeader = (await page.locator('table thead').first().innerText()).replace(/\s+/g, ' ')
+    notes.push(`z-score header: ${zHeader}`)
+    if (!/\(24h, [^)]*(uA|nA|ns|us|mA)/i.test(zHeader)) throw new Error(`the z-score table headers carry no unit: "${zHeader}"`)
     void text
   })
   const partUrl = () => page.url()
@@ -214,10 +230,17 @@ async function main() {
   let partHash = ''
   await step('06 sign-offs: a.sharma, same-account repeat, r.mehta', async (notes) => {
     partHash = new URL(partUrl()).hash
-    const rationale = page.getByLabel(/Technical Disposition Rationale/)
+    const rationale = page.getByLabel(/Technical Disposition Rationale \(required\)/)
+    // F24 Part 2: the rationale is required - no action is possible until it is typed
+    if (!(await page.getByRole('button', { name: 'Reject', exact: true }).isDisabled())) {
+      throw new Error('Reject is enabled with an empty rationale')
+    }
+    notes.push(`status before any sign-off: ${(await page.getByTestId('disposition-status').innerText()).trim()}`)
     await rationale.fill('Leakage drift confirmed at 24h.')
     await page.getByRole('button', { name: 'Reject', exact: true }).click()
     await page.waitForSelector('text=/1 sign-off.s. recorded by distinct accounts/')
+    await page.waitForSelector('[data-testid=disposition-status][data-status=REJECT_PENDING_SECOND]')
+    notes.push(`status after the first sign-off: ${(await page.getByTestId('disposition-status').innerText()).trim()}`)
     await shot('06a-first-signoff')
     // same account again
     await rationale.fill('Second attempt by the same account.')
@@ -233,6 +256,8 @@ async function main() {
     await page.getByLabel(/Technical Disposition Rationale/).fill('Concur: reject.')
     await page.getByRole('button', { name: 'Reject', exact: true }).click()
     await page.waitForSelector('text=/2 sign-off.s. recorded by distinct accounts/')
+    await page.waitForSelector('[data-testid=disposition-status][data-status=REJECT_FINAL]')
+    notes.push(`status after the second sign-off: ${(await page.getByTestId('disposition-status').innerText()).trim()}`)
     await shot('06c-second-signoff')
   })
 

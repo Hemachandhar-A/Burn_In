@@ -1,0 +1,40 @@
+{
+  "lots": 5,
+  "parts_compared": 385,
+  "max_abs_combined_severity_diff": 0.0,
+  "severity_tier_mismatches": 0,
+  "tolerance": 1e-09,
+  "pass": true,
+  "per_lot": [
+    {
+      "lot_id": "CC-baseline-0000",
+      "family": "baseline",
+      "parts_compared": 77,
+      "max_abs_diff": 0.0
+    },
+    {
+      "lot_id": "CC-wider_drift_exponent-0001",
+      "family": "wider_drift_exponent",
+      "parts_compared": 77,
+      "max_abs_diff": 0.0
+    },
+    {
+      "lot_id": "CC-higher_defect_prevalence-0002",
+      "family": "higher_defect_prevalence",
+      "parts_compared": 77,
+      "max_abs_diff": 0.0
+    },
+    {
+      "lot_id": "CC-different_noise_regime-0003",
+      "family": "different_noise_regime",
+      "parts_compared": 77,
+      "max_abs_diff": 0.0
+    },
+    {
+      "lot_id": "CC-altered_correlation-0004",
+      "family": "altered_correlation",
+      "parts_compared": 77,
+      "max_abs_diff": 0.0
+    }
+  ]
+}

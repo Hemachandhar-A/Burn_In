@@ -1,0 +1,320 @@
+{
+  "variant": "V1-C2",
+  "calibration": "absolute",
+  "combination": "hybrid",
+  "history_lots": null,
+  "thresholds": {
+    "review": 3.230515700957064,
+    "reject": 2.2879860751562173
+  },
+  "lofo_thresholds": {
+    "altered_correlation": {
+      "review": 3.230515700957064,
+      "reject": 2.287925220387452
+    },
+    "baseline": {
+      "review": 3.230515700957064,
+      "reject": 2.5791757081037785
+    },
+    "different_noise_regime": {
+      "review": 2.1734346277402072,
+      "reject": 2.2879860751562173
+    },
+    "higher_defect_prevalence": {
+      "review": 3.230515700957064,
+      "reject": 2.824864240870694
+    },
+    "wider_drift_exponent": {
+      "review": 3.230515700957064,
+      "reject": 2.386407215441932
+    }
+  },
+  "tuning_parts": 35420,
+  "tuning_defective": 2361,
+  "eval": {
+    "review": {
+      "n_parts": 57750,
+      "n_defective": 3681,
+      "n_flagged": 4208,
+      "false_alarms": 965,
+      "missed": 438,
+      "recall": 0.8810105949470253,
+      "recall_ci_lo": 0.8703434595575488,
+      "recall_ci_hi": 0.8925342309919749,
+      "precision": 0.7706749049429658,
+      "precision_ci_lo": 0.7501681691656255,
+      "precision_ci_hi": 0.7886492039633208,
+      "flag_rate": 0.07286580086580087,
+      "flag_rate_ci_lo": 0.06961038961038961,
+      "flag_rate_ci_hi": 0.07638225108225108,
+      "cost_per_part": 0.09255411255411256,
+      "cost_per_part_ci_lo": 0.08356666666666666,
+      "cost_per_part_ci_hi": 0.10095238095238095
+    },
+    "reject": {
+      "n_parts": 57750,
+      "n_defective": 3681,
+      "n_flagged": 5219,
+      "false_alarms": 1965,
+      "missed": 427,
+      "recall": 0.8839989133387667,
+      "recall_ci_lo": 0.8730456294646635,
+      "recall_ci_hi": 0.8953629611725875,
+      "precision": 0.6234910902471738,
+      "precision_ci_lo": 0.6019979223417872,
+      "precision_ci_hi": 0.6430506028835449,
+      "flag_rate": 0.09037229437229437,
+      "flag_rate_ci_lo": 0.08715151515151515,
+      "flag_rate_ci_hi": 0.0938008658008658,
+      "cost_per_part": 0.10796536796536796,
+      "cost_per_part_ci_lo": 0.09871774891774891,
+      "cost_per_part_ci_hi": 0.11648528138528139
+    },
+    "per_family_cost_review": {
+      "altered_correlation": 0.06822510822510823,
+      "baseline": 0.05480519480519481,
+      "different_noise_regime": 0.08597402597402598,
+      "higher_defect_prevalence": 0.18528138528138527,
+      "wider_drift_exponent": 0.06848484848484848
+    },
+    "per_family_cost_reject": {
+      "altered_correlation": 0.07194805194805194,
+      "baseline": 0.07186147186147186,
+      "different_noise_regime": 0.10337662337662337,
+      "higher_defect_prevalence": 0.20614718614718613,
+      "wider_drift_exponent": 0.0864935064935065
+    },
+    "per_family_recall_review": {
+      "altered_correlation": 0.8870056497175142,
+      "baseline": 0.9045643153526971,
+      "different_noise_regime": 0.8726235741444867,
+      "higher_defect_prevalence": 0.8753101736972705,
+      "wider_drift_exponent": 0.879245283018868
+    }
+  },
+  "eval_lofo": {
+    "review": {
+      "n_parts": 57750,
+      "n_defective": 3681,
+      "n_flagged": 4583,
+      "false_alarms": 1328,
+      "missed": 426,
+      "recall": 0.8842705786471068,
+      "recall_ci_lo": 0.8728119474614802,
+      "recall_ci_hi": 0.8950356185909334,
+      "precision": 0.7102334715252019,
+      "precision_ci_lo": 0.6884810021894033,
+      "precision_ci_hi": 0.7332215163608533,
+      "flag_rate": 0.07935930735930737,
+      "flag_rate_ci_lo": 0.07575670995670995,
+      "flag_rate_ci_hi": 0.08284069264069265,
+      "cost_per_part": 0.09676190476190476,
+      "cost_per_part_ci_lo": 0.08887705627705628,
+      "cost_per_part_ci_hi": 0.10576753246753247
+    },
+    "reject": {
+      "n_parts": 57750,
+      "n_defective": 3681,
+      "n_flagged": 4790,
+      "false_alarms": 1600,
+      "missed": 491,
+      "recall": 0.8666123336049987,
+      "recall_ci_lo": 0.8531071322271515,
+      "recall_ci_hi": 0.8781604095149246,
+      "precision": 0.6659707724425887,
+      "precision_ci_lo": 0.6469888002617187,
+      "precision_ci_hi": 0.6867867981613739,
+      "flag_rate": 0.08294372294372294,
+      "flag_rate_ci_lo": 0.07984329004329004,
+      "flag_rate_ci_hi": 0.08625151515151515,
+      "cost_per_part": 0.11272727272727273,
+      "cost_per_part_ci_lo": 0.10346103896103896,
+      "cost_per_part_ci_hi": 0.1231038961038961
+    },
+    "per_family_cost_review": {
+      "altered_correlation": 0.06822510822510823,
+      "baseline": 0.05480519480519481,
+      "different_noise_regime": 0.10701298701298702,
+      "higher_defect_prevalence": 0.18528138528138527,
+      "wider_drift_exponent": 0.06848484848484848
+    }
+  },
+  "p1": {
+    "threshold_review": 3.230515700957064,
+    "share_flagged_pooled": 0.020714285714285713,
+    "per_family": {
+      "altered_correlation": 0.026298701298701297,
+      "baseline": 0.015909090909090907,
+      "different_noise_regime": 0.03116883116883117,
+      "higher_defect_prevalence": 0.014285714285714285,
+      "wider_drift_exponent": 0.015909090909090907
+    },
+    "n_parts": 15400,
+    "share_flagged_lots_10_plus": 0.02181818181818182
+  },
+  "robustness": {
+    "prev_1": {
+      "review": {
+        "n_parts": 11550,
+        "n_defective": 110,
+        "n_flagged": 281,
+        "false_alarms": 180,
+        "missed": 9,
+        "recall": 0.9181818181818182,
+        "recall_ci_lo": 0.8584884788779429,
+        "recall_ci_hi": 0.970873786407767,
+        "precision": 0.3594306049822064,
+        "precision_ci_lo": 0.3074074074074074,
+        "precision_ci_hi": 0.41261107313738893,
+        "flag_rate": 0.02432900432900433,
+        "flag_rate_ci_lo": 0.021212121212121213,
+        "flag_rate_ci_hi": 0.027705627705627706,
+        "cost_per_part": 0.023376623376623377,
+        "cost_per_part_ci_lo": 0.017922077922077922,
+        "cost_per_part_ci_hi": 0.030216450216450218
+      },
+      "reject": {
+        "n_parts": 11550,
+        "n_defective": 110,
+        "n_flagged": 518,
+        "false_alarms": 417,
+        "missed": 9,
+        "recall": 0.9181818181818182,
+        "recall_ci_lo": 0.8584884788779429,
+        "recall_ci_hi": 0.970873786407767,
+        "precision": 0.19498069498069498,
+        "precision_ci_lo": 0.1625704022653193,
+        "precision_ci_hi": 0.22954952164636241,
+        "flag_rate": 0.044848484848484846,
+        "flag_rate_ci_lo": 0.04077705627705627,
+        "flag_rate_ci_hi": 0.049006493506493505,
+        "cost_per_part": 0.0438961038961039,
+        "cost_per_part_ci_lo": 0.03826623376623377,
+        "cost_per_part_ci_hi": 0.05073809523809524
+      },
+      "per_family_cost_review": {
+        "prev_1": 0.023376623376623377
+      },
+      "per_family_cost_reject": {
+        "prev_1": 0.0438961038961039
+      },
+      "per_family_recall_review": {
+        "prev_1": 0.9181818181818182
+      }
+    },
+    "prev_3": {
+      "review": {
+        "n_parts": 11550,
+        "n_defective": 311,
+        "n_flagged": 455,
+        "false_alarms": 175,
+        "missed": 31,
+        "recall": 0.9003215434083601,
+        "recall_ci_lo": 0.8680378401360545,
+        "recall_ci_hi": 0.9305555555555556,
+        "precision": 0.6153846153846154,
+        "precision_ci_lo": 0.5682245309182303,
+        "precision_ci_hi": 0.665947640117994,
+        "flag_rate": 0.03939393939393939,
+        "flag_rate_ci_lo": 0.035411255411255414,
+        "flag_rate_ci_hi": 0.0432034632034632,
+        "cost_per_part": 0.04199134199134199,
+        "cost_per_part_ci_lo": 0.033073593073593074,
+        "cost_per_part_ci_hi": 0.05073809523809524
+      },
+      "reject": {
+        "n_parts": 11550,
+        "n_defective": 311,
+        "n_flagged": 666,
+        "false_alarms": 387,
+        "missed": 32,
+        "recall": 0.8971061093247589,
+        "recall_ci_lo": 0.865129587051539,
+        "recall_ci_hi": 0.9267553171676538,
+        "precision": 0.4189189189189189,
+        "precision_ci_lo": 0.3812246892892054,
+        "precision_ci_hi": 0.45483630403936165,
+        "flag_rate": 0.057662337662337665,
+        "flag_rate_ci_lo": 0.05341991341991342,
+        "flag_rate_ci_hi": 0.06207792207792208,
+        "cost_per_part": 0.06121212121212121,
+        "cost_per_part_ci_lo": 0.052121212121212124,
+        "cost_per_part_ci_hi": 0.0703030303030303
+      },
+      "per_family_cost_review": {
+        "prev_3": 0.04199134199134199
+      },
+      "per_family_cost_reject": {
+        "prev_3": 0.06121212121212121
+      },
+      "per_family_recall_review": {
+        "prev_3": 0.9003215434083601
+      }
+    },
+    "noise_x2": {
+      "review": {
+        "n_parts": 11550,
+        "n_defective": 527,
+        "n_flagged": 690,
+        "false_alarms": 208,
+        "missed": 45,
+        "recall": 0.9146110056925996,
+        "recall_ci_lo": 0.8864856789059977,
+        "recall_ci_hi": 0.9398907103825137,
+        "precision": 0.6985507246376812,
+        "precision_ci_lo": 0.654695869044764,
+        "precision_ci_hi": 0.7386444805194805,
+        "flag_rate": 0.05974025974025974,
+        "flag_rate_ci_lo": 0.05463203463203463,
+        "flag_rate_ci_hi": 0.06485281385281386,
+        "cost_per_part": 0.05696969696969697,
+        "cost_per_part_ci_lo": 0.04510173160173161,
+        "cost_per_part_ci_hi": 0.07117316017316018
+      },
+      "reject": {
+        "n_parts": 11550,
+        "n_defective": 527,
+        "n_flagged": 901,
+        "false_alarms": 416,
+        "missed": 42,
+        "recall": 0.920303605313093,
+        "recall_ci_lo": 0.8917953419973247,
+        "recall_ci_hi": 0.9452092222471742,
+        "precision": 0.5382907880133185,
+        "precision_ci_lo": 0.49323868115296293,
+        "precision_ci_hi": 0.5768492914503219,
+        "flag_rate": 0.07800865800865801,
+        "flag_rate_ci_lo": 0.07307359307359307,
+        "flag_rate_ci_hi": 0.08303246753246753,
+        "cost_per_part": 0.07238095238095238,
+        "cost_per_part_ci_lo": 0.06034632034632035,
+        "cost_per_part_ci_hi": 0.08633549783549782
+      },
+      "per_family_cost_review": {
+        "noise_x2": 0.05696969696969697
+      },
+      "per_family_cost_reject": {
+        "noise_x2": 0.07238095238095238
+      },
+      "per_family_recall_review": {
+        "noise_x2": 0.9146110056925996
+      }
+    }
+  },
+  "p2": {
+    "cold": {
+      "score": 21.555355652617322,
+      "is_top": true,
+      "reject": true,
+      "review": true
+    },
+    "warm": {
+      "score": 21.555355652617322,
+      "is_top": true,
+      "reject": true,
+      "review": true
+    },
+    "pass": true
+  },
+  "seconds": 3
+}

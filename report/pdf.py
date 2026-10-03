@@ -4,6 +4,7 @@ Covers E9 step 1's field list plus step 2's Analysis History section.
 """
 from fpdf import FPDF
 
+from explain.units import scale_for_display
 from report.data import ReportData
 
 _TITLE_SIZE = 16
@@ -66,19 +67,24 @@ def render_pdf(report: ReportData) -> bytearray:
         doc.multi_cell(0, 5, "No delta data available for this run.", new_x="LMARGIN", new_y="NEXT")
     else:
         doc.set_font("Helvetica", style="B", size=_SMALL_SIZE)
-        headers = ["Component", "Param", "0h", "24h", "d24h", "96h", "d96h", "168h", "d168h", "Verdict"]
-        widths = [22, 16, 14, 14, 14, 14, 14, 14, 14, 20]
+        headers = ["Component", "Param", "Unit", "0h", "24h", "d24h", "96h", "d96h", "168h", "d168h", "Verdict"]
+        widths = [22, 16, 12, 14, 14, 14, 14, 14, 14, 14, 20]
         for h, w in zip(headers, widths):
             doc.cell(w, 6, h, border=1)
         doc.ln()
         doc.set_font("Helvetica", size=_SMALL_SIZE)
         for row in report.delta_table:
 
-            def fmt(v):
-                return "" if v is None else f"{v:.2f}"
+            # One display unit per row (the prefix that suits its largest value, explain/units.py), shown in the
+            # Unit column, so every cell of the row reads in the unit its column says.
+            magnitudes = [abs(v) for v in (row.value_0h, row.value_24h, row.value_96h, row.value_168h) if v is not None]
+            _, unit_label, factor = scale_for_display(max(magnitudes, default=0.0), row.unit)
+
+            def fmt(v, factor=factor):
+                return "" if v is None else f"{v / factor:.4g}"
 
             cells = [
-                row.component_id, row.parameter, fmt(row.value_0h), fmt(row.value_24h),
+                row.component_id, row.parameter, unit_label or "-", fmt(row.value_0h), fmt(row.value_24h),
                 fmt(row.delta_24h), fmt(row.value_96h), fmt(row.delta_96h),
                 fmt(row.value_168h), fmt(row.delta_168h), row.verdict or "-",
             ]

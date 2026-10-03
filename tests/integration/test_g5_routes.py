@@ -25,7 +25,9 @@ from contracts import (
 from harness.golden import GOLDEN_COMPONENT_ID, GOLDEN_LOT_ID, golden_lot
 
 IN_PROGRESS_LOT_ID = "IP-LOT-01"
-IN_PROGRESS_PART = "G-005"  # its 24h leakage is inflated so Module B forecasts a real early reject
+IN_PROGRESS_PART = "G-005"  # its 24h iddq is inflated so Module B forecasts a real early reject
+# (iddq, not leakage: the golden leakage is in uA and becomes 1000x the calibrated nA scale at upload, which
+# Module B now declines - F24 - so only iddq, already in its canonical uA, can carry a forecast through the route)
 TABLE: dict[str, dict[str, str]] = {}
 
 
@@ -89,7 +91,7 @@ def env(tmp_path_factory):
     for r in gold.readings:
         if r.checkpoint_hour not in (0, 24):
             continue
-        if r.component_id == IN_PROGRESS_PART and r.parameter == "leakage" and r.checkpoint_hour == 24:
+        if r.component_id == IN_PROGRESS_PART and r.parameter == "iddq" and r.checkpoint_hour == 24:
             r = r.model_copy(update={"value": r.value * 3.0})
         ip_readings.append(r)
     up_ip = upload(IN_PROGRESS_LOT_ID, ip_readings)

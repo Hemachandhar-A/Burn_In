@@ -24,6 +24,7 @@ from features.compute import compute
 from generator.lot import generate_lot
 from module_b.baselines import TARGET_HOURS, physics_baselines
 from module_b.calibration import CalibratedDriftModel, calibrate_drift_models, forecast
+from module_b.guard import out_of_range_reason
 from module_b.model import usable_input
 
 # The three parameters the generator - and so every trained model - covers (context.md 1.3, 5.9).
@@ -42,7 +43,7 @@ def synthetic_models(part_number: str) -> dict[tuple[str, str], CalibratedDriftM
     return calibrate_drift_models(frames)
 
 
-def _unavailable(frame: ModuleBInput) -> ModuleBResult:
+def _unavailable(frame: ModuleBInput, reason: str) -> ModuleBResult:
     return ModuleBResult(
         component_id=frame.component_id,
         lot_id=frame.lot_id,
@@ -57,7 +58,16 @@ def _unavailable(frame: ModuleBInput) -> ModuleBResult:
         safety_slope=None,
         lower_bound_exceeds_safety_slope=None,
         forecast_unavailable=True,
+        unavailable_reason=reason,
     )
+
+
+def _why_unavailable(frame: ModuleBInput, usable: ModuleBInput | None, models) -> str:
+    if frame.parameter not in TRAINED_PARAMETERS:
+        return f"{frame.parameter} is outside Module B's trained parameter set"
+    if usable is None:
+        return f"{frame.parameter}: a required 0h/24h input is missing, non-finite or out of order"
+    return f"{frame.parameter}: no calibrated forecast model for this part number and horizon"
 
 
 def predict(
@@ -81,14 +91,27 @@ def predict(
         for part_number in sorted({u.part_number for u in in_scope}):
             models.update(synthetic_models(part_number))
 
+    # F24 guard: an input outside the range its model was calibrated on is declined, never extrapolated.
+    # Parallel to `usable`; the reason string is what the unavailable result carries.
+    out_of_range: dict[int, str] = {}
+    for i, u in enumerate(usable):
+        model = models.get((u.part_number, u.parameter)) if u is not None else None
+        reason = out_of_range_reason(model.input_ranges, u) if model is not None else None
+        if reason is not None:
+            out_of_range[i] = reason
+    in_scope = [u for i, u in enumerate(usable) if u is not None and i not in out_of_range]
+
     forecasts = iter(forecast(models, in_scope))
     baselines = physics_baselines(in_scope)
 
     results = []
-    for f, u in zip(frames, usable):
+    for i, (f, u) in enumerate(zip(frames, usable)):
+        if i in out_of_range:
+            results.append(_unavailable(f, out_of_range[i]))
+            continue
         fc = next(forecasts) if u is not None else None
         if fc is None:
-            results.append(_unavailable(f))
+            results.append(_unavailable(f, _why_unavailable(f, u, models)))
             continue
         physics = baselines[(u.lot_id, u.component_id, u.parameter)].power_law
         # Conservative counterpart to exceeds_safety_slope: the identical drift_rate formula

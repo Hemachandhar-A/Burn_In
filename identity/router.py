@@ -46,6 +46,14 @@ def create_disposition(
     request: DispositionRequest,
     account: Account = Depends(get_current_account)
 ):
+    # E10: every action carries a written rationale. Checked before anything is read or written (F24 Part 2).
+    rationale = request.rationale.strip()
+    if not rationale:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A written rationale is required for every disposition (Accept, Hold or Reject)",
+        )
+
     # Validate what the sign-off points at BEFORE anything is written (G5 finding 2).
     if query_project(project_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"project '{project_id}' not found")
@@ -94,7 +102,7 @@ def create_disposition(
             analysis_run_id=analysis_run_id,
             account_id=account.account_id,
             verdict=request.verdict,
-            rationale=request.rationale
+            rationale=rationale
         )
 
         # capa.logic.evaluate_capa_trigger call removed (Block 4a-resume R3, CONTRACT_CHANGES.md
