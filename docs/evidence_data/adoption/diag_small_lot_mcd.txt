@@ -1,0 +1,8 @@
+Part-level share of CLEAN parts (baseline family, defect prevalence 0, seed 7101, 20 lots per size) at or above s = 2.956,
+by detector leg alone. Raw output of docs/evidence_data/adoption/diag_small_lot_mcd.py (run with PYTHONPATH=.):
+15 z-only 0.0867 mcd-only 0.0
+30 z-only 0.0467 mcd-only 0.1583
+40 z-only 0.0325 mcd-only 0.1175
+50 z-only 0.028 mcd-only 0.071
+77 z-only 0.0162 mcd-only 0.0273
+(lot ids in this diagnostic are "D-<n>-<i>", not the test's "I2A-CLEAN-<n>-<i>", so the draws differ from the test's 0.2233 / 0.0370.)
