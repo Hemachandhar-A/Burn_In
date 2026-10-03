@@ -85,6 +85,10 @@ class ScoringConfig:
     # meaningful for the "rank" scale; non-rank variants must supply both.
     review_threshold: float | None = None
     reject_threshold: float | None = None
+    # Adoption (session I2a): when set, `combined_severity` of the results is the monotone display transform
+    # T(s) = 1 - exp(-s / display_s0) in [0, 1) and `severity_log10p` carries s; tiers are still decided on s.
+    # None (the default, and what the experiment harness uses) leaves the raw severity in `combined_severity`.
+    display_s0: float | None = None
 
     def __post_init__(self) -> None:
         if self.calibration not in ("rank", "absolute", "reference"):
@@ -95,6 +99,8 @@ class ScoringConfig:
             raise ValueError("rank calibration is only defined with the max combination")
         if self.n_min < 1:
             raise ValueError("n_min must be >= 1")
+        if self.display_s0 is not None and not self.display_s0 > 0.0:
+            raise ValueError("display_s0 must be > 0")
         if not 0.0 < self.override_p < 1.0:
             raise ValueError("override_p must be in (0, 1)")
 
@@ -302,6 +308,12 @@ def detect_lot_scored(frames: Sequence[FeatureFrame], scoring: ScoringConfig):
         explainable = np.nanmax([sev.sev_z[i], sev.sev_mcd[i]]) if not np.isnan(sev.sev_mcd[i]) else sev.sev_z[i]
         top = np.nanmax([sev.sev_z[i], sev.sev_mcd[i], sev.sev_ecod[i]])
         mcd_tag = not np.isnan(raw.mcd_d[i])
+        shown, log10p = combined, None
+        if scoring.display_s0 is not None:
+            from module_a.settings import display_transform
+
+            log10p = max(combined, 0.0)
+            shown = display_transform(log10p, scoring.display_s0)
         results.append(ModuleAResult(
             component_id=frame.component_id, lot_id=frame.lot_id, parameter=frame.parameter,
             robust_z=float(raw.z[i]),
@@ -309,7 +321,7 @@ def detect_lot_scored(frames: Sequence[FeatureFrame], scoring: ScoringConfig):
             isolation_forest_score=None,
             ecod_score=float(raw.ecod[i]),
             explainable_tags={"robust_z": True, "mcd": bool(mcd_tag), "isolation_forest": False, "ecod": False},
-            direction=direction, severity_tier=tier, severity_cap_reason=cap, combined_severity=combined,
-            explainable_corroboration=bool(explainable >= top - 1e-10),
+            direction=direction, severity_tier=tier, severity_cap_reason=cap, combined_severity=shown,
+            explainable_corroboration=bool(explainable >= top - 1e-10), severity_log10p=log10p,
         ))
     return results

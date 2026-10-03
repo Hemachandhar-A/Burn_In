@@ -7,6 +7,7 @@ from contracts import (
 )
 from features.compute import compute
 from module_a.detect import detect as module_a_detect
+from module_a.settings import module_a_scoring_config
 from module_b.predictor import predict as module_b_predict, synthetic_models as module_b_synthetic_models, TRAINED_PARAMETERS
 from fusion.gate import compute_part_verdict
 from ingestion.quality import check_missing_checkpoints
@@ -74,12 +75,18 @@ def run_full_pipeline(
     
     a_results = []
     if is_complete:
-        a_results = module_a_detect(frames)
+        # MODULE_A_SCORING (module_a/settings.py): None under the default "rank" mode, i.e. the unchanged call.
+        a_results = module_a_detect(frames, scoring=module_a_scoring_config())
     
+    # Severity for picking a part's worst frame and for ranking: s = -log10 p when absolute scoring supplies it
+    # (no saturation or ties at large s), else combined_severity (the rank-mode percentile).
+    def severity_key(r):
+        return r.severity_log10p if r.severity_log10p is not None else r.combined_severity
+
     a_by_comp = {}
     for r in a_results:
         cid = r.component_id
-        if cid not in a_by_comp or r.combined_severity > a_by_comp[cid].combined_severity:
+        if cid not in a_by_comp or severity_key(r) > severity_key(a_by_comp[cid]):
             a_by_comp[cid] = r
     
     # module_b_predict is called
@@ -88,7 +95,7 @@ def run_full_pipeline(
     b_results = [r.model_copy(update={"unit": unit_by_parameter.get(r.parameter)}) for r in b_results]
     
     # rank components for Module A: by combined_severity descending, component_id ascending
-    a_scores = [(-r.combined_severity, r.component_id) for r in a_by_comp.values()]
+    a_scores = [(-severity_key(r), r.component_id) for r in a_by_comp.values()]
     a_scores.sort()
     a_rank_map = {cid: float(rank) for rank, (_, cid) in enumerate(a_scores, start=1)}
     

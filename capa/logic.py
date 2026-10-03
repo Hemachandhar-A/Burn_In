@@ -10,6 +10,7 @@ from contracts import (
     ModuleAResult, ModuleBResult, Project, ProjectData,
 )
 from capa.models import TEMP_CapaRecord
+from module_a.settings import rarity_phrase
 from storage.repository import (
     query_confirmed_outcomes, query_events, log_event, query_disposition_signoffs, query_project_data,
     query_projects,
@@ -239,7 +240,8 @@ def find_dispositions_awaiting_confirmed_outcome() -> list[DispositionSignoff]:
 # E13 step 5 / context.md 5.19 (Block 4a Part 5, Lead ruling D70.5) - DPA-sample recommendation.
 # Pure function over an already-computed AnalysisResults - no re-running module_a/module_b, no I/O.
 # Selection rule (a simple, explainable proxy, not a trained metric - none exists at this layer):
-#   (i)   highest combined severity (Module A's own max-combined percentile, E2 step 5) among
+#   (i)   highest combined severity (Module A's own severity: the max-combined percentile of E2 step 5, or s = -log10 p
+#         under MODULE_A_SCORING=absolute) among
 #         flagged parts - confirms a suspected mechanism.
 #   (ii)  highest Module B calibrated-interval width (interval_upper - interval_lower, "most
 #         information gained per part destroyed", context.md 5.19) among WATCH-tier parts - WATCH is
@@ -268,6 +270,11 @@ def _module_b_interval_width(module_b_results: dict[str, ModuleBResult], compone
     return result.interval_upper - result.interval_lower
 
 
+def _severity_sort_key(result: ModuleAResult) -> float:
+    """s = -log10 p under absolute scoring (no saturation of the 0-1 display value), else the percentile."""
+    return result.severity_log10p if result.severity_log10p is not None else result.combined_severity
+
+
 def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
     assessments = {a.component_id: a for a in results.assessments}
     a_results: dict[str, ModuleAResult] = results.module_a_results
@@ -279,7 +286,7 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
     # (i) highest combined severity among flagged (WATCH/REJECT) parts.
     severity_candidates = sorted(
         (
-            (cid, a_results[cid].combined_severity)
+            (cid, _severity_sort_key(a_results[cid]))
             for cid, a in assessments.items()
             if a.verdict in DPA_FLAGGED_TIERS and cid in a_results
         ),
@@ -288,8 +295,10 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
     if severity_candidates:
         cid, severity = severity_candidates[0]
         chosen.append(cid)
+        rarity = rarity_phrase(a_results[cid].severity_log10p)
         recommendations.append(DPARecommendation(
-            component_id=cid, reason=f"Highest combined severity in the lot ({severity:.2f}).",
+            component_id=cid,
+            reason=f"Highest combined severity in the lot ({rarity if rarity is not None else f'{severity:.2f}'}).",
         ))
 
     # (ii) highest-uncertainty part nearest the WATCH/REJECT boundary.
@@ -322,10 +331,14 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
         cid = control_candidates[0]
         chosen.append(cid)
         severity = a_results[cid].combined_severity if cid in a_results else None
-        reason = (
-            f"Unflagged control part (PASS verdict, combined severity {severity:.2f}) for comparison."
-            if severity is not None else "Unflagged control part (PASS verdict) for comparison."
-        )
+        rarity = rarity_phrase(a_results[cid].severity_log10p) if cid in a_results else None
+        if rarity is not None:
+            reason = f"Unflagged control part (PASS verdict, {rarity}) for comparison."
+        elif severity is not None:
+            reason = f"Unflagged control part (PASS verdict, combined severity {severity:.2f}) for comparison."
+        else:
+            reason = "Unflagged control part (PASS verdict) for comparison."
+
         recommendations.append(DPARecommendation(component_id=cid, reason=reason))
 
     return recommendations[:DPA_MAX_RECOMMENDATIONS]

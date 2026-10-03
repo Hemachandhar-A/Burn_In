@@ -176,6 +176,11 @@ class ModuleAResult(BaseModel):
     # "worst detector" name - it handles ties and multi-detector cases a single name cannot. Fusion's E12
     # step 2 explainability gate keys off this field, not a hardcoded detector name.
     explainable_corroboration: bool
+    # Absolute scoring (CONTRACT_CHANGES.md 2026-10-03 I2a, additive): s = -log10 p of the part's most extreme
+    # detector, the quantity the tier thresholds are applied to when MODULE_A_SCORING=absolute. None under rank
+    # scoring (the default) and on rows stored before this field existed. When set, combined_severity is a
+    # monotone transform of s into [0, 1), not a percentile.
+    severity_log10p: float | None = None
 
 
 class ModuleBResult(BaseModel):
