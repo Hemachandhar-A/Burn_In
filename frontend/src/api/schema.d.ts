@@ -754,6 +754,8 @@ export interface components {
             safety_slope: number | null;
             /** Unavailable Reason */
             unavailable_reason?: string | null;
+            /** Unit */
+            unit?: string | null;
         };
         /** PartDetailResponse */
         PartDetailResponse: {
@@ -956,6 +958,8 @@ export interface components {
             checkpoint_hour: number;
             /** Lot Median */
             lot_median?: number | null;
+            /** Unit */
+            unit?: string | null;
             /** Value */
             value: number;
         };
@@ -983,6 +987,8 @@ export interface components {
             lot_median: number;
             /** Parameter */
             parameter: string;
+            /** Unit */
+            unit?: string | null;
             /** Value */
             value: number;
             /** Z */

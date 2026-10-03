@@ -49,6 +49,7 @@ class ZScoreRow(BaseModel):
     value: float
     lot_median: float
     z: float
+    unit: str | None = None  # F24 Part 3: canonical unit of value and lot_median
 
 
 class ZScoreTable(BaseModel):

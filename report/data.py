@@ -53,6 +53,7 @@ class DeltaRow:
     value_168h: float | None
     delta_168h: float | None
     verdict: str | None
+    unit: str | None = None  # F24 Part 3: the parameter's canonical unit (the PDF shows it and scales by it)
 
 
 @dataclass
@@ -171,6 +172,10 @@ def build_report_data(project_id: str) -> ReportData:
         )
         pooled_reference = features_compute.build_pooled_reference(lot.part_number, pooled_readings)
         frames = features_compute.compute(lot, pooled_reference=pooled_reference or None)
+        unit_by_parameter: dict[str, str] = {}
+        for reading in lot.readings:
+            if reading.unit:
+                unit_by_parameter.setdefault(reading.parameter, reading.unit)
         for frame in frames:
             assessment = assessments.get(frame.component_id)
             verdict = assessment.verdict if assessment else None
@@ -179,7 +184,7 @@ def build_report_data(project_id: str) -> ReportData:
                 value_0h=frame.value_0h, value_24h=frame.value_24h, delta_24h=frame.delta_24h,
                 value_96h=frame.value_96h, delta_96h=frame.delta_96h,
                 value_168h=frame.value_168h, delta_168h=frame.delta_168h,
-                verdict=verdict,
+                verdict=verdict, unit=unit_by_parameter.get(frame.parameter),
             ))
 
     quantity_flagged = sum(1 for a in assessments.values() if a.verdict in ("WATCH", "REJECT"))
@@ -201,6 +206,12 @@ def build_report_data(project_id: str) -> ReportData:
         signoffs_by_component.setdefault(s.component_id, []).append(entry)
         reviewer_entries.append(entry)
 
+    def stored_sentence(cid: str) -> str | None:
+        # RiskAssessment.explanation_sentence is never filled by the pipeline; the sentence lives on the stored
+        # PartExplanation (F24 Part 3: the report must show the sentence, units included, not "not yet available").
+        explanation = results.part_explanations.get(cid)
+        return explanation.explanation_sentence if explanation is not None else None
+
     flagged_parts: list[FlaggedPart] = []
     for cid, assessment in assessments.items():
         verdict = assessment.verdict
@@ -209,7 +220,7 @@ def build_report_data(project_id: str) -> ReportData:
         parameter = next((row.parameter for row in delta_table if row.component_id == cid), "")
         flagged_parts.append(FlaggedPart(
             component_id=cid, parameter=parameter, verdict=verdict,
-            explanation=assessment.explanation_sentence,
+            explanation=assessment.explanation_sentence or stored_sentence(cid),
             disposition_history=signoffs_by_component.get(cid, []),
         ))
 

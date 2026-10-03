@@ -10,6 +10,7 @@ import { getPartDetail, submitConfirmedOutcome, submitDisposition } from '../api
 import type { PartDetailResponse } from '../api/parts'
 import type { components } from '../api/schema'
 import { WORKLIST_QUERY_KEY } from '../api/settings'
+import { formatQuantity, scaleFor, scaleForSeries } from '../format/units'
 import { pathToLot } from './registry'
 import { formatNumber, formatUtc } from './settingsFormat'
 import { DispositionStatusBadge } from './DispositionStatusBadge'
@@ -200,8 +201,23 @@ function ShapCard({ rows }: { rows: ShapContributionRow[] }) {
  */
 const ZSCORE_CHECKPOINT_HOURS = 24
 
+/** One row of the z-score table with its value and lot median in the row's own display unit (an
+ * automatic SI prefix, format/units.ts); a row with no unit (an older stored result) is left as it is. */
+function displayRow(row: ZScoreTableRow) {
+  const scale = scaleFor(Math.max(Math.abs(row.value), Math.abs(row.lot_median)), row.unit)
+  return {
+    unit: scale.unit,
+    value: row.value / scale.factor,
+    median: row.lot_median / scale.factor,
+  }
+}
+
 function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
   if (rows.length === 0) return null
+  const shown = rows.map((row) => ({ row, ...displayRow(row) }))
+  const units = [...new Set(shown.map((r) => r.unit).filter((u) => u !== ''))]
+  const unitText = units.length > 0 ? `, ${units.join(' / ')}` : ''
+  const perRowUnits = units.length > 1
   return (
     <section className="card drift-matrix" aria-label={`${ZSCORE_CHECKPOINT_HOURS}h z-score table`}>
       <header className="card-header">
@@ -213,10 +229,10 @@ function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
           <tr>
             <th scope="col">Parameter</th>
             <th scope="col" className="numeric">
-              Value ({ZSCORE_CHECKPOINT_HOURS}h)
+              Value ({ZSCORE_CHECKPOINT_HOURS}h{unitText})
             </th>
             <th scope="col" className="numeric">
-              Lot Median ({ZSCORE_CHECKPOINT_HOURS}h)
+              Lot Median ({ZSCORE_CHECKPOINT_HOURS}h{unitText})
             </th>
             <th scope="col" className="numeric">
               Robust Z-Score
@@ -224,11 +240,14 @@ function ZScoreTable({ rows }: { rows: ZScoreTableRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {shown.map(({ row, unit, value, median }) => (
             <tr key={row.parameter} className={Math.abs(row.z) >= 3 ? 'row-elevated' : ''}>
-              <td>{row.parameter}</td>
-              <td className="mono numeric">{formatNumber(row.value) ?? row.value}</td>
-              <td className="mono numeric muted">{formatNumber(row.lot_median) ?? row.lot_median}</td>
+              <td>
+                {row.parameter}
+                {perRowUnits && unit !== '' ? ` (${unit})` : ''}
+              </td>
+              <td className="mono numeric">{formatNumber(value) ?? value}</td>
+              <td className="mono numeric muted">{formatNumber(median) ?? median}</td>
               <td className="mono numeric">
                 {fmt(row.z, true)} σ
               </td>
@@ -269,10 +288,18 @@ function forecastOf(data: PartDetailResponse) {
   return b
 }
 
+/** The canonical unit of the part's worst parameter: the trajectory's own, else the z-score row's, else the
+ * forecast's. None on an older stored result - then the chart simply carries no unit. */
+function unitOf(data: PartDetailResponse, parameter: string): string | null {
+  const fromTrajectory = data.explanation?.trajectory.find((p) => p.unit)?.unit
+  const fromZ = data.explanation?.zscore_table.find((r) => r.parameter === parameter && r.unit)?.unit
+  return fromTrajectory ?? fromZ ?? data.module_b?.unit ?? null
+}
+
 function TrajectoryChart({
   data,
   parameter,
-  measured,
+  measured: measuredCanonical,
 }: {
   data: PartDetailResponse
   parameter: string
@@ -280,6 +307,29 @@ function TrajectoryChart({
 }) {
   const forecast = forecastOf(data)
   const traces: Partial<Data>[] = []
+  // One display scale for the whole y axis, from the largest value on it (10000 nA is drawn as 10 uA).
+  const unit = unitOf(data, parameter)
+  const slopeEnd = (() => {
+    const anchor = measuredCanonical.find((p) => p.hour === 24)
+    return anchor && forecast && forecast.safety_slope !== null
+      ? anchor.value + forecast.safety_slope * (168 - 24)
+      : null
+  })()
+  const scale = scaleForSeries(
+    [
+      ...measuredCanonical.flatMap((p) => [p.value, p.lotMedian]),
+      forecast?.predicted_168h,
+      forecast?.interval_lower,
+      forecast?.interval_upper,
+      slopeEnd,
+    ],
+    unit,
+  )
+  const measured = measuredCanonical.map((p) => ({
+    ...p,
+    value: p.value / scale.factor,
+    lotMedian: p.lotMedian === null ? null : p.lotMedian / scale.factor,
+  }))
 
   if (measured.length > 0) {
     traces.push({
@@ -308,7 +358,7 @@ function TrajectoryChart({
   }
 
   if (forecast && forecast.predicted_168h !== null) {
-    const predicted = forecast.predicted_168h
+    const predicted = forecast.predicted_168h / scale.factor
     traces.push({
       type: 'scatter',
       mode: 'text+markers',
@@ -323,8 +373,8 @@ function TrajectoryChart({
           ? {
               type: 'data',
               symmetric: false,
-              array: [forecast.interval_upper - predicted],
-              arrayminus: [predicted - forecast.interval_lower],
+              array: [forecast.interval_upper / scale.factor - predicted],
+              arrayminus: [predicted - forecast.interval_lower / scale.factor],
               color: '#b45309',
             }
           : undefined,
@@ -336,7 +386,7 @@ function TrajectoryChart({
         mode: 'lines',
         name: 'Safety Slope Threshold',
         x: [24, 168],
-        y: [anchor.value, anchor.value + forecast.safety_slope * (168 - 24)],
+        y: [anchor.value, anchor.value + (forecast.safety_slope * (168 - 24)) / scale.factor],
         line: { color: '#dc2626', width: 1.5, dash: 'dot' },
       })
     }
@@ -365,7 +415,7 @@ function TrajectoryChart({
           tickvals: hours,
           ticktext: hours.map((h) => `${h}h`),
         },
-        yaxis: { title: { text: parameter } },
+        yaxis: { title: { text: scale.unit ? `${parameter} (${scale.unit})` : parameter } },
         font: { family: 'Inter, system-ui, sans-serif', size: 12, color: '#334155' },
       }}
       config={{ displayModeBar: false, responsive: true }}
@@ -659,14 +709,14 @@ function PartDetailForComponent({
                   <div>
                     <p className="summary-label">Physics Baseline</p>
                     <p className="mono disagreement-value">
-                      {formatNumber(data.module_b.physics_baseline_prediction) ?? '—'}
+                      {formatQuantity(data.module_b.physics_baseline_prediction, data.module_b.unit)}
                     </p>
                     <p className="muted">Power-law extrapolation baseline</p>
                   </div>
                   <div>
                     <p className="summary-label">Live ML Model</p>
                     <p className="mono disagreement-value">
-                      {formatNumber(data.module_b.predicted_168h) ?? '—'}
+                      {formatQuantity(data.module_b.predicted_168h, data.module_b.unit)}
                     </p>
                     <p className="muted">Gradient-boosted regression</p>
                   </div>
@@ -676,7 +726,7 @@ function PartDetailForComponent({
                   <p className="mono">
                     {data.module_b.physics_disagreement_gap === null
                       ? '—'
-                      : `${data.module_b.physics_disagreement_gap >= 0 ? '+' : ''}${formatNumber(data.module_b.physics_disagreement_gap)}`}
+                      : `${data.module_b.physics_disagreement_gap >= 0 ? '+' : ''}${formatQuantity(data.module_b.physics_disagreement_gap, data.module_b.unit)}`}
                   </p>
                 </div>
               </section>

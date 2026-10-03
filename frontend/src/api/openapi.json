@@ -830,6 +830,17 @@
               }
             ],
             "title": "Unavailable Reason"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "required": [
@@ -1465,6 +1476,17 @@
             ],
             "title": "Lot Median"
           },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
           "value": {
             "title": "Value",
             "type": "number"
@@ -1542,6 +1564,17 @@
           "parameter": {
             "title": "Parameter",
             "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           },
           "value": {
             "title": "Value",

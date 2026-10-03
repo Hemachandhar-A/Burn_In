@@ -199,6 +199,9 @@ class ModuleBResult(BaseModel):
     forecast_unavailable: bool  # explicit flag - context.md 5.9
     # F24 (CONTRACT_CHANGES.md): why the forecast is unavailable, in one line; None when it is available. Additive.
     unavailable_reason: str | None = None
+    # F24 Part 3 (CONTRACT_CHANGES.md): the canonical unit of this parameter's values (predicted_168h, interval_*,
+    # physics_*; drift_rate and safety_slope are this unit per hour). None on an old stored result.
+    unit: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +342,7 @@ class ZScoreTableRow(BaseModel):
     value: float
     lot_median: float
     z: float
+    unit: str | None = None  # F24 Part 3: canonical unit of value and lot_median (z is dimensionless); None on old rows
 
 
 class TrajectoryPoint(BaseModel):
@@ -349,6 +353,7 @@ class TrajectoryPoint(BaseModel):
     checkpoint_hour: int
     value: float
     lot_median: float | None = None  # only 0h/24h frames carry a lot_median field; None at 96h/168h
+    unit: str | None = None  # F24 Part 3: canonical unit of value and lot_median; None on old stored points
 
 
 class PartExplanation(BaseModel):

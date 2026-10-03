@@ -680,3 +680,71 @@ describe('disposition status badge and required rationale (F24 Part 2)', () => {
     expect(screen.getByTestId('disposition-status')).toHaveTextContent('REJECT: awaiting second sign-off')
   })
 })
+
+describe('units on every number a person reads (F24 Part 3)', () => {
+  // The canonical unit is nA; 45000 nA must read 45 uA, never 45000.
+  const UNIT_DETAIL = () =>
+    DETAIL({
+      module_b: {
+        ...MODULE_B,
+        unit: 'nA',
+        predicted_168h: 61500,
+        interval_lower: 58000,
+        interval_upper: 65000,
+        physics_baseline_prediction: 32400,
+        physics_disagreement_gap: 12400,
+        safety_slope: 300,
+      },
+      explanation: {
+        ...EXPLANATION,
+        zscore_table: [{ parameter: 'Leakage Current', value: 45000, lot_median: 10000, z: 4.2, unit: 'nA' }],
+        trajectory: [
+          { checkpoint_hour: 0, value: 9800, lot_median: 9500, unit: 'nA' },
+          { checkpoint_hour: 24, value: 45000, lot_median: 10000, unit: 'nA' },
+        ],
+      },
+    })
+
+  test('T15: the chart axis title carries the unit, and the plotted values are in that unit', async () => {
+    setup('/parts/DUT-042', UNIT_DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const layout = JSON.parse(screen.getByTestId('plotly-stub').getAttribute('data-layout') ?? '{}')
+    expect(layout.xaxis.title.text).toBe('Hours')
+    expect(layout.yaxis.title.text).toBe('Leakage Current (uA)')
+    const measured = traces().find((t) => t.name === 'Measured')!
+    expect(measured.y).toEqual([9.8, 45])
+    const forecast = traces().find((t) => t.name === 'Module B Forecast (168h)')!
+    expect(forecast.y).toEqual([61.5])
+  })
+
+  test('T15: every header of the z-score table that holds a number carries the unit', async () => {
+    setup('/parts/DUT-042', UNIT_DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const table = screen.getByRole('table')
+    expect(within(table).getByRole('columnheader', { name: 'Value (24h, uA)' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Lot Median (24h, uA)' })).toBeInTheDocument()
+    const row = within(table).getByRole('row', { name: /Leakage Current/ })
+    expect(row).toHaveTextContent('45')
+    expect(row).toHaveTextContent('10')
+    expect(row).not.toHaveTextContent('45000')
+  })
+
+  test('the physics card shows magnitudes with the unit', async () => {
+    setup('/parts/DUT-042', UNIT_DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const card = screen.getByLabelText('Model vs physics disagreement')
+    expect(card).toHaveTextContent('32.4 uA')
+    expect(card).toHaveTextContent('61.5 uA')
+    expect(card).toHaveTextContent('+12.4 uA')
+  })
+
+  test('T17: an older stored result without any unit renders without "undefined" and with plain numbers', async () => {
+    setup('/parts/DUT-042', DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(document.body.textContent).not.toMatch(/undefined|null|NaN/)
+    const layout = JSON.parse(screen.getByTestId('plotly-stub').getAttribute('data-layout') ?? '{}')
+    expect(layout.yaxis.title.text).toBe('Leakage Current')
+    expect(screen.getByRole('columnheader', { name: 'Value (24h)' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Model vs physics disagreement')).toHaveTextContent('32.4')
+  })
+})

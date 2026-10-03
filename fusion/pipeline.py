@@ -20,7 +20,7 @@ from explain.text import (
     severity_cap_note, unavailable_forecast_note,
 )
 
-def _build_trajectory(frame: FeatureFrame) -> list[TrajectoryPoint]:
+def _build_trajectory(frame: FeatureFrame, unit: str | None = None) -> list[TrajectoryPoint]:
     """Block 4c Part 3b: one TrajectoryPoint per MEASURED checkpoint of `frame` (its own worst
     parameter's frame) - 0h/24h always attempted, 96h/168h only when the frame actually carries a
     value (value_168h is populated only on a COMPLETE lot). Skips an absent (None) or non-finite
@@ -39,7 +39,7 @@ def _build_trajectory(frame: FeatureFrame) -> list[TrajectoryPoint]:
         if value is None or not math.isfinite(value):
             continue
         median_value = median if (median is not None and math.isfinite(median)) else None
-        points.append(TrajectoryPoint(checkpoint_hour=hour, value=value, lot_median=median_value))
+        points.append(TrajectoryPoint(checkpoint_hour=hour, value=value, lot_median=median_value, unit=unit))
     return points
 
 
@@ -66,6 +66,11 @@ def run_full_pipeline(
     )
 
     frames = compute(lot)
+    # F24 Part 3: the canonical unit per parameter (readings are unit-normalised at ingestion, so one per parameter).
+    unit_by_parameter: dict[str, str] = {}
+    for reading in lot.readings:
+        if reading.unit:
+            unit_by_parameter.setdefault(reading.parameter, reading.unit)
     
     a_results = []
     if is_complete:
@@ -80,6 +85,7 @@ def run_full_pipeline(
     # module_b_predict is called
     b_inputs = [to_module_b_input(frame) for frame in frames]
     b_results = module_b_predict(b_inputs) if frames else []
+    b_results = [r.model_copy(update={"unit": unit_by_parameter.get(r.parameter)}) for r in b_results]
     
     # rank components for Module A: by combined_severity descending, component_id ascending
     a_scores = [(-r.combined_severity, r.component_id) for r in a_by_comp.values()]
@@ -223,7 +229,7 @@ def run_full_pipeline(
 
         zscore_rows = []
         try:
-            zscore_rows = build_zscore_table(comp_frames, "24h").rows
+            zscore_rows = build_zscore_table(comp_frames, "24h", unit_by_parameter).rows
         except ValueError:
             zscore_rows = []
         # The sentence's z-score clause only claims Module A's own worst-parameter result - never a
@@ -240,7 +246,7 @@ def run_full_pipeline(
                 sentence_checkpoint = max(worst_frame.robust_z, key=lambda k: abs(worst_frame.robust_z[k]))
             if sentence_checkpoint in ("0h", "24h"):
                 try:
-                    checkpoint_rows = build_zscore_table(comp_frames, sentence_checkpoint).rows
+                    checkpoint_rows = build_zscore_table(comp_frames, sentence_checkpoint, unit_by_parameter).rows
                 except ValueError:
                     checkpoint_rows = []
                 zscore_sentence_row = next((r for r in checkpoint_rows if r.parameter == worst_parameter), None)
@@ -277,7 +283,10 @@ def run_full_pipeline(
         )
 
         worst_parameter_frame = next((f for f in comp_frames if f.parameter == worst_parameter), None)
-        trajectory = _build_trajectory(worst_parameter_frame) if worst_parameter_frame is not None else []
+        trajectory = (
+            _build_trajectory(worst_parameter_frame, unit_by_parameter.get(worst_parameter))
+            if worst_parameter_frame is not None else []
+        )
 
         part_explanations[cid] = PartExplanation(
             shap_contributions=[
@@ -296,7 +305,7 @@ def run_full_pipeline(
                 EcodDimensionRow(dimension=c.dimension, score=c.score) for c in ecod_dimensions
             ],
             zscore_table=[
-                ZScoreTableRow(parameter=r.parameter, value=r.value, lot_median=r.lot_median, z=r.z)
+                ZScoreTableRow(parameter=r.parameter, value=r.value, lot_median=r.lot_median, z=r.z, unit=r.unit)
                 for r in zscore_rows
             ],
             explanation_sentence=sentence,
