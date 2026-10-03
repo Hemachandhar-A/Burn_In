@@ -225,6 +225,8 @@ def unavailable_forecast_note(module_b: ModuleBResult | None) -> str | None:
     isn't true."""
     if module_b is None or not module_b.forecast_unavailable:
         return None
+    if module_b.unavailable_reason:
+        return f"Drift prediction unavailable - {module_b.unavailable_reason}."
     return (
         f"Drift prediction unavailable for {module_b.parameter}: outside Module B's trained "
         f"parameter set, no calibrated model, or an invalid required input."

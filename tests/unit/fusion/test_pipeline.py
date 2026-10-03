@@ -690,10 +690,10 @@ def test_stored_shap_rows_survive_round_trip_on_an_in_progress_lot(tmp_path, mon
 
     csv = (
         "component_id,parameter,checkpoint_hour,value,unit\n"
-        "c1,iddq,0,1.0,uA\n"
-        "c1,iddq,24,500.0,uA\n"
-        "c2,iddq,0,1.0,uA\n"
-        "c2,iddq,24,1.1,uA\n"
+        "c1,iddq,0,10.0,uA\n"
+        "c1,iddq,24,50.0,uA\n"
+        "c2,iddq,0,10.0,uA\n"
+        "c2,iddq,24,11.0,uA\n"
     )
     files = {"file": ("lot.csv", io.BytesIO(csv.encode()), "text/csv")}
     data = {"lot_id": "L-B6A", "part_number": "PN-B6A", "manufacturer": "ACME", "date_code": "2601",
@@ -749,10 +749,10 @@ def test_every_reader_of_the_stored_row_survives_the_in_progress_lot(tmp_path, m
 
     csv = (
         "component_id,parameter,checkpoint_hour,value,unit\n"
-        "c1,iddq,0,1.0,uA\n"
-        "c1,iddq,24,500.0,uA\n"
-        "c2,iddq,0,1.0,uA\n"
-        "c2,iddq,24,1.1,uA\n"
+        "c1,iddq,0,10.0,uA\n"
+        "c1,iddq,24,50.0,uA\n"
+        "c2,iddq,0,10.0,uA\n"
+        "c2,iddq,24,11.0,uA\n"
     )
     files = {"file": ("lot.csv", io.BytesIO(csv.encode()), "text/csv")}
     data = {"lot_id": "L-B6D", "part_number": "PN-B6D", "manufacturer": "ACME", "date_code": "2601",

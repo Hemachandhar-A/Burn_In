@@ -197,6 +197,8 @@ class ModuleBResult(BaseModel):
     # whenever exceeds_safety_slope/safety_slope are.
     lower_bound_exceeds_safety_slope: bool | None
     forecast_unavailable: bool  # explicit flag - context.md 5.9
+    # F24 (CONTRACT_CHANGES.md): why the forecast is unavailable, in one line; None when it is available. Additive.
+    unavailable_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
