@@ -39,9 +39,7 @@ def _clean_flag_share(n_parts: int) -> tuple[float, int]:
 
 
 @pytest.mark.parametrize("n_parts", [
-    pytest.param(30, marks=pytest.mark.xfail(
-        strict=True, reason="R4 NOT met at size 30: measured 0.2233 (the MCD chi-square leg alone flags 0.158 of clean "
-                            "parts at n = 30; see docs/ADOPTION_RESULT.md). strict: turns red when this is fixed.")),
+    30,  # was a strict xfail under V1 (0.2233); V1F (MCD leg only from 77 parts) passes it - session I2c
     77, 150])
 def test_p1_clean_lot_flag_share_through_the_app_is_at_most_5_percent(n_parts, capsys):
     share, total = _clean_flag_share(n_parts)

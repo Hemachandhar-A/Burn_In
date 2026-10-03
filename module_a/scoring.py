@@ -89,6 +89,9 @@ class ScoringConfig:
     # T(s) = 1 - exp(-s / display_s0) in [0, 1) and `severity_log10p` carries s; tiers are still decided on s.
     # None (the default, and what the experiment harness uses) leaves the raw severity in `combined_severity`.
     display_s0: float | None = None
+    # V1F (session I2c): minimum lot size for the MCD leg. None (default) keeps today's floor (_MCD_LOT_SIZE_FLOOR = 30), so
+    # every existing caller is unchanged; the application's absolute mode sets it (module_a.settings.MCD_MIN_PARTS_ABSOLUTE).
+    mcd_min_parts: int | None = None
 
     def __post_init__(self) -> None:
         if self.calibration not in ("rank", "absolute", "reference"):
@@ -101,6 +104,8 @@ class ScoringConfig:
             raise ValueError("n_min must be >= 1")
         if self.display_s0 is not None and not self.display_s0 > 0.0:
             raise ValueError("display_s0 must be > 0")
+        if self.mcd_min_parts is not None and self.mcd_min_parts < _MCD_LOT_SIZE_FLOOR:
+            raise ValueError("mcd_min_parts cannot be below the MCD estimator floor")
         if not 0.0 < self.override_p < 1.0:
             raise ValueError("override_p must be in (0, 1)")
 
@@ -138,17 +143,19 @@ class FrameSeverities:
 # Raw scores
 # ---------------------------------------------------------------------------------------------------------------
 
-def compute_lot_raw(frames: Sequence[FeatureFrame]) -> LotRaw:
+def compute_lot_raw(frames: Sequence[FeatureFrame], mcd_min_parts: int | None = None) -> LotRaw:
     """The detectors' raw scores for ONE lot (all frames share lot_id). Mirrors `_detect_single_lot`'s steps 1, 2
-    and 4; the Isolation Forest is not computed."""
+    and 4; the Isolation Forest is not computed. `mcd_min_parts` (V1F) raises the lot size below which the MCD leg is
+    skipped; None keeps the estimator floor."""
     frames = list(frames)
     lot_size = frames[0].lot_size
+    floor = _MCD_LOT_SIZE_FLOOR if mcd_min_parts is None else max(mcd_min_parts, _MCD_LOT_SIZE_FLOOR)
     mcd_d: dict[str, float] = {}
     mcd_sev: dict[str, float] = {}
-    if lot_size >= _MCD_LOT_SIZE_FLOOR:
+    if lot_size >= floor:
         for checkpoint in sorted({ck for f in frames for ck in f.robust_z}):
             component_ids, _params, matrix = build_mcd_matrix(frames, checkpoint)
-            if len(component_ids) < _MCD_LOT_SIZE_FLOOR or not matrix or len(matrix[0]) == 0:
+            if len(component_ids) < floor or not matrix or len(matrix[0]) == 0:
                 continue
             X = np.array(matrix, dtype=float)
             try:
@@ -289,7 +296,7 @@ def detect_lot_scored(frames: Sequence[FeatureFrame], scoring: ScoringConfig):
     if scoring.review_threshold is None or scoring.reject_threshold is None:
         raise ValueError("a non-rank scoring needs review_threshold and reject_threshold on its own severity scale")
     frames = list(frames)
-    raw = compute_lot_raw(frames)
+    raw = compute_lot_raw(frames, scoring.mcd_min_parts)
     sev = frame_severities(raw, scoring)
     results = []
     for i, frame in enumerate(frames):

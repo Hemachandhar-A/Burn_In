@@ -23,6 +23,13 @@ import os
 ABSOLUTE_REVIEW_THRESHOLD: float = 2.956
 ABSOLUTE_REJECT_THRESHOLD: float = 3.419
 
+# V1F (session I2c, docs/ADOPTION_PLAN_ADDENDUM.md): in absolute mode the MCD leg runs only for lots of at least this many
+# parts (the standard lot size from the zero-failure derivation); below it only the robust-z leg scores. Why: the chi-square
+# reference for the MCD distance is badly over-confident at small n (clean-lot MCD-leg flag share 0.147 at n = 30, 0.072 at
+# n = 50, 0.050 at n = 60, 0.032 at n = 77; docs/evidence_data/adoption/calibration_summary.md), reproduced on pure Gaussian
+# data, so it is the estimator at finite n. The tier thresholds below were tuned at n = 77. Rank mode is unaffected.
+MCD_MIN_PARTS_ABSOLUTE: int = 77
+
 # Display transform T(s) = 1 - exp(-s / S0). S0 = 5 maps REJECT (3.419) to 0.495 and REVIEW (2.956) to 0.447, so the
 # tiers straddle the middle of a 0-1 scale; s = 15 reads 0.95. Cosmetic: tiers and ranks are decided on s.
 DISPLAY_S0: float = 5.0
@@ -51,7 +58,7 @@ def module_a_scoring_config():
 
     return ScoringConfig(calibration="absolute", combination="max",
                          review_threshold=ABSOLUTE_REVIEW_THRESHOLD, reject_threshold=ABSOLUTE_REJECT_THRESHOLD,
-                         display_s0=DISPLAY_S0)
+                         display_s0=DISPLAY_S0, mcd_min_parts=MCD_MIN_PARTS_ABSOLUTE)
 
 
 def display_transform(s: float, s0: float = DISPLAY_S0) -> float:

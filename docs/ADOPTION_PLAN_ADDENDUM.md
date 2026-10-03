@@ -49,3 +49,13 @@ does, the new ranking is reported plainly; it is a result, not a failure).
 * Baseline tuning (Part 2): each baseline's threshold parameter is tuned on seed 6101 with the repo's cost-sensitive
   optimiser (`harness.scoring.tune_threshold`, 10:1) on the same five families; evaluation on the published protocol (seed 2026).
 * Sweep (Part 3): settings, 150 lots, live configuration and thresholds fixed as in docs/ADOPTION_PLAN.md.
+
+## Clarifications appended before the F-R4 / F-R5 run (nothing above edited)
+
+* **F-R5 is judged per n, pooled over the three prevalences (180 lots per n: 3 prevalences x 5 families x 12 lots).** The nine
+  (n, prevalence) cells are also reported; a cell that fails is named even if the pooled value passes.
+* "Cost <=" is judged on the point estimate for V1F vs current (paired, same lots); a paired lot-bootstrap CI of the cost
+  difference (V1F - current) is reported, and "not distinguishable" is said if it contains 0.
+* F-R4's share is the part-level share with `severity_tier != PASS` from `run_full_pipeline`; its 95% CI is a lot bootstrap.
+  The criterion is judged on the point estimate; a CI upper bound above 5% is reported.
+* Lot ids carry the family, n and prevalence so no two cells are common-random-number twins.
