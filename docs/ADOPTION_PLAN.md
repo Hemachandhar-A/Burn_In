@@ -76,3 +76,7 @@ share was 0.2233, i.e. R4 FAILS at size 30 (the MCD chi-square leg flags 0.158 o
 at 50, 0.027 at 77; diagnostic `docs/evidence_data/adoption/diag_small_lot_mcd.txt`). The rule above is NOT changed because of that
 result. It is therefore already known that the overall verdict cannot be ADOPT-READY unless a decision on small lots is made by
 the Lead; the remaining items are measured to give that decision its evidence.
+
+## Deviations (appended after the first results; nothing above is edited)
+
+**D1 (2026-10-03, Lead ruling, session I2a resume).** (1) R4 stays exactly as written above; its failure at lot size 30 is a result, not a reason to change the rule. (2) Added diagnostic (before any further run): clean-lot flag rate by lot size n = 15, 20, 30, 40, 50, 60, 77, 100, 150 through `fusion.run_full_pipeline` with `MODULE_A_SCORING=absolute`, separately for the z leg alone, the MCD leg alone and the combined result (100 clean lots for n <= 40, 40 lots above), plus the share of p-values below 1e-2, 1e-3 and 1e-4 per leg and size against the nominal share, and the number K of scores entering the maximum. (3) Part 4a (the full 10-setting sweep, claims C1, C2, C5, C6, C7) is DEFERRED so it is not run twice if a small-lot fix follows; the claims stay registered above and will be evaluated on the version that is adopted. Part 4b still runs now. (4) No small-lot fix is implemented in this session; any fix will be a new post-hoc variant on fresh seeds and on the published protocol (seed 2026), with thresholds re-tuned on tuning seed 6101 only.
