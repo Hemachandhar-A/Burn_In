@@ -82,12 +82,13 @@ def stage_a_variants() -> list[Variant]:
 
 
 def stage_b_variants(calibration_variant: Variant) -> list[Variant]:
-    """C0 / C1 / C2 on one calibration. A rank calibration only has C0."""
+    """C0 / C1 / C2 on one calibration; C0 is the calibration variant itself (its name carries no suffix). A rank
+    calibration only has C0."""
     if calibration_variant.calibration == "rank":
         return [calibration_variant]
-    base = calibration_variant.name.split("-")[0]
-    return [dataclasses.replace(calibration_variant, name=f"{base}-{c}", combination=m)
-            for c, m in (("C0", "max"), ("C1", "mean"), ("C2", "hybrid"))]
+    c0 = dataclasses.replace(calibration_variant, combination="max")
+    return [c0] + [dataclasses.replace(calibration_variant, name=f"{calibration_variant.name}-{c}", combination=m)
+                   for c, m in (("C1", "mean"), ("C2", "hybrid"))]
 
 
 # --- data ------------------------------------------------------------------------------------------------------

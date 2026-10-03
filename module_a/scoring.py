@@ -151,7 +151,7 @@ def compute_lot_raw(frames: Sequence[FeatureFrame]) -> LotRaw:
                 sq = mcd.mahalanobis(X)
             except (ValueError, np.linalg.LinAlgError):
                 continue
-            sev = -chi2.logsf(sq, X.shape[1]) / _LN10
+            sev = chi2_neg_log10_sf(sq, X.shape[1])
             for cid, s2, sv in zip(component_ids, sq, sev):
                 d = float(np.sqrt(s2))
                 if cid not in mcd_d or d > mcd_d[cid]:
@@ -189,6 +189,27 @@ def compute_lot_raw(frames: Sequence[FeatureFrame]) -> LotRaw:
 # ---------------------------------------------------------------------------------------------------------------
 # Calibration
 # ---------------------------------------------------------------------------------------------------------------
+
+def chi2_neg_log10_sf(x: np.ndarray, df: int) -> np.ndarray:
+    """-log10 of the chi-square upper-tail probability, finite far into the tail. scipy's `chi2.logsf` returns -inf
+    once the probability underflows (a squared distance beyond about 1,600 at 3 dimensions), which would turn a
+    huge outlier's severity into infinity; there the incomplete-gamma asymptotic series is used instead:
+    log Q(a, y) ~ (a-1) ln y - y - lgamma(a) + ln(1 + (a-1)/y + (a-1)(a-2)/y^2 + ...), a = df/2, y = x/2."""
+    x = np.asarray(x, dtype=float)
+    out = -chi2.logsf(x, df) / _LN10
+    tail = ~np.isfinite(out)
+    if tail.any():
+        a, y = df / 2.0, x[tail] / 2.0
+        series, term = np.ones_like(y), np.ones_like(y)
+        for j in range(1, 40):
+            term = term * (a - j) / y
+            series = series + term
+            if np.all(np.abs(term) < 1e-17):
+                break
+        log_q = (a - 1.0) * np.log(y) - y - math.lgamma(a) + np.log(series)
+        out[tail] = -log_q / _LN10
+    return out
+
 
 def _sev_z_absolute(z: np.ndarray) -> np.ndarray:
     """-log10 of the two-sided normal tail probability of |z|."""

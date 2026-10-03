@@ -254,3 +254,19 @@ def test_p5_also_holds_for_todays_rank_scoring():
     shuffled = detect(_golden_with(order=order))
     by_key = {(r.component_id, r.parameter): r.combined_severity for r in base}
     assert max(abs(by_key[(r.component_id, r.parameter)] - r.combined_severity) for r in shuffled) <= 1e-6
+
+
+def test_chi2_tail_severity_is_finite_and_matches_scipy_where_scipy_can():
+    from scipy.stats import chi2
+
+    from module_a.scoring import chi2_neg_log10_sf
+    x = np.array([0.5, 5.0, 50.0, 400.0, 1000.0, 1400.0])
+    np.testing.assert_allclose(chi2_neg_log10_sf(x, 3), -chi2.logsf(x, 3) / math.log(10.0), rtol=1e-12)
+    big = np.array([1700.0, 5000.0, 84_000.0, 1e7])  # scipy gives inf for all of these
+    sev = chi2_neg_log10_sf(big, 3)
+    assert np.isfinite(sev).all() and (np.diff(sev) > 0).all()
+    # continuity across the point where scipy underflows: compare with the series evaluated just inside scipy's range
+    # exact closed form for df=3 at a large x: sf = erfc(sqrt(x/2)) + sqrt(2x/pi) exp(-x/2)
+    for xx in (1700.0, 3000.0):
+        exact = -(math.log(math.sqrt(2 * xx / math.pi)) - xx / 2) / math.log(10.0)  # erfc term negligible
+        assert abs(chi2_neg_log10_sf(np.array([xx]), 3)[0] - exact) < 0.01

@@ -180,3 +180,35 @@ section 1); or a variant would need a change outside the allowed files.
 
 ## Deviations (append only)
 
+
+### D1 (before any variant was run): anchor lots excluded from threshold tuning
+The frozen ECOD anchor is the first 8 tuning-side lots of each family (section 2, V1). Scoring those same lots against
+an anchor that contains them would be self-referential (each part counts itself in the conformal p-value), so the
+threshold tuner uses tuning-side lots 8-99 only; lots 0-7 serve as the anchor (and as V2 history). Same lots for every
+variant, V0 included.
+
+### D2 (before any variant was run): chi-square tail computed past scipy's underflow
+`scipy.stats.chi2.logsf` returns -inf for squared distances above roughly 1,500 (3 dimensions), which made V1's
+severity infinite for strong outliers (observed on the higher-prevalence and noise families). `module_a/scoring.py`
+therefore uses the incomplete-gamma asymptotic series in that range (`chi2_neg_log10_sf`, tested against scipy where
+both work and against the df = 3 closed form beyond). Nothing else about V1 changes.
+
+### D3 (before any variant was run): P3 uses a generated lot, not the golden fixture
+First attempt at P3 used the golden lot. The golden fixture builds all three parameters from ONE offset pattern, so its
+MCD covariance is singular (sklearn warns "not full rank") and the raw MCD distance of GOLDEN-045 is itself not monotone
+in the planted deviation (8.39, 3.55, 6.21, 12.42 at leakage 18, 30, 45, 80 uA; reproduced on the unmodified detector,
+so it is a property of the existing MCD on that fixture, not of any variant). On a generated lot the same ladder is
+monotone (z 2.6 -> 289, MCD 2.9 -> 290). P3 is therefore tested on a generated clean lot with one part's leakage
+scaled by 1, 1.2, 1.5, 2, 3, 5, 10, 30. P2 (golden) keeps the golden fixture; for the mean combination under V2 it is not
+asserted to reach the saturation cap (same MCD reason) but must still be the lot's top part.
+
+### D4 (before any variant was run): where each S1 component comes from
+P1 and P2 at the TUNED thresholds are measured by `scripts/scoring_experiment.py`; P3, P4, P5 are the parametrised unit
+tests in `tests/unit/module_a/test_scoring_variants.py` (V1 and V2 each x C0/C1/C2; a V2 variant with any K is covered by
+the K = 5 reference test, since the property does not depend on K). V0 has no P3/P4 unit test (it is today's code); its
+S1 is decided by P1, which it is expected to fail.
+
+### D5 (before any variant was run): S4 and robustness are computed for every variant
+Re-scoring a variant on the robustness sequences is a cheap function of the cached raw scores, so S4 (prevalence 1%) is
+computed for ALL variants, not only the finalists, which lets the selection rule apply S4 as written. The finalists'
+robustness rows (prevalence 1%, 3%, noise x2) are the ones discussed in the result document.
