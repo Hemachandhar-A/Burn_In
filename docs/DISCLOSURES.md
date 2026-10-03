@@ -86,3 +86,10 @@ This section records, for the merged state (guard + disposition status + units +
 - Module B's accuracy is only about 7% better than the "168h = 24h value" persistence baseline, and its intervals under-cover (#31).
 - The benchmark configuration (Isolation Forest active) is not the live configuration (#32, #25).
 - The scoring experiment (`module_a/scoring.py`, `docs/SCORING_EXPERIMENT_RESULT.md`) is a switch only: `detect(scoring=None)` is the default and nothing is wired into fusion, so shipped behaviour is unchanged.
+
+## Updates 2026-10-03 (Session I2a, branch `scoring-adoption`) - append-only; nothing above is changed
+
+| # | What | Where | What the user sees | Why |
+|---|---|---|---|---|
+| 34 | PDF delta-data table: the Component ID overflows its column and overprints the Parameter column | `report/pdf.py` (delta table column widths); render of a DEMO-COMPLETE-01 report: `docs/evidence_data/pdf_check/page1.png`, `page2.png` | Every row prints `DEMO-COMPLETE-01-0004` over the first letters of `iddq` / `leakage` / `prop_delay`, so the component and parameter cells are partly unreadable (the numeric, unit and verdict columns are fine). Summary labels sit beside their values and units are present. | The Component column is narrower than a 22-character ID in the table font. Found by rendering the PDF to PNG; not fixed in this session (the session changes nothing shipped). |
+| 35 | A part at REJECT_FINAL is not final: further sign-offs by either account are accepted and can move the status back to CONFLICT | `identity/router.py` (`create_disposition`), `identity/status.py` (`derive_status`); behaviour measured in session I2a on an isolated DB | After two distinct accounts Reject a part (REJECT_FINAL), the same accounts can keep posting: a further Reject is 200 and stays REJECT_FINAL; an Accept or Hold by one account is 200 and the status becomes CONFLICT. Only the same-account Reject rule (400) can refuse a post. History is kept (every row stays), the status is derived. | Follows the "latest decision per account counts" ruling (#30); no rule makes FINAL terminal. |
