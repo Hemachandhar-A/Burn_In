@@ -1,0 +1,16 @@
+{
+  "different_noise_regime": {
+    "lots": 150,
+    "parts": 11550,
+    "current_rank_live_flag_rate": 0.19922077922077921,
+    "absolute_flag_rate": 0.07142857142857142,
+    "seed": 7101
+  },
+  "baseline": {
+    "lots": 150,
+    "parts": 11550,
+    "current_rank_live_flag_rate": 0.18926406926406927,
+    "absolute_flag_rate": 0.04458874458874459,
+    "seed": 7101
+  }
+}

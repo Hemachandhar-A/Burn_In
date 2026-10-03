@@ -1,0 +1,51 @@
+{
+  "n": 150,
+  "lots": 40,
+  "parts": 6000,
+  "seed": 7101,
+  "family": "baseline, defect prevalence 0",
+  "part_level_share_at_or_above_REVIEW_s2.956": {
+    "combined_pipeline_tier": 0.026833333333333334,
+    "combined_pipeline_s": 0.026833333333333334,
+    "z_leg_alone": 0.02033333333333333,
+    "mcd_leg_alone": 0.018166666666666668
+  },
+  "part_level_share_p_below": {
+    "0.01": {
+      "combined": 0.066,
+      "z_leg": 0.073,
+      "mcd_leg": 0.054
+    },
+    "0.001": {
+      "combined": 0.0255,
+      "z_leg": 0.019166666666666665,
+      "mcd_leg": 0.017
+    },
+    "0.0001": {
+      "combined": 0.007833333333333333,
+      "z_leg": 0.006,
+      "mcd_leg": 0.006
+    }
+  },
+  "per_score_share_p_below": {
+    "0.01": {
+      "nominal": 0.01,
+      "z": 0.017069444444444446,
+      "mcd": 0.035375
+    },
+    "0.001": {
+      "nominal": 0.001,
+      "z": 0.004027777777777778,
+      "mcd": 0.010416666666666666
+    },
+    "0.0001": {
+      "nominal": 0.0001,
+      "z": 0.0012638888888888888,
+      "mcd": 0.003875
+    }
+  },
+  "n_scores": {
+    "z": 72000,
+    "mcd": 24000
+  }
+}

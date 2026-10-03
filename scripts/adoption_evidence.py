@@ -46,7 +46,7 @@ def run_absolute() -> Path:
     tables = []
     for name, test_set in generate_held_out_sets(seed=SEED).items():
         results = hs.run_module_a(test_set, scoring=cfg)
-        scores = hv.variant_part_scores(results)
+        scores = hs.variant_part_scores(results)
         t = test_set.labels().merge(scores, on=["lot_id", "component_id"], how="left", validate="one_to_one")
         if t["score"].isna().any():
             raise ValueError(f"{name}: unscored parts")
