@@ -11,13 +11,15 @@ import sys
 from pathlib import Path
 
 
-def build_tables(seed: int, include_all: bool) -> dict:
+def build_tables(seed: int, include_all: bool, *, pooled_reference: bool = True,
+                 max_history: int | None = None) -> dict:
     from harness import bakeoff
     from harness import comparison as cmp
     from harness.held_out import generate_held_out_sets
 
     thresholds = bakeoff.load_harness_thresholds()
-    parts = cmp.part_table(generate_held_out_sets(seed=seed), thresholds, seed=seed)
+    parts = cmp.part_table(generate_held_out_sets(seed=seed), thresholds, seed=seed,
+                           pooled_reference=pooled_reference, max_history=max_history)
     tables = {"headline": cmp.headline_table(parts)}
     if include_all:
         tables["archetype_recall"] = cmp.archetype_recall(parts)
@@ -42,10 +44,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=None, help="also write the output to this file")
     parser.add_argument("--all", action="store_true", help="include archetype, matched-budget and golden tables")
     parser.add_argument("--seed", type=int, default=None, help="default: the harness seed")
+    parser.add_argument("--no-pooled-reference", action="store_true",
+                        help="Module A with no prior_frames (the live app configuration: Isolation Forest inactive)")
+    parser.add_argument("--max-history", type=int, default=None, metavar="K",
+                        help="Isolation Forest history = the K most recent earlier lots (default: all earlier lots)")
     args = parser.parse_args(argv)
 
     from harness import bakeoff
-    text = render(build_tables(args.seed if args.seed is not None else bakeoff.HARNESS_SEED, args.all), args.format)
+    tables = build_tables(args.seed if args.seed is not None else bakeoff.HARNESS_SEED, args.all,
+                          pooled_reference=not args.no_pooled_reference, max_history=args.max_history)
+    text = render(tables, args.format)
     print(text)
     if args.out is not None:
         args.out.write_text(text + "\n", encoding="utf-8")
