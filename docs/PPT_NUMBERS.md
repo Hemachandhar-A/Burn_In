@@ -57,6 +57,9 @@ below is therefore the benchmark configuration, not a measurement of the demo (D
   (DISCLOSURES #1).
 - "Module B is accurate on real customer data." It is validated only on the generator's measurement scale
   (DISCLOSURES #2); the golden worked example through the live route is REJECT, not HOLD.
+  **Correction (2026-10-03, session I2a):** that last clause is FALSE as of demo-v1.2. Through `POST /lots` the golden
+  fixture is now HOLD with PDA 0.03896 (the Module B guard; DISCLOSURES, "RESOLVED in demo-v1.2"). Do not claim REJECT
+  for the golden example through the live route. No measured number in this file was changed.
 - "The 90% interval is reliable." Coverage is 0.437 to 0.605 on `different_noise_regime` (DISCLOSURES #6).
 - "Cross-lot learning / pooled history is used." The live pipeline supplies no pooled reference (DISCLOSURES #7, #25).
 - "Fixed delta limits are a weak baseline." It scores recall 1.000 here (claim 7); do not imply otherwise.
