@@ -11,6 +11,10 @@ _TITLE_SIZE = 16
 _HEADING_SIZE = 12
 _BODY_SIZE = 10
 _SMALL_SIZE = 8
+# Delta table column widths (mm). The Component column fits a 22-character ID at the small font (a 22-character ID such
+# as DEMO-COMPLETE-01-0004 overprinted the Parameter column at the previous width of 22); the sum stays within the
+# 190 mm printable width of an A4 page.
+_DELTA_WIDTHS = [42, 20, 12, 14, 14, 14, 14, 14, 14, 14, 18]
 
 
 def _heading(doc: FPDF, text: str) -> None:
@@ -68,7 +72,7 @@ def render_pdf(report: ReportData) -> bytearray:
     else:
         doc.set_font("Helvetica", style="B", size=_SMALL_SIZE)
         headers = ["Component", "Param", "Unit", "0h", "24h", "d24h", "96h", "d96h", "168h", "d168h", "Verdict"]
-        widths = [22, 16, 12, 14, 14, 14, 14, 14, 14, 14, 20]
+        widths = _DELTA_WIDTHS
         for h, w in zip(headers, widths):
             doc.cell(w, 6, h, border=1)
         doc.ln()
