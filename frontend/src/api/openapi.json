@@ -675,6 +675,17 @@
             ],
             "title": "Severity Cap Reason"
           },
+          "severity_log10p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Log10P"
+          },
           "severity_tier": {
             "enum": [
               "PASS",
