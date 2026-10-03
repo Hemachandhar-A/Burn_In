@@ -42,4 +42,15 @@ The criteria above leave a few measurement choices open. They are fixed here:
 
 ## Deviations
 
-(none yet)
+D1 (written after the Module B and live-benchmark runs, BEFORE any sensitivity run). The brief says to reuse
+the Part 0b benchmark as the sensitivity baseline. The 0b held-out sets are archetype-minimum sets whose lot count
+differs per family, which cannot be matched by the other settings. The baseline setting is therefore re-run in the
+same fixed design as the other ten (150 lots, lot ids `SENS-<index>`, seed 5101, default baseline family), so all
+11 settings are comparable. The 0b / Part 2 numbers are reported alongside, not replaced. Reason: comparability.
+
+D2 (same time). Sensitivity operationalisation not fixed above: (a) 150 lots per setting for every setting (lot size
+30 / 77 / 150 therefore means 4,500 / 11,550 / 22,500 parts); (b) "noise" scales both the proportional measurement
+noise and the tester-offset sigma by the factor, quantisation untouched; (c) fixed prevalence p means
+defect_prevalence_range = (p, p); (d) C1-C3 are judged for Module A at BOTH its REVIEW and REJECT operating points
+and reported separately; (e) the published (pooled-reference) configuration is run only if time allows, live is
+primary. Reason: the brief left these open.
