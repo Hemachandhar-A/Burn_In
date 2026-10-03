@@ -153,27 +153,47 @@ def part_detector_scores(results: Sequence[ModuleAResult]) -> pd.DataFrame:
     return pct.groupby(_PART_KEY, sort=False)[list(DETECTORS)].max().reset_index()
 
 
-def run_module_a(test_set: HeldOutTestSet, *, pooled_reference: bool = True,
-                 max_history: int | None = None) -> list[ModuleAResult]:
+def run_module_a(test_set: HeldOutTestSet, *, pooled_reference: bool = True, max_history: int | None = None,
+                 scoring=None, reference_lots: int | None = None, ecod_anchor=None) -> list[ModuleAResult]:
     """module_a's detect() once per lot, in lot order, each lot's history being every earlier lot of the set.
 
-    Defaults reproduce the published benchmark configuration exactly. Two optional measurement switches:
+    Defaults reproduce the published benchmark configuration exactly. Optional measurement switches:
     `pooled_reference=False` passes no prior_frames - the LIVE configuration, where the app's pipeline
     (fusion.run_full_pipeline) calls detect(frames) with no pooled reference so the Isolation Forest is
-    inactive; `max_history=K` limits the history to the K most recent earlier lots of the set."""
+    inactive; `max_history=K` limits the history to the K most recent earlier lots of the set.
+
+    Optional (S6X): `scoring` is a module_a.scoring.ScoringConfig passed through to detect() - a non-rank config
+    bypasses the Isolation Forest and ignores the history (so pooled_reference / max_history do not apply to it);
+    when it asks for the "reference" calibration, each lot's reference is built from the raw detector scores of
+    the `reference_lots` lots before it (all earlier lots when None), the lot itself excluded. `ecod_anchor` is the
+    frozen ECOD table the "absolute" calibration needs (module_a.scoring.ScoringReference)."""
     if max_history is not None and (isinstance(max_history, bool) or not isinstance(max_history, int)
                                     or max_history < 1):
         raise ValueError(f"max_history must be an int >= 1 or None, got {max_history!r}")
     results: list[ModuleAResult] = []
     history: list[list] = []  # one frame list per earlier lot, oldest first
+    raws = []
     for lot in test_set.lots:
         frames = compute(lot.dataset)
-        if pooled_reference:
-            earlier = history if max_history is None else history[-max_history:]
-            prior = [f for lot_frames in earlier for f in lot_frames]
+        if scoring is None or scoring.is_legacy:
+            if pooled_reference:
+                earlier = history if max_history is None else history[-max_history:]
+                prior = [f for lot_frames in earlier for f in lot_frames]
+            else:
+                prior = []
+            results += module_a_detect.detect(frames, prior_frames=prior)
         else:
-            prior = []
-        results += module_a_detect.detect(frames, prior_frames=prior)
+            import dataclasses
+
+            from module_a.scoring import ScoringReference, compute_lot_raw
+
+            earlier_raws = raws if reference_lots is None else raws[-reference_lots:]
+            cfg = dataclasses.replace(
+                scoring, ecod_anchor=ecod_anchor if ecod_anchor is not None else scoring.ecod_anchor,
+                reference=ScoringReference.from_raw(earlier_raws) if (scoring.calibration == "reference" and earlier_raws)
+                else scoring.reference)
+            results += module_a_detect.detect(frames, scoring=cfg)
+            raws.append(compute_lot_raw(frames))
         history.append(frames)
     return results
 
@@ -274,3 +294,11 @@ def summarize_module_b(table: pd.DataFrame) -> pd.DataFrame:
         row["target_coverage"] = DEFAULT_CONFIDENCE_LEVEL
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def variant_part_scores(results: Sequence[ModuleAResult]) -> pd.DataFrame:
+    """Per part (lot_id, component_id): the max of `combined_severity` over its frames. For results produced by
+    detect(scoring=...) this is the variant's own severity scale; for the default scoring it is the percentile."""
+    frame = pd.DataFrame({"lot_id": [r.lot_id for r in results], "component_id": [r.component_id for r in results],
+                          "score": [r.combined_severity for r in results]})
+    return frame.groupby(_PART_KEY, sort=False)["score"].max().reset_index()
