@@ -12,6 +12,7 @@ import type { components } from '../api/schema'
 import { WORKLIST_QUERY_KEY } from '../api/settings'
 import { pathToLot } from './registry'
 import { formatNumber, formatUtc } from './settingsFormat'
+import { DispositionStatusBadge } from './DispositionStatusBadge'
 import { VerdictBadge } from './VerdictBadge'
 
 type DispositionRecord = components['schemas']['DispositionRecord']
@@ -540,7 +541,7 @@ function PartDetailForComponent({
   const parameter = primaryParameter(data)
   const measured = measuredPoints(data, parameter ?? '')
   const canSubmit = Boolean(data.project_id && data.analysis_run_id)
-  const disabledForm = disposition.isPending || !canSubmit
+  const disabledForm = disposition.isPending || !canSubmit || rationale.trim() === ''
   const confidenceQualifier = data.confidence_qualifier.trim()
   const zscoreRows = data.explanation?.zscore_table ?? []
   const mcdRows = data.explanation?.mcd_contributions ?? []
@@ -707,9 +708,11 @@ function PartDetailForComponent({
             <h2 className="card-title">{parameter ?? 'Disposition'}</h2>
             <p className="card-subtitle">
               Record reviewer Accept / Hold for Retest / Reject decision and technical disposition
-              rationale.
+              rationale. A written rationale is required for every decision; a Reject needs two
+              distinct accounts.
             </p>
           </div>
+          <DispositionStatusBadge status={data.disposition_status} />
         </header>
 
         <SignoffHistory history={data.disposition_history} />
@@ -725,11 +728,13 @@ function PartDetailForComponent({
         )}
 
         <label className="field-label" htmlFor={rationaleId}>
-          Technical Disposition Rationale (optional)
+          Technical Disposition Rationale (required)
         </label>
         <textarea
           id={rationaleId}
           className="input disposition-textarea"
+          required
+          aria-required="true"
           placeholder="Enter technical rationale for disposition sign-off…"
           value={rationale}
           onChange={(e) => setRationale(e.target.value)}

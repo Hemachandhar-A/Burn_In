@@ -1056,6 +1056,12 @@ a.nav-item.active {
   color: var(--severity-reject);
 }
 
+/* A state with no severity (e.g. no sign-off yet): neutral, never one of the three severity colours. */
+.badge-muted {
+  background: #eef1f5;
+  color: #475569;
+}
+
 /* ---------------------------------------------------------------- Lot Dashboard (E6 screen 3) */
 
 .lot-dashboard > * + * {

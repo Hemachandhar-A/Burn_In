@@ -819,6 +819,17 @@
               }
             ],
             "title": "Safety Slope"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
           }
         },
         "required": [
@@ -880,6 +891,25 @@
             },
             "title": "Disposition History",
             "type": "array"
+          },
+          "disposition_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NONE",
+                  "ACCEPT_RECORDED",
+                  "HOLD_RECORDED",
+                  "REJECT_PENDING_SECOND",
+                  "REJECT_FINAL",
+                  "CONFLICT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition Status"
           },
           "explanation": {
             "anyOf": [

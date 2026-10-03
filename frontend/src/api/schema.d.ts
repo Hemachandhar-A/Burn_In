@@ -752,6 +752,8 @@ export interface components {
             predicted_168h: number | null;
             /** Safety Slope */
             safety_slope: number | null;
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
         };
         /** PartDetailResponse */
         PartDetailResponse: {
@@ -765,6 +767,8 @@ export interface components {
             confirmed_outcomes: components["schemas"]["ConfirmedOutcomeRecord"][];
             /** Disposition History */
             disposition_history: components["schemas"]["DispositionRecord"][];
+            /** Disposition Status */
+            disposition_status?: ("NONE" | "ACCEPT_RECORDED" | "HOLD_RECORDED" | "REJECT_PENDING_SECOND" | "REJECT_FINAL" | "CONFLICT") | null;
             explanation?: components["schemas"]["PartExplanation"] | null;
             /** Explanation Sentence */
             explanation_sentence: string;
