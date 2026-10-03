@@ -153,13 +153,34 @@ def part_detector_scores(results: Sequence[ModuleAResult]) -> pd.DataFrame:
     return pct.groupby(_PART_KEY, sort=False)[list(DETECTORS)].max().reset_index()
 
 
-def run_module_a(test_set: HeldOutTestSet) -> list[ModuleAResult]:
-    """module_a's detect() once per lot, in lot order, each lot's history being every earlier lot of the set."""
+def run_module_a(test_set: HeldOutTestSet, *, scoring=None, reference_lots: int | None = None,
+                 ecod_anchor=None) -> list[ModuleAResult]:
+    """module_a's detect() once per lot, in lot order, each lot's history being every earlier lot of the set.
+
+    Defaults reproduce the published benchmark configuration exactly. Optional (S6X): `scoring` is a
+    module_a.scoring.ScoringConfig passed through to detect() - a non-rank config bypasses the Isolation Forest and
+    ignores the history; when it asks for the "reference" calibration, each lot's reference is built from the raw
+    detector scores of the `reference_lots` lots before it (all earlier lots when None), the lot itself excluded.
+    `ecod_anchor` is the frozen ECOD table the "absolute" calibration needs (module_a.scoring.ScoringReference)."""
     results: list[ModuleAResult] = []
     history = []
+    raws = []
     for lot in test_set.lots:
         frames = compute(lot.dataset)
-        results += module_a_detect.detect(frames, prior_frames=list(history))
+        if scoring is None or scoring.is_legacy:
+            results += module_a_detect.detect(frames, prior_frames=list(history))
+        else:
+            import dataclasses
+
+            from module_a.scoring import ScoringReference, compute_lot_raw
+
+            earlier = raws if reference_lots is None else raws[-reference_lots:]
+            cfg = dataclasses.replace(
+                scoring, ecod_anchor=ecod_anchor if ecod_anchor is not None else scoring.ecod_anchor,
+                reference=ScoringReference.from_raw(earlier) if (scoring.calibration == "reference" and earlier)
+                else scoring.reference)
+            results += module_a_detect.detect(frames, scoring=cfg)
+            raws.append(compute_lot_raw(frames))
         history += frames
     return results
 
@@ -259,3 +280,11 @@ def summarize_module_b(table: pd.DataFrame) -> pd.DataFrame:
         row["target_coverage"] = DEFAULT_CONFIDENCE_LEVEL
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def variant_part_scores(results: Sequence[ModuleAResult]) -> pd.DataFrame:
+    """Per part (lot_id, component_id): the max of `combined_severity` over its frames. For results produced by
+    detect(scoring=...) this is the variant's own severity scale; for the default scoring it is the percentile."""
+    frame = pd.DataFrame({"lot_id": [r.lot_id for r in results], "component_id": [r.component_id for r in results],
+                          "score": [r.combined_severity for r in results]})
+    return frame.groupby(_PART_KEY, sort=False)["score"].max().reset_index()
