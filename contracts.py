@@ -472,6 +472,11 @@ class PartDetailResponse(BaseModel):
     project_id: str | None = None
     analysis_run_id: str | None = None
     verdict: Literal["PASS", "WATCH", "REJECT"] | None = None
+    # Additive (F24 Part 2, CONTRACT_CHANGES.md): the sign-off state of this part in analysis_run_id, derived from
+    # the stored sign-offs (identity/status.py). None on an old stored/cached response.
+    disposition_status: Literal[
+        "NONE", "ACCEPT_RECORDED", "HOLD_RECORDED", "REJECT_PENDING_SECOND", "REJECT_FINAL", "CONFLICT"
+    ] | None = None
 
 
 class DispositionRequest(BaseModel):
