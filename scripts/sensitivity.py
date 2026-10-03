@@ -385,13 +385,8 @@ def report_absolute(config: str = "live", out_dir: Path = ABS_OUT_DIR) -> str:
         show[m] = (show[m].map("{:.3f}".format) + " [" + show[f"{m}_ci_lo"].map("{:.3f}".format) + ", "
                    + show[f"{m}_ci_hi"].map("{:.3f}".format) + "]")
     table = show[["setting", "method", "n_defective", "recall", "precision", "flag_rate", "cost_per_part"]]
-    return f"## sensitivity, V1F ({config} configuration)
-
-{_md(table)}
-
-## claims
-
-{json.dumps(claims, indent=2)}"
+    return (f"## sensitivity, V1F ({config} configuration)" + chr(10)*2 + _md(table) + chr(10)*2 + "## claims" + chr(10)*2
+            + json.dumps(claims, indent=2))
 
 
 def main(argv=None) -> int:
