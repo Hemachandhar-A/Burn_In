@@ -3,14 +3,15 @@ one of Module A/B, fusion's gate, and storage's stored diff already computed (AG
 nothing here re-derives a detector's own math). Deterministic, fixed inputs, no randomness (rule 9).
 
 `ZScoreRow`/`ShapExplanation` (explain/models.py) and `ModuleBResult`/`RiskAssessment` (contracts.py)
-are read, never recomputed. `ZScoreRow` carries no physical unit (contracts.FeatureFrame has none
-either - a disclosed simplification, not a guess at one), so the sentence's "median = X, value = Y"
-clause is unitless by construction.
+are read, never recomputed. The sentence's "median = X, value = Y" clause carries the row's canonical unit
+(F24 Part 3, explain/units.py: 10000 nA reads "10 uA"); a row with no unit (an old stored result) stays
+unitless rather than guessing one.
 """
 from collections import Counter
 
 from contracts import ModuleAResult, ModuleBResult, RiskAssessment
 from explain.models import ShapExplanation, ZScoreRow
+from explain.units import format_quantity
 from module_b.model import FEATURE_NAMES
 
 # E4 step 5's "Primary driver: ..." clause names a module_b.model.FEATURE_NAMES entry (SHAP's own
@@ -77,13 +78,17 @@ def explanation_sentence(
             f"{direction_word} lot median"
         )
         if zscore_row is not None:
-            clause += f" (median = {zscore_row.lot_median:g}, value = {zscore_row.value:g})"
+            clause += (
+                f" (median = {format_quantity(zscore_row.lot_median, zscore_row.unit)}, "
+                f"value = {format_quantity(zscore_row.value, zscore_row.unit)})"
+            )
         clauses.append(clause + ".")
     elif zscore_row is not None:
         direction_word = "above" if zscore_row.z >= 0 else "below"
         clauses.append(
             f"{zscore_row.parameter} at 24h is {abs(zscore_row.z):.1f} robust-sigma {direction_word} "
-            f"lot median (median = {zscore_row.lot_median:g}, value = {zscore_row.value:g})."
+            f"lot median (median = {format_quantity(zscore_row.lot_median, zscore_row.unit)}, "
+            f"value = {format_quantity(zscore_row.value, zscore_row.unit)})."
         )
 
     has_drift = (
@@ -225,6 +230,8 @@ def unavailable_forecast_note(module_b: ModuleBResult | None) -> str | None:
     isn't true."""
     if module_b is None or not module_b.forecast_unavailable:
         return None
+    if module_b.unavailable_reason:
+        return f"Drift prediction unavailable - {module_b.unavailable_reason}."
     return (
         f"Drift prediction unavailable for {module_b.parameter}: outside Module B's trained "
         f"parameter set, no calibrated model, or an invalid required input."

@@ -15,6 +15,7 @@ from contracts import (
 )
 from explain.text import confidence_qualifier, unavailable_forecast_note
 from identity.auth import get_current_account
+from identity.status import disposition_status_for
 from storage.repository import (
     query_confirmed_outcomes, query_disposition_signoffs, query_project_data, query_latest_project_data,
     query_projects,
@@ -140,6 +141,7 @@ def get_part_detail(
         project_id=project.project_id,
         analysis_run_id=row.analysis_run_id,
         verdict=assessment.verdict,
+        disposition_status=disposition_status_for(project.project_id, component_id, row.analysis_run_id),
     )
 
 

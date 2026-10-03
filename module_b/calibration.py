@@ -36,6 +36,7 @@ from mapie.regression import ConformalizedQuantileRegressor
 
 from contracts import FeatureFrame, ModuleBInput, to_module_b_input
 from module_b.baselines import TARGET_HOURS, is_healthy, persistence
+from module_b.guard import InputRanges, fit_ranges
 from module_b.model import (
     DEFAULT_SEED,
     build_training_set,
@@ -61,6 +62,7 @@ class CalibratedDriftModel:
     slope_quantile: float
     train_lots: tuple[str, ...]
     calibration_lots: tuple[str, ...]
+    input_ranges: InputRanges | None = None  # F24 guard: what the calibration saw (module_b.guard)
 
 
 @dataclass(frozen=True)
@@ -170,6 +172,7 @@ def _calibrate_one(
         slope_quantile=slope_quantile,
         train_lots=train_lots,
         calibration_lots=cal_lots,
+        input_ranges=fit_ranges([usable_input(to_module_b_input(f)) for f in complete]),
     )
 
 

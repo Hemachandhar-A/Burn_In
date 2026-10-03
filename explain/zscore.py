@@ -6,6 +6,8 @@ supported: FeatureFrame carries a named lot_median only for those two checkpoint
 "96h"/"168h" have a per-checkpoint robust_z entry but no corresponding named median field to pair it
 with, so a table row for either would have nothing principled to put in the lot_median column.
 """
+from collections.abc import Mapping
+
 from contracts import FeatureFrame
 from explain.models import ZScoreRow, ZScoreTable
 
@@ -13,9 +15,12 @@ _VALUE_FIELD = {"0h": "value_0h", "24h": "value_24h"}
 _MEDIAN_FIELD = {"0h": "lot_median_0h", "24h": "lot_median_24h"}
 
 
-def build_zscore_table(frames: list[FeatureFrame], checkpoint: str) -> ZScoreTable:
+def build_zscore_table(
+    frames: list[FeatureFrame], checkpoint: str, units: Mapping[str, str] | None = None
+) -> ZScoreTable:
     """`frames`: every FeatureFrame (one per parameter) for a single part. Raises ValueError if
-    `frames` is empty, spans more than one component_id, or `checkpoint` isn't "0h"/"24h"."""
+    `frames` is empty, spans more than one component_id, or `checkpoint` isn't "0h"/"24h". `units` (parameter ->
+    canonical unit, F24 Part 3) fills each row's unit; FeatureFrame itself carries none."""
     if checkpoint not in _VALUE_FIELD:
         raise ValueError(f"checkpoint must be one of {sorted(_VALUE_FIELD)}, got {checkpoint!r}")
     if not frames:
@@ -32,6 +37,7 @@ def build_zscore_table(frames: list[FeatureFrame], checkpoint: str) -> ZScoreTab
             value=getattr(f, value_field),
             lot_median=getattr(f, median_field),
             z=f.robust_z.get(checkpoint, 0.0),
+            unit=(units or {}).get(f.parameter),
         )
         for f in sorted(frames, key=lambda f: f.parameter)
     ]

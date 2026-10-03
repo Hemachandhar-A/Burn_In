@@ -80,10 +80,15 @@ from sklearn.ensemble import IsolationForest
 from pyod.models.ecod import ECOD
 
 import pathlib
+from typing import TYPE_CHECKING
+
 import yaml
 
 from contracts import FeatureFrame, HarnessThresholds, ModuleAResult
 from features.compute import build_mcd_matrix
+
+if TYPE_CHECKING:
+    from module_a.scoring import ScoringConfig
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -125,6 +130,7 @@ _CAP_PERCENTILE_THRESHOLD: float = _THRESHOLDS.module_a_reject_threshold
 def detect(
     frames: list[FeatureFrame],
     prior_frames: list[FeatureFrame] | None = None,
+    scoring: "ScoringConfig | None" = None,
 ) -> list[ModuleAResult]:
     """Score every FeatureFrame in *frames* and return a ModuleAResult per frame.
 
@@ -137,6 +143,10 @@ def detect(
         FeatureFrames from *previous* lots of the same part number(s), used as the
         Isolation Forest's training set only. These intentionally span lots (E2 step 3).
         Omit or pass [] for cold start.
+    scoring:
+        Optional alternative score calibration / combination (module_a.scoring, experiment S6X). None - the
+        default, and also a rank/max config - runs exactly the code below. A non-rank config bypasses the
+        Isolation Forest entirely (prior_frames is ignored) and needs its own review/reject thresholds.
 
     Returns
     -------
@@ -145,6 +155,19 @@ def detect(
     """
     if not frames:
         return []
+
+    if scoring is not None and not scoring.is_legacy:
+        from module_a.scoring import detect_lot_scored
+
+        lots_scored: dict[str, list[tuple[int, FeatureFrame]]] = {}
+        for idx, frame in enumerate(frames):
+            lots_scored.setdefault(frame.lot_id, []).append((idx, frame))
+        scored: list[tuple[int, ModuleAResult]] = []
+        for lot_frames_indexed in lots_scored.values():
+            lot_results = detect_lot_scored([t[1] for t in lot_frames_indexed], scoring)
+            scored.extend(zip([t[0] for t in lot_frames_indexed], lot_results))
+        scored.sort(key=lambda t: t[0])
+        return [r for _, r in scored]
 
     if prior_frames is None:
         prior_frames = []

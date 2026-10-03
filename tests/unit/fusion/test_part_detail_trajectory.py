@@ -59,12 +59,13 @@ def test_no_nan_or_null_value_in_any_trajectory_point_on_the_golden_lot():
 def test_in_progress_part_trajectory_has_only_0h_and_24h():
     """A part on an IN_PROGRESS lot (0h/24h readings only, no 96h/168h at all) whose Module B
     result exceeds the safety slope - a non-PASS verdict reachable without Module A (which never
-    runs before COMPLETE), same fixture shape as test_pipeline.py's B6a in-progress-lot tests."""
+    runs before COMPLETE), same fixture shape as test_pipeline.py's B6a in-progress-lot tests. F24: the values sit inside the range Module B was
+    calibrated on (a 1.0 uA lot would now be declined by the out-of-range guard, not forecast)."""
     readings = [
-        _reading("c1", "L-TRAJ", "PN-TRAJ", "iddq", 0.0, 1.0),
-        _reading("c1", "L-TRAJ", "PN-TRAJ", "iddq", 24.0, 500.0),
-        _reading("c2", "L-TRAJ", "PN-TRAJ", "iddq", 0.0, 1.0),
-        _reading("c2", "L-TRAJ", "PN-TRAJ", "iddq", 24.0, 1.1),
+        _reading("c1", "L-TRAJ", "PN-TRAJ", "iddq", 0.0, 10.0),
+        _reading("c1", "L-TRAJ", "PN-TRAJ", "iddq", 24.0, 50.0),
+        _reading("c2", "L-TRAJ", "PN-TRAJ", "iddq", 0.0, 10.0),
+        _reading("c2", "L-TRAJ", "PN-TRAJ", "iddq", 24.0, 11.0),
     ]
     lot = LotDataset(lot_id="L-TRAJ", part_number="PN-TRAJ", status="IN_PROGRESS",
                       readings=readings, account_id="a")
