@@ -76,7 +76,8 @@ def run_full_pipeline(
     a_results = []
     if is_complete:
         # MODULE_A_SCORING (module_a/settings.py): None under the default "rank" mode, i.e. the unchanged call.
-        a_results = module_a_detect(frames, scoring=module_a_scoring_config())
+        scoring_config = module_a_scoring_config()
+        a_results = module_a_detect(frames) if scoring_config is None else module_a_detect(frames, scoring=scoring_config)
     
     # Severity for picking a part's worst frame and for ranking: s = -log10 p when absolute scoring supplies it
     # (no saturation or ties at large s), else combined_severity (the rank-mode percentile).
