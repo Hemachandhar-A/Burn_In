@@ -435,7 +435,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
     )
   })
 
-  test('a disposition posts to the real route with the ids from the response, enabled without a rationale, then refreshes the part and worklist', async () => {
+  test('a disposition posts to the real route with the ids from the response, once a rationale is typed, then refreshes the part and worklist', async () => {
     let body: unknown = null
     const server = fakeServer({
       'GET /parts/DUT-042': { body: DETAIL() },
@@ -452,10 +452,11 @@ describe('Part Detail screen (E6 screen 4)', () => {
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
     const reject = screen.getByRole('button', { name: 'Reject' })
-    expect(reject).toBeEnabled()
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (optional)'), {
+    expect(reject).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (required)'), {
       target: { value: 'Confirmed leakage drift.' },
     })
+    expect(reject).toBeEnabled()
     fireEvent.click(reject)
 
     await waitFor(() => expect(body).not.toBeNull())
@@ -465,7 +466,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(url.searchParams.get('project_id')).toBe('proj-LOT-2024-W19-B')
     expect(url.searchParams.get('analysis_run_id')).toBe('03')
     await waitFor(() =>
-      expect(screen.getByLabelText('Technical Disposition Rationale (optional)')).toHaveValue(''),
+      expect(screen.getByLabelText('Technical Disposition Rationale (required)')).toHaveValue(''),
     )
     expect(invalidate.mock.calls.some((c) => c[0]?.queryKey?.[0] === 'part-detail')).toBe(true)
     expect(invalidate.mock.calls.some((c) => c[0]?.queryKey?.[1] === 'worklist')).toBe(true)
@@ -481,6 +482,9 @@ describe('Part Detail screen (E6 screen 4)', () => {
     })
     renderWithApi(routed(), { fetch: server.fetch, path: '/parts/DUT-042' })
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (required)'), {
+      target: { value: 'second try' },
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Dual sign-off requires two distinct account IDs, not two role labels',
@@ -569,14 +573,14 @@ describe('Part Detail screen (E6 screen 4)', () => {
     renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
 
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (optional)'), {
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (required)'), {
       target: { value: 'Half-typed note meant for DUT-042 only.' },
     })
 
     fireEvent.click(screen.getByRole('link', { name: 'go' }))
     await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))
-    await screen.findByLabelText('Technical Disposition Rationale (optional)')
-    expect(screen.getByLabelText('Technical Disposition Rationale (optional)')).toHaveValue('')
+    await screen.findByLabelText('Technical Disposition Rationale (required)')
+    expect(screen.getByLabelText('Technical Disposition Rationale (required)')).toHaveValue('')
   })
 
   test('navigating to a different part clears a stale disposition error from the previous one', async () => {
@@ -588,7 +592,7 @@ describe('Part Detail screen (E6 screen 4)', () => {
     renderWithApi(routedWithNav('/parts/DUT-008'), { fetch: server.fetch, path: '/parts/DUT-042' })
     await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
 
-    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (optional)'), {
+    fireEvent.change(screen.getByLabelText('Technical Disposition Rationale (required)'), {
       target: { value: 'x' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
@@ -613,5 +617,134 @@ describe('Part Detail screen (E6 screen 4)', () => {
     fireEvent.click(screen.getByRole('link', { name: 'go' }))
     await waitFor(() => expect(screen.getByTestId('route-id')).toHaveTextContent('DUT-008'))
     expect(screen.queryByLabelText('Confirmed Outcome')).toBeNull()
+  })
+})
+
+describe('disposition status badge and required rationale (F24 Part 2)', () => {
+  const CASES: Array<[NonNullable<PartDetailResponse['disposition_status']>, string]> = [
+    ['NONE', 'No sign-off yet'],
+    ['ACCEPT_RECORDED', 'Accepted'],
+    ['HOLD_RECORDED', 'Held for retest'],
+    ['REJECT_PENDING_SECOND', 'REJECT: awaiting second sign-off'],
+    ['REJECT_FINAL', 'REJECT: final'],
+    ['CONFLICT', 'Conflict: sign-offs disagree'],
+  ]
+
+  test.each(CASES)('status %s is shown as the badge text "%s"', async (status, text) => {
+    setup('/parts/DUT-042', DETAIL({ disposition_status: status }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const badge = screen.getByTestId('disposition-status')
+    expect(badge).toHaveTextContent(text)
+    expect(badge).toHaveAttribute('data-status', status)
+  })
+
+  test('an old response without a status shows no badge (nothing is claimed)', async () => {
+    setup('/parts/DUT-042', DETAIL({ disposition_status: null }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.queryByTestId('disposition-status')).toBeNull()
+  })
+
+  test('the rationale is marked required and every action stays disabled while it is empty or blank', async () => {
+    setup('/parts/DUT-042', DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const box = screen.getByLabelText('Technical Disposition Rationale (required)')
+    expect(box).toBeRequired()
+    const names = ['Accept', 'Hold for Retest', 'Reject']
+    for (const name of names) expect(screen.getByRole('button', { name })).toBeDisabled()
+    fireEvent.change(box, { target: { value: '   ' } })
+    for (const name of names) expect(screen.getByRole('button', { name })).toBeDisabled()
+    fireEvent.change(box, { target: { value: 'Retest at 125C.' } })
+    for (const name of names) expect(screen.getByRole('button', { name })).toBeEnabled()
+  })
+
+  test('the sign-off history is unaffected by the status badge', async () => {
+    setup(
+      '/parts/DUT-042',
+      DETAIL({
+        disposition_status: 'REJECT_PENDING_SECOND',
+        disposition_history: [
+          {
+            project_id: 'proj-LOT-2024-W19-B',
+            component_id: 'DUT-042',
+            account_id: 'a.sharma',
+            verdict: 'REJECT',
+            rationale: 'Leakage well past REVIEW at 24h.',
+            timestamp: '2026-09-30T10:00:00',
+            analysis_run_id: '03',
+          },
+        ],
+      }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.getByLabelText('Sign-off history')).toHaveTextContent('1 sign-off(s) recorded by distinct accounts')
+    expect(screen.getByTestId('disposition-status')).toHaveTextContent('REJECT: awaiting second sign-off')
+  })
+})
+
+describe('units on every number a person reads (F24 Part 3)', () => {
+  // The canonical unit is nA; 45000 nA must read 45 uA, never 45000.
+  const UNIT_DETAIL = () =>
+    DETAIL({
+      module_b: {
+        ...MODULE_B,
+        unit: 'nA',
+        predicted_168h: 61500,
+        interval_lower: 58000,
+        interval_upper: 65000,
+        physics_baseline_prediction: 32400,
+        physics_disagreement_gap: 12400,
+        safety_slope: 300,
+      },
+      explanation: {
+        ...EXPLANATION,
+        zscore_table: [{ parameter: 'Leakage Current', value: 45000, lot_median: 10000, z: 4.2, unit: 'nA' }],
+        trajectory: [
+          { checkpoint_hour: 0, value: 9800, lot_median: 9500, unit: 'nA' },
+          { checkpoint_hour: 24, value: 45000, lot_median: 10000, unit: 'nA' },
+        ],
+      },
+    })
+
+  test('T15: the chart axis title carries the unit, and the plotted values are in that unit', async () => {
+    setup('/parts/DUT-042', UNIT_DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const layout = JSON.parse(screen.getByTestId('plotly-stub').getAttribute('data-layout') ?? '{}')
+    expect(layout.xaxis.title.text).toBe('Hours')
+    expect(layout.yaxis.title.text).toBe('Leakage Current (uA)')
+    const measured = traces().find((t) => t.name === 'Measured')!
+    expect(measured.y).toEqual([9.8, 45])
+    const forecast = traces().find((t) => t.name === 'Module B Forecast (168h)')!
+    expect(forecast.y).toEqual([61.5])
+  })
+
+  test('T15: every header of the z-score table that holds a number carries the unit', async () => {
+    setup('/parts/DUT-042', UNIT_DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const table = screen.getByRole('table')
+    expect(within(table).getByRole('columnheader', { name: 'Value (24h, uA)' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Lot Median (24h, uA)' })).toBeInTheDocument()
+    const row = within(table).getByRole('row', { name: /Leakage Current/ })
+    expect(row).toHaveTextContent('45')
+    expect(row).toHaveTextContent('10')
+    expect(row).not.toHaveTextContent('45000')
+  })
+
+  test('the physics card shows magnitudes with the unit', async () => {
+    setup('/parts/DUT-042', UNIT_DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const card = screen.getByLabelText('Model vs physics disagreement')
+    expect(card).toHaveTextContent('32.4 uA')
+    expect(card).toHaveTextContent('61.5 uA')
+    expect(card).toHaveTextContent('+12.4 uA')
+  })
+
+  test('T17: an older stored result without any unit renders without "undefined" and with plain numbers', async () => {
+    setup('/parts/DUT-042', DETAIL())
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(document.body.textContent).not.toMatch(/undefined|null|NaN/)
+    const layout = JSON.parse(screen.getByTestId('plotly-stub').getAttribute('data-layout') ?? '{}')
+    expect(layout.yaxis.title.text).toBe('Leakage Current')
+    expect(screen.getByRole('columnheader', { name: 'Value (24h)' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Model vs physics disagreement')).toHaveTextContent('32.4')
   })
 })

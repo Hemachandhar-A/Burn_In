@@ -68,8 +68,6 @@ def test_chosen_seeds_satisfy_their_selection_rules():
     assert demo.qualifies_complete(demo.scan_complete_seed(demo.COMPLETE_SEED))
 
 
-@pytest.mark.skip(reason="BLOCKERS.md 2026-09-30 Lead: POST /lots normalizes the golden fixture's uA leakage to nA, Module B "
-                         "(calibrated on the generator's nA scale) then flags 37/77 parts: verdict REJECT, PDA 0.49, not HOLD 0.039")
 def test_golden_lot_through_the_route_is_hold(db):
     import csv
     import io
@@ -90,5 +88,25 @@ def test_golden_lot_through_the_route_is_hold(db):
                      data={"lot_id": "GOLDEN-T", "part_number": "PN-GOLDEN", "manufacturer": "GOLDEN-MFR",
                            "date_code": "2601", "account_id": "a.sharma"})
     assert up.status_code == 200
-    d = client.get("/lots/GOLDEN-T", headers=h).json()["disposition"]
+    lot = client.get("/lots/GOLDEN-T", headers=h).json()
+    d = lot["disposition"]
     assert d["verdict"] == "HOLD" and 0.03 < d["pda_result"] < 0.05
+    print("golden through POST /lots:", d["verdict"], d["pda_result"], "REJECT parts:",
+          sum(a["verdict"] == "REJECT" for a in lot["assessments"]))
+    # F24 T3: the uA->nA scale problem (leakage, 1000x the generator's scale) no longer produces a Module B verdict:
+    # every leakage forecast is declined with a reason, and no part is flagged by Module B anywhere in the lot.
+    from contracts import to_module_b_input
+    from features.compute import compute
+    from ingestion.units import normalize_readings
+    from module_b import predict
+    from contracts import LotDataset
+
+    readings, errors = normalize_readings(golden_lot().readings)
+    assert not errors
+    b = predict([to_module_b_input(f) for f in compute(
+        LotDataset(lot_id="GOLDEN-T", part_number="PN-GOLDEN", status="COMPLETE", readings=readings, account_id="a"))])
+    leak = [r for r in b if r.parameter == "leakage"]
+    assert len(leak) == 77 and all(r.forecast_unavailable and r.unavailable_reason for r in leak)
+    assert not any(r.exceeds_safety_slope for r in b)
+    print("golden Module B REJECTs:", sum(bool(r.exceeds_safety_slope) for r in b), "leakage unavailable:", len(leak))
+    assert sum(a["verdict"] == "REJECT" for a in lot["assessments"]) == 3  # PDA 3/77, from Module A

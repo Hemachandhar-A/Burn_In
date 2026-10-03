@@ -819,6 +819,28 @@
               }
             ],
             "title": "Safety Slope"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "required": [
@@ -880,6 +902,25 @@
             },
             "title": "Disposition History",
             "type": "array"
+          },
+          "disposition_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NONE",
+                  "ACCEPT_RECORDED",
+                  "HOLD_RECORDED",
+                  "REJECT_PENDING_SECOND",
+                  "REJECT_FINAL",
+                  "CONFLICT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition Status"
           },
           "explanation": {
             "anyOf": [
@@ -1435,6 +1476,17 @@
             ],
             "title": "Lot Median"
           },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
           "value": {
             "title": "Value",
             "type": "number"
@@ -1512,6 +1564,17 @@
           "parameter": {
             "title": "Parameter",
             "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           },
           "value": {
             "title": "Value",
