@@ -21,13 +21,15 @@ def _absolute_cfg():
                          reject_threshold=ABSOLUTE_REJECT_THRESHOLD, display_s0=DISPLAY_S0)
 
 
-def test_default_is_rank_and_config_is_none(monkeypatch):
+def test_default_is_absolute_and_rank_is_the_legacy_switch(monkeypatch):
+    """demo-v2: absolute scoring (V1F) is the default; MODULE_A_SCORING=rank keeps the legacy path (config None)."""
     monkeypatch.delenv("MODULE_A_SCORING", raising=False)
-    assert module_a_scoring() == "rank"
-    assert module_a_scoring_config() is None
+    assert module_a_scoring() == "absolute"
+    assert module_a_scoring_config().calibration == "absolute"
     monkeypatch.setenv("MODULE_A_SCORING", "")
-    assert module_a_scoring() == "rank"
+    assert module_a_scoring() == "absolute"
     monkeypatch.setenv("MODULE_A_SCORING", "rank")
+    assert module_a_scoring() == "rank"
     assert module_a_scoring_config() is None
 
 
@@ -43,8 +45,8 @@ def test_absolute_config_and_invalid_value(monkeypatch):
 
 
 def test_rank_mode_pipeline_output_is_unchanged(monkeypatch):
-    """Rank mode: the pipeline's Module A numbers equal a direct detect(frames) call and carry no severity_log10p."""
-    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
+    """Rank (legacy) mode: the pipeline's Module A numbers equal a direct detect(frames) call and carry no severity_log10p."""
+    monkeypatch.setenv("MODULE_A_SCORING", "rank")
     lot = generate_lot("I2A-RANK-0", "PN-I2A", 7001, account_id="i2a").dataset
     direct = {(r.component_id, r.parameter): r for r in detect(compute(lot))}
     results = run_full_pipeline(lot, ScreeningConfig(), _explain_cache=False)

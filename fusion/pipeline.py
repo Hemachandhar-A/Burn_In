@@ -75,7 +75,7 @@ def run_full_pipeline(
     
     a_results = []
     if is_complete:
-        # MODULE_A_SCORING (module_a/settings.py): None under the default "rank" mode, i.e. the unchanged call.
+        # MODULE_A_SCORING (module_a/settings.py): None under the legacy "rank" mode (MODULE_A_SCORING=rank), i.e. the pre-demo-v2 call; the default is absolute (V1F).
         scoring_config = module_a_scoring_config()
         a_results = module_a_detect(frames) if scoring_config is None else module_a_detect(frames, scoring=scoring_config)
     

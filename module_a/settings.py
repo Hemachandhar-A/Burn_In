@@ -2,9 +2,10 @@
 
 `MODULE_A_SCORING` selects how fusion/pipeline.py scores Module A:
 
-    rank      (default) today's behaviour: rank-percentile of each detector within the lot, max-combined, tiers from
+    rank      LEGACY (the default until demo-v1.2): rank-percentile of each detector within the lot, max-combined, tiers from
               config/harness_thresholds.yaml. `module_a_scoring_config()` returns None, so detect() runs unchanged.
-    absolute  V1 (docs/SCORING_EXPERIMENT_RESULT.md): z-score -> normal tail, MCD -> chi-square tail, max-combined,
+              Select it with MODULE_A_SCORING=rank.
+    absolute  (default from demo-v2) V1F (docs/SCORING_EXPERIMENT_RESULT.md, docs/ADOPTION_RESULT_V1F.md): z-score -> normal tail, MCD -> chi-square tail, max-combined,
               severity s = -log10 p, tiers decided on s with the two thresholds below. `combined_severity` stays in
               [0, 1) as a monotone transform of s (display scale only) and `severity_log10p` carries s.
 
@@ -39,10 +40,10 @@ _MODES = ("rank", "absolute")
 
 
 def module_a_scoring() -> str:
-    """The configured mode, from the environment variable MODULE_A_SCORING; "rank" when unset or empty."""
+    """The configured mode, from the environment variable MODULE_A_SCORING; "absolute" (V1F) when unset or empty."""
     value = os.environ.get("MODULE_A_SCORING", "").strip().lower()
     if not value:
-        return "rank"
+        return "absolute"
     if value not in _MODES:
         raise ValueError(f"MODULE_A_SCORING must be one of {_MODES}, got {value!r}")
     return value
