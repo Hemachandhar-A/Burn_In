@@ -25,6 +25,7 @@ from storage import repository
 _HISTORY_CAP = 10  # ScreeningConfig.report_history_cap_runs (contracts.py 5.1) - E9 step 2
 _TRIGGER_EVENT_TYPES = {"ingest", "checkpoint_add"}
 
+# Legacy text: the previous scoring (MODULE_A_SCORING=rank) - robust z, MCD and ECOD combined by maximum, no pooled reference.
 _METHODOLOGY_SUMMARY = (
     "Parts were screened using two complementary modules. Module A flags components that are "
     "statistically anomalous relative to their own lot, even when every reading is inside the "
@@ -39,6 +40,31 @@ _METHODOLOGY_SUMMARY = (
     "defaults, not values derived from field failure data - see the system's Settings screen for "
     "their current values."
 )
+
+
+# Default text (demo-v2, MODULE_A_SCORING unset or "absolute"): only the legs that score are named.
+_METHODOLOGY_SUMMARY_ABSOLUTE = (
+    "Parts were screened using two complementary modules. Module A flags components that are "
+    "statistically anomalous relative to their own lot, even when every reading is inside the "
+    "part's datasheet limit. It converts a robust per-parameter z-score and, for lots of 77 or more parts, a Minimum "
+    "Covariance Determinant (MCD) distance into tail probabilities and reports the most extreme one as a severity index "
+    "(an index, not a probability); a part is flagged when the index passes the REVIEW or REJECT cut-off. ECOD and an "
+    "Isolation Forest are not used to score parts in this build: ECOD has no reference to score against, and the Isolation "
+    "Forest needs a pooled cross-lot reference that the live pipeline does not supply, so it does not contribute. "
+    "Module B forecasts each part's 168-hour reading from its 0h/24h readings "
+    "and flags early rejection against a calibrated safety slope, where trained for the part's "
+    "parameter; it declines to forecast, rather than guess, for any parameter outside the three it "
+    "was trained on. The FN:FP cost ratio and PDA threshold used below are disclosed, adjustable "
+    "defaults, not values derived from field failure data - see the system's Settings screen for "
+    "their current values."
+)
+
+
+def methodology_summary(mode: str | None = None) -> str:
+    """The PDF's methodology paragraph for a Module A scoring mode (default: the configured one)."""
+    from module_a.settings import module_a_scoring
+
+    return _METHODOLOGY_SUMMARY if (mode or module_a_scoring()) == "rank" else _METHODOLOGY_SUMMARY_ABSOLUTE
 
 
 @dataclass
@@ -253,7 +279,7 @@ def build_report_data(project_id: str) -> ReportData:
         date_code=date_code,
         test_date=test_date,
         lot_status=lot_status,
-        methodology_summary=_METHODOLOGY_SUMMARY,
+        methodology_summary=methodology_summary(),
         quantity_screened=quantity_screened,
         quantity_flagged=quantity_flagged,
         pda_available=pda_available,
