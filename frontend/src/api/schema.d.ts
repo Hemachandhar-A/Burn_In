@@ -640,11 +640,25 @@ export interface components {
              */
             insufficient_data_components: string[];
             /**
+             * Module A Cutoffs
+             * @default {}
+             */
+            module_a_cutoffs: {
+                [key: string]: number;
+            };
+            /**
              * Module A Results
              * @default {}
              */
             module_a_results: {
                 [key: string]: components["schemas"]["ModuleAResult"];
+            };
+            /**
+             * Module B Advisory Notes
+             * @default {}
+             */
+            module_b_advisory_notes: {
+                [key: string]: string;
             };
             /**
              * Module B Results
@@ -780,6 +794,8 @@ export interface components {
             lot_id?: string | null;
             module_a?: components["schemas"]["ModuleAResult"] | null;
             module_b?: components["schemas"]["ModuleBResult"] | null;
+            /** Module B Advisory Note */
+            module_b_advisory_note?: string | null;
             /** Project Id */
             project_id?: string | null;
             /** Severity Cap Note */

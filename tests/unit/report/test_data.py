@@ -321,3 +321,54 @@ def test_report_data_carries_the_mode_aware_methodology(repository, monkeypatch)
         repository.save_analysis_run(project_id=f"proj-{mode}", raw_data=_lot_dataset(lot_id=f"L-{mode}").model_dump(mode="json"),
                                      results=_results())
         assert data.build_report_data(f"proj-{mode}").methodology_summary == data.methodology_summary(mode)
+
+
+# --- Session I3: what the PDF says about the FN:FP control and Module B's role on a finished lot ------------------------
+
+def test_absolute_methodology_says_what_the_cost_ratio_does(monkeypatch):
+    from report.data import methodology_summary
+
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
+    text = methodology_summary()
+    assert "FN:FP cost ratio (which selects Module A's REVIEW and REJECT cut-offs)" in text
+    assert "used below" not in text
+
+
+def _finished(cutoffs=None, notes=None):
+    r = _results({"C0": "PASS", "C1": "WATCH", "C2": "REJECT"})
+    return r.model_copy(update={
+        "disposition": LotDisposition(lot_id="L1", status="COMPLETE", pda_result=0.02, verdict="HOLD", is_forecast=False),
+        "module_a_cutoffs": cutoffs if cutoffs is not None else {"review": 2.956, "reject": 3.419},
+        "module_b_advisory_notes": notes or {}})
+
+
+def test_analysis_note_quotes_the_cutoffs_the_analysis_used_and_module_bs_role(monkeypatch):
+    from report.data import analysis_settings_note
+
+    monkeypatch.delenv("MODULE_B_FINISHED_LOT_ROLE", raising=False)
+    note = analysis_settings_note(_finished({"review": 1.7234, "reject": 2.4522}, {"C0": "n"}))
+    assert "REVIEW at s >= 1.72" in note and "REJECT at s >= 2.45" in note and "FN:FP cost ratio setting" in note
+    assert "did not change any part's verdict" in note and "1 part carries an information note" in note
+    assert "Module A" in note
+
+
+@pytest.mark.parametrize("role,phrase", [("current", "counts toward"), ("tiered", "REVIEW"), ("off", "not used")])
+def test_analysis_note_per_role(monkeypatch, role, phrase):
+    from report.data import analysis_settings_note
+
+    monkeypatch.setenv("MODULE_B_FINISHED_LOT_ROLE", role)
+    assert phrase in analysis_settings_note(_finished())
+
+
+def test_analysis_note_is_empty_for_an_in_progress_lot_without_cutoffs():
+    from report.data import analysis_settings_note
+
+    assert analysis_settings_note(_results()) == ""
+
+
+def test_report_data_carries_the_analysis_note(repository):
+    from report import data
+
+    _seed_project(repository)
+    repository.save_analysis_run(project_id="proj-1", raw_data=_lot_dataset().model_dump(mode="json"), results=_finished())
+    assert data.build_report_data("proj-1").analysis_settings_note == data.analysis_settings_note(_finished())

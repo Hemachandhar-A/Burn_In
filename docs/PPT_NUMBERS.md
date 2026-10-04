@@ -55,18 +55,38 @@ n = 15: 0.100; 20: 0.073; 30: 0.044 [0.035, 0.052]; 40: 0.038; 50: 0.028; 60: 0.
 C1 (recall above static limits, static PAT and dynamic PAT), C2 (cost below static limits), C5 (flag rate at 1% prevalence at most 6%: REVIEW 0.049, REJECT 0.035), C6 (flag rate on clean lots at noise x2 at most 8%: 0.045) and C7 (cost no
 worse than the previous scoring by more than 0.03; V1F is lower at every setting, by 0.11 to 0.22) **hold at all ten settings, for REVIEW and for REJECT**. These are verdicts on a sweep inside one generator, not on real data.
 
+### demo-v2.1: Module B's role on a finished lot (`docs/MODULE_B_ROLE_EXPERIMENT.md`, pre-registered; `docs/evidence_data/module_b_role/`)
+
+Default role `advisory`: on a COMPLETE lot the part verdict comes from Module A alone; Module B's forecast is shown on the part as information. In-progress lots unchanged. Selected on 500 validation lots (seeds 7301-7305), then evaluated once on the published protocol:
+
+| Variant (published protocol, seed 2026, 9,779 parts, 521 defective) | Flag rate | Recall [95% CI] | Precision | False alarms | Missed | Cost/part [95% CI] |
+|---|---|---|---|---|---|---|
+| (a) Module B counts on a finished lot (the demo-v2 system, "S-new") | 0.275 | 0.964 [0.947, 0.980] | 0.187 | 2,185 | 19 | 0.243 [0.212, 0.276] |
+| shipped: Module A alone decides, Module B shown as information | 0.090 | 0.923 [0.902, 0.945] | 0.544 | 403 | 40 | 0.082 [0.069, 0.096] |
+| shipped, REJECT only | 0.069 | 0.889 [0.865, 0.915] | 0.689 | 209 | 58 | 0.081 [0.064, 0.098] |
+Validation (38,500 parts): cost 0.217 [0.201, 0.233] -> 0.094 [0.084, 0.105]; recall 0.968 -> 0.916. Cheaper in all five families on both protocols. Lot verdicts on the 127 published lots: REJECT 122 / HOLD 5 / ACCEPT 0 under (a); 86 / 27 / 14 shipped.
+**Price: recall drops by about 0.04 to 0.05 (209 against 79 missed defects on validation).** It pays at 10:1 because the extra flags had a precision of about 1.2% (published) to 2.1% (validation); at a miss cost above about 47 times a false alarm it would not.
+The demo lots: DEMO-COMPLETE-01 now shows HOLD, PDA 3.90%, 4 of 77 flagged (was REJECT, 7 of 77 in demo-v2: three of those parts were flagged only by Module B); LIVE-01 is unchanged (REJECT, 6.49%, 7 of 77). They were chosen because they show 4 to 10 flags, so they are not typical.
+
+### Settings FN:FP ratio (demo-v2.1)
+The ratio selects Module A's cut-offs (`module_a/fnfp.py`; REJECT at the ratio, REVIEW at twice the ratio, from the cost optimizer on tuning seed 6101), supported 2:1 to 50:1, default 10:1 = 2.956 / 3.419 exactly. Higher ratio, lower cut-offs. Synthetic tuning data; a control, not a recommendation.
+
 ### Claims to make (each supported by the tables above)
 
 1. Module A's false-alarm load is far lower than the previous scoring's, at higher recall: cost per part 0.239 -> 0.082, flag rate 0.183 -> 0.090, recall 0.814 -> 0.923 (Module A alone, synthetic benchmark).
 2. Module A with V1F has lower cost per part than all four default-parameter baselines (0.082 against 0.186 to 0.511), and than cost-tuned static limits (0.327) and cost-tuned static PAT (0.372).
 3. Module A with V1F is level with a cost-tuned dynamic PAT (0.082 [0.069, 0.096] against 0.094 [0.077, 0.112]; the intervals overlap).
-4. The system result, exactly as measured: replacing the scoring lowers the system's cost per part from 0.326 to 0.243 at the same recall (0.956 to 0.964); the system's recall (0.964) is within 0.02 of a cost-tuned fixed delta (0.979) while its cost per part (0.243) is far above it (0.031); the Module B forecast leg adds 0.161 per part to the cost of Module A alone.
-5. Cross-lot detection by an isolation forest is **designed** (and on the roadmap, `docs/CROSS_LOT_ROADMAP.md`); it is **not active** in the app.
+4. The system result at demo-v2 (Module B counting on a finished lot), exactly as measured: replacing the scoring lowers the system's cost per part from 0.326 to 0.243 at the same recall (0.956 to 0.964); its cost per part (0.243) is far above a cost-tuned fixed delta (0.031) while its recall (0.964) is within 0.02 of it (0.979); the Module B forecast leg added 0.161 per part to the cost of Module A alone. **Superseded for the shipped default (demo-v2.1):** with Module A deciding a finished lot the system costs 0.082 per part at recall 0.923 (see "Module B's role on a finished lot"); do not quote 0.243 as the current system.
+5. Module B's forecast does not improve finished-lot decisions on this synthetic data: removing it from the finished-lot verdict cut cost per part from 0.243 to 0.082 (published protocol) and from 0.217 to 0.094 (validation), at a recall cost of about 0.04 to 0.05.
+6. Cross-lot detection by an isolation forest is **designed** (and on the roadmap, `docs/CROSS_LOT_ROADMAP.md`); it is **not active** in the app.
 
 ### Claims NOT to make
 
-- That Module A or the system beats the industry baselines. A cost-tuned fixed delta costs 0.031 against Module A's 0.082 and the system's 0.243 on this synthetic data; tuned dynamic PAT is level with Module A alone.
+- That Module A or the system beats the industry baselines. A cost-tuned fixed delta costs 0.031 against Module A's 0.082 (the shipped finished-lot system is the same, 0.082; the demo-v2 system with Module B deciding was 0.243) on this synthetic data; tuned dynamic PAT is level with Module A alone.
 - That a cost-tuned fixed delta is beaten (T2 did not fire for the system, and Module A alone is 2.6 times more expensive).
+- That Module B is not useful. It was measured only on finished lots, where Module A already sees the measured 168h value; its use on in-progress lots (early rejection) is not benchmarked here and is unchanged.
+- That the demo lots are typical. DEMO-COMPLETE-01 (4 flagged, HOLD) and LIVE-01 (7 flagged, REJECT) were chosen because they show 4 to 10 flags; on the 127 published lots the shipped system gives 86 REJECT, 27 HOLD, 14 ACCEPT.
+- That the FN:FP ratio setting is a validated recommendation: it selects cut-offs from a table the optimizer produced on synthetic tuning data; 10:1 is a disclosed default.
 - That severity is a probability. `s` is an index; the p-values behind it are not calibrated (the MCD leg is about 20 times nominal at n = 77), and the thresholds are tuned cutoffs.
 - That cross-lot (isolation forest) detection is active in the app. It is not: no earlier lots are passed in, and the absolute scoring has no forest leg.
 - That ECOD or the isolation forest contributes to a flag (neither produces a live score; the Part Detail ECOD view is labelled "not used for the flag").

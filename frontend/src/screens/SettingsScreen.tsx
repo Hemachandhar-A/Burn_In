@@ -38,7 +38,7 @@ import { VerdictBadge } from './VerdictBadge'
 
 const DESCRIPTIONS: Record<SettingField, string> = {
   fn_fp_cost_ratio:
-    'Cost of a missed defect relative to a false alarm; sets the outlier threshold.',
+    'Cost of a missed defect relative to a false alarm (2:1 to 50:1; default 10:1). It selects the REVIEW and REJECT cut-offs of Module A: a higher ratio lowers them and flags more parts. Applies to lots analysed after the change is signed off.',
   pda_threshold: 'Lot-level percent defective allowable.',
   confirmed_outcome_fn_ceiling:
     'Maximum false-negative rate among confirmed physical-analysis outcomes.',
@@ -151,7 +151,7 @@ function SettingCard({
     if (value === null) {
       setInvalid(
         isRatio(field)
-          ? 'Enter a number greater than 0 (the N in N:1).'
+          ? 'Enter a number from 2 to 50 (the N in N:1).'
           : 'Enter a percentage greater than 0 and no more than 100.',
       )
       return

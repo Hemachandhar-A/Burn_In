@@ -295,7 +295,7 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
     if severity_candidates:
         cid, severity = severity_candidates[0]
         chosen.append(cid)
-        index_text = severity_index_phrase(a_results[cid].severity_log10p)
+        index_text = severity_index_phrase(a_results[cid].severity_log10p, results.module_a_cutoffs.get("review"))
         recommendations.append(DPARecommendation(
             component_id=cid,
             reason=f"Highest combined severity in the lot ({index_text if index_text is not None else f'{severity:.2f}'}).",
@@ -331,7 +331,7 @@ def select_dpa_work_order(results: AnalysisResults) -> list[DPARecommendation]:
         cid = control_candidates[0]
         chosen.append(cid)
         severity = a_results[cid].combined_severity if cid in a_results else None
-        index_text = severity_index_phrase(a_results[cid].severity_log10p) if cid in a_results else None
+        index_text = severity_index_phrase(a_results[cid].severity_log10p, results.module_a_cutoffs.get("review")) if cid in a_results else None
         if index_text is not None:
             reason = f"Unflagged control part (PASS verdict, {index_text}) for comparison."
         elif severity is not None:

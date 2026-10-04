@@ -39,6 +39,8 @@ function summaryWithStatus(
     insufficient_data_components: [],
     module_a_results: {},
     module_b_results: {},
+    module_a_cutoffs: {},
+    module_b_advisory_notes: {},
     part_explanations: {},
     disposition: {
       lot_id: lotId,

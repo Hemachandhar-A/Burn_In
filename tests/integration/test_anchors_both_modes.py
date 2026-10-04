@@ -32,13 +32,14 @@ def test_default_mode_anchors_are_the_demo_v2_numbers(monkeypatch):
     monkeypatch.delenv("MODULE_A_SCORING", raising=False)
     assert demo.COMPLETE_SEED == 2 and live.LIVE_SEED == 2
     assert _run("DEMO-COMPLETE-01", demo.COMPLETE_SEED, "COMPLETE", maker=_complete(0)) == (
-        "REJECT", 0.0779, 7, "DEMO-COMPLETE-01-0052")
+        "HOLD", 0.0390, 4, "DEMO-COMPLETE-01-0052")  # demo-v2.1: was REJECT, 0.0779, 7 until Module B stopped deciding finished lots
     verdict, pda, flagged, _ = _run("LIVE-01", live.LIVE_SEED, "COMPLETE", maker=live.live_readings)
     assert (verdict, pda, flagged) == ("REJECT", 0.0649, 7)
 
 
 def test_rank_mode_keeps_the_demo_v1_2_anchors(monkeypatch):
     monkeypatch.setenv("MODULE_A_SCORING", "rank")
+    monkeypatch.setenv("MODULE_B_FINISHED_LOT_ROLE", "current")  # the demo-v1.2 numbers are rank scoring WITH Module B counting on a finished lot
     assert _run("DEMO-COMPLETE-01", OLD_COMPLETE_SEED, "COMPLETE", maker=_complete(0)) == (
         "REJECT", 0.0779, 15, "DEMO-COMPLETE-01-0004")
     verdict, pda, flagged, _ = _run("LIVE-01", OLD_LIVE_SEED, "COMPLETE", maker=live.live_readings)
@@ -51,3 +52,13 @@ def test_early_lot_is_module_b_only_and_identical_in_both_modes(monkeypatch, mod
     verdict, pda, flagged, _ = _run("DEMO-EARLY-01", demo.EARLY_SEED, "IN_PROGRESS", demo.EARLY_CHECKPOINTS,
                                     maker=lambda s: demo.generated_readings("DEMO-EARLY-01", s))
     assert (verdict, pda, flagged) == ("LOT_AT_RISK", 0.1429, 11)
+
+
+def test_role_current_reproduces_the_demo_v2_finished_lot_numbers(monkeypatch):
+    """MODULE_B_FINISHED_LOT_ROLE=current is the demo-v2 behaviour: V1F scoring with Module B counting on a finished lot."""
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
+    monkeypatch.setenv("MODULE_B_FINISHED_LOT_ROLE", "current")
+    assert _run("DEMO-COMPLETE-01", demo.COMPLETE_SEED, "COMPLETE", maker=_complete(0)) == (
+        "REJECT", 0.0779, 7, "DEMO-COMPLETE-01-0052")
+    verdict, pda, flagged, _ = _run("LIVE-01", live.LIVE_SEED, "COMPLETE", maker=live.live_readings)
+    assert (verdict, pda, flagged) == ("REJECT", 0.0649, 7)
