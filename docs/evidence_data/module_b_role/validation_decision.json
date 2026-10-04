@@ -1,0 +1,25 @@
+{
+  "chosen": "off",
+  "adopt": true,
+  "separated_from_current": true,
+  "candidates": [
+    "current",
+    "tiered",
+    "advisory",
+    "off"
+  ],
+  "within_tie": [
+    "advisory",
+    "off"
+  ],
+  "chosen_cost": 0.09350649350649351,
+  "chosen_ci": [
+    0.0835577922077922,
+    0.1046
+  ],
+  "current_cost": 0.21722077922077923,
+  "current_ci": [
+    0.20135,
+    0.23324740259740262
+  ]
+}

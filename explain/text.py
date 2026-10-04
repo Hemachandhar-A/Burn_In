@@ -238,6 +238,27 @@ def unavailable_forecast_note(module_b: ModuleBResult | None) -> str | None:
     )
 
 
+def module_b_advisory_note(module_b: ModuleBResult | None) -> str | None:
+    """Session I3: the information-only note a FINISHED lot's part carries under MODULE_B_FINISHED_LOT_ROLE=advisory when Module B's
+    forecast exceeds the safety slope. None when there is no such forecast. States what B said and that it did not change the
+    verdict; claims nothing about whether the forecast was right (the 168h value of a finished lot is measured, not forecast)."""
+    if (
+        module_b is None
+        or module_b.forecast_unavailable
+        or not module_b.exceeds_safety_slope
+        or module_b.drift_rate is None
+        or module_b.safety_slope is None
+        or module_b.safety_slope == 0
+    ):
+        return None
+    pct = (module_b.drift_rate / module_b.safety_slope - 1.0) * 100.0
+    return (
+        f"Module B forecast (information only): predicted 168h drift for {module_b.parameter} exceeds the calibrated safety slope "
+        f"by {abs(pct):.0f}%. This lot is finished, so the verdict is set by Module A on the measured readings; "
+        f"the forecast did not change it."
+    )
+
+
 def staleness_note(
     disposition_analysis_run_id: str,
     latest_analysis_run_id: str,
