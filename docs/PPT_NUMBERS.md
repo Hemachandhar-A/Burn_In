@@ -1,6 +1,80 @@
 # PPT numbers
 
-## Status of this file (demo-v1.2)
+## Module A scoring v2 (default from demo-v2)
+
+From demo-v2 the app's default Module A scoring is **absolute scoring (V1F)**: each detector output becomes a tail probability (robust z-score
+leg; MCD chi-square leg for lots of 77 or more parts), the part's severity is `s = -log10 p` of its most extreme leg (maximum rule, no
+suppression), REVIEW at `s >= 2.956`, REJECT at `s >= 3.419` (thresholds tuned on tuning seed 6101, FN:FP 10:1). The previous scoring (within-lot percentile
++ maximum) stays available as `MODULE_A_SCORING=rank` and its sections below are marked **previous scoring (rank mode)**. The isolation forest and ECOD
+contribute **no live score** in either mode (DISCLOSURES). All figures: synthetic data; commands: `python scripts/check_ppt_numbers.py` prints every number
+below from the committed tables (`docs/evidence_data/adoption/`). **`s` is a severity index, never a probability.**
+
+### Module A alone, published protocol (seed 2026, 9,779 parts, 521 defective, 127 lots, five families)
+
+| Method | Flag rate | Recall [95% CI] | Cost/part [95% CI] | Source |
+|---|---|---|---|---|
+| V1F REVIEW (default from demo-v2) | 0.090 (884 flagged) | 0.923 [0.902, 0.945] | 0.082 [0.069, 0.096] | `v1f/fairness_table.csv` |
+| V1F REJECT | 0.077 (757) | 0.912 [0.889, 0.935] | 0.076 [0.062, 0.091] | same |
+| previous scoring (rank mode, live configuration), REVIEW | 0.183 (1,787) | 0.814 [0.775, 0.859] | 0.239 [0.208, 0.270] | same |
+| static limits, default / cost-tuned | 0.002 / 0.151 | 0.040 / 0.610 | 0.511 / 0.327 | same |
+| fixed delta, default / cost-tuned | 0.240 / 0.072 | 1.000 / 0.979 | 0.186 / **0.031** [0.018, 0.048] | same |
+| static PAT, default / cost-tuned | 0.068 / 0.306 | 0.447 / 0.797 | 0.339 / 0.372 | same |
+| dynamic PAT, default / cost-tuned | 0.032 / 0.088 | 0.591 / 0.898 | 0.219 / 0.094 [0.077, 0.112] | same |
+
+"Cost-tuned" means the baseline's single cut was re-tuned with the same cost-sensitive optimiser on the same tuning data (seed 6101) as V1F's thresholds:
+static limits at 0.439 of the limit, fixed delta at 2.075 times the default allowance, static PAT at 0.528, dynamic PAT at 0.488 of its 6-sigma limit
+(about 2.9 sigma). The dynamic-PAT cut is close in size to V1F's z-score REVIEW cut (two-sided |z| about 3.26), so V1F's z-leg is similar in form to a tuned dynamic PAT.
+The harness fixed-delta baseline is RELATIVE (a fraction of the 0h reading; `harness/industry_baselines.py`, `DeltaLimit.relative`), compared at every later checkpoint
+against the 0h reading.
+
+### The whole system (V1F + Module B + explainability gate + fusion rules), same lots
+
+Flagged = part verdict is not PASS (WATCH or REJECT). Pre-registered in `docs/SYSTEM_LEVEL_BENCHMARK.md` before the run. Source: `system_level/system_headline.csv`.
+
+| Method | Flag rate | Recall [95% CI] | Precision | False alarms | Missed | Cost/part [95% CI] |
+|---|---|---|---|---|---|---|
+| S-new: system with V1F (WATCH+REJECT) | 0.275 | 0.964 [0.946, 0.979] | 0.187 | 2,185 | 19 | 0.243 [0.212, 0.276] |
+| S-new, REJECT only | 0.260 | 0.954 [0.935, 0.972] | 0.195 | 2,048 | 24 | 0.234 [0.202, 0.267] |
+| S-old: system with the previous scoring (WATCH+REJECT) | 0.353 | 0.956 [0.935, 0.976] | 0.144 | 2,957 | 23 | 0.326 [0.297, 0.355] |
+| S-old, REJECT only | 0.258 | 0.939 [0.914, 0.963] | 0.194 | 2,035 | 32 | 0.241 [0.209, 0.275] |
+| A-new: Module A alone with V1F | 0.090 | 0.923 [0.903, 0.945] | 0.544 | 403 | 40 | 0.082 [0.069, 0.095] |
+| D-tuned: cost-tuned fixed delta | 0.072 | 0.979 [0.966, 0.990] | 0.729 | 190 | 11 | 0.031 [0.018, 0.047] |
+| P-tuned: cost-tuned dynamic PAT | 0.088 | 0.898 [0.872, 0.924] | 0.546 | 389 | 53 | 0.094 [0.078, 0.112] |
+
+Gates, exactly as pre-registered: **G-flip holds** (cost 0.243 against 0.326 + 0.01; recall 0.964 against 0.956 - 0.03). **T1 did not fire** (recall gap to D-tuned 0.015, below
+0.03). **T2 did not fire** (system cost is 0.212 above D-tuned, not within 0.03). Outcome: **neither**. Module B's effect: system cost minus Module A alone = +0.161 per part: the false-alarm load
+of the fused system comes mainly from the Module B forecast leg. Cost per part by family (system with V1F / system with previous scoring / Module A alone with V1F): altered correlation 0.207 / 0.274 / 0.072;
+baseline 0.200 / 0.298 / 0.074; different noise regime 0.377 / 0.429 / 0.094; higher defect prevalence 0.258 / 0.374 / 0.137; wider drift exponent 0.174 / 0.273 / 0.064.
+
+### Clean-lot flag rate by lot size (through the app, absolute scoring, seed 7102)
+
+n = 15: 0.100; 20: 0.073; 30: 0.044 [0.035, 0.052]; 40: 0.038; 50: 0.028; 60: 0.035; 77: 0.038; 100: 0.036; 150: 0.024 (`v1f/fr4_table.csv`). Lots of 15 to 29 parts flag 7 to 10% of clean parts; thresholds were tuned near 77-part lots.
+
+### Sensitivity sweep (10 settings, 150 lots each, thresholds fixed, `v1f/sweep/`)
+
+C1 (recall above static limits, static PAT and dynamic PAT), C2 (cost below static limits), C5 (flag rate at 1% prevalence at most 6%: REVIEW 0.049, REJECT 0.035), C6 (flag rate on clean lots at noise x2 at most 8%: 0.045) and C7 (cost no
+worse than the previous scoring by more than 0.03; V1F is lower at every setting, by 0.11 to 0.22) **hold at all ten settings, for REVIEW and for REJECT**. These are verdicts on a sweep inside one generator, not on real data.
+
+### Claims to make (each supported by the tables above)
+
+1. Module A's false-alarm load is far lower than the previous scoring's, at higher recall: cost per part 0.239 -> 0.082, flag rate 0.183 -> 0.090, recall 0.814 -> 0.923 (Module A alone, synthetic benchmark).
+2. Module A with V1F has lower cost per part than all four default-parameter baselines (0.082 against 0.186 to 0.511), and than cost-tuned static limits (0.327) and cost-tuned static PAT (0.372).
+3. Module A with V1F is level with a cost-tuned dynamic PAT (0.082 [0.069, 0.096] against 0.094 [0.077, 0.112]; the intervals overlap).
+4. The system result, exactly as measured: replacing the scoring lowers the system's cost per part from 0.326 to 0.243 at the same recall (0.956 to 0.964); the system's recall (0.964) is within 0.02 of a cost-tuned fixed delta (0.979) while its cost per part (0.243) is far above it (0.031); the Module B forecast leg adds 0.161 per part to the cost of Module A alone.
+5. Cross-lot detection by an isolation forest is **designed** (and on the roadmap, `docs/CROSS_LOT_ROADMAP.md`); it is **not active** in the app.
+
+### Claims NOT to make
+
+- That Module A or the system beats the industry baselines. A cost-tuned fixed delta costs 0.031 against Module A's 0.082 and the system's 0.243 on this synthetic data; tuned dynamic PAT is level with Module A alone.
+- That a cost-tuned fixed delta is beaten (T2 did not fire for the system, and Module A alone is 2.6 times more expensive).
+- That severity is a probability. `s` is an index; the p-values behind it are not calibrated (the MCD leg is about 20 times nominal at n = 77), and the thresholds are tuned cutoffs.
+- That cross-lot (isolation forest) detection is active in the app. It is not: no earlier lots are passed in, and the absolute scoring has no forest leg.
+- That ECOD or the isolation forest contributes to a flag (neither produces a live score; the Part Detail ECOD view is labelled "not used for the flag").
+- That any number here describes real parts: all numbers are synthetic, from the project's own generator; thresholds were tuned near 77-part lots.
+
+### Previous scoring (rank mode): the sections below are the demo-v1.2 numbers, kept unchanged
+
+## Status of this file (demo-v1.2; previous scoring, rank mode)
 
 Numbers in the first sections are the **published benchmark configuration** (Isolation Forest active, history of earlier held-out lots). Numbers in the section "Added measurements" are the **live configuration** (no pooled reference, Isolation Forest inactive) and are the ones that describe the demo. Nothing below was changed at merge. One sentence in "Claims NOT to make" below (that the golden worked example through the live route is REJECT, not HOLD) predates the Module B guard: in demo-v1.2 that route gives HOLD, PDA 0.0390 (DISCLOSURES, "RESOLVED in demo-v1.2").
 
