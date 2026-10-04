@@ -11,7 +11,8 @@ from module_a.settings import (ABSOLUTE_REJECT_THRESHOLD, ABSOLUTE_REVIEW_THRESH
 GRID = np.geomspace(fnfp.FN_FP_RATIO_MIN, fnfp.FN_FP_RATIO_MAX, 200)
 
 
-def test_default_ratio_returns_the_shipped_constants_exactly():
+def test_default_ratio_returns_the_shipped_constants_exactly(monkeypatch):
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
     assert thresholds_for_ratio(10.0) == (ABSOLUTE_REVIEW_THRESHOLD, ABSOLUTE_REJECT_THRESHOLD) == (2.956, 3.419)
     cfg = module_a_scoring_config()
     assert (cfg.review_threshold, cfg.reject_threshold) == (2.956, 3.419)
