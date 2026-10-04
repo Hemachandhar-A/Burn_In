@@ -51,6 +51,9 @@ def render_pdf(report: ReportData) -> bytearray:
 
     _heading(doc, "Methodology")
     doc.multi_cell(0, 5, report.methodology_summary, new_x="LMARGIN", new_y="NEXT")
+    if report.analysis_settings_note:
+        doc.ln(2)
+        doc.multi_cell(0, 5, report.analysis_settings_note, new_x="LMARGIN", new_y="NEXT")
 
     _heading(doc, "Summary")
     _field(doc, "Quantity Screened", str(report.quantity_screened))

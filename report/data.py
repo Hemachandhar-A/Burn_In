@@ -54,7 +54,7 @@ _METHODOLOGY_SUMMARY_ABSOLUTE = (
     "Module B forecasts each part's 168-hour reading from its 0h/24h readings "
     "and flags early rejection against a calibrated safety slope, where trained for the part's "
     "parameter; it declines to forecast, rather than guess, for any parameter outside the three it "
-    "was trained on. The FN:FP cost ratio and PDA threshold used below are disclosed, adjustable "
+    "was trained on. The FN:FP cost ratio (which selects Module A's REVIEW and REJECT cut-offs) and the PDA threshold are disclosed, adjustable "
     "defaults, not values derived from field failure data - see the system's Settings screen for "
     "their current values."
 )
@@ -65,6 +65,38 @@ def methodology_summary(mode: str | None = None) -> str:
     from module_a.settings import module_a_scoring
 
     return _METHODOLOGY_SUMMARY if (mode or module_a_scoring()) == "rank" else _METHODOLOGY_SUMMARY_ABSOLUTE
+
+
+def analysis_settings_note(results: AnalysisResults) -> str:
+    """Session I3: the Module A cut-offs this analysis used (selected by the Settings FN:FP ratio at the time) and, for a finished lot,
+    what Module B's forecast did to the part verdicts under the configured role (fusion/settings.py). "" when neither applies."""
+    from fusion.settings import module_b_finished_lot_role
+
+    sentences: list[str] = []
+    cutoffs = results.module_a_cutoffs
+    if cutoffs.get("review") is not None and cutoffs.get("reject") is not None:
+        sentences.append(
+            f"Module A severity cut-offs used for this analysis: REVIEW at s >= {cutoffs['review']:.2f}, REJECT at s >= "
+            f"{cutoffs['reject']:.2f}, selected by the FN:FP cost ratio setting at the time of the analysis."
+        )
+    if results.disposition.status == "COMPLETE":
+        role = module_b_finished_lot_role()
+        if role == "advisory":
+            n = len(results.module_b_advisory_notes)
+            sentences.append(
+                "On this finished lot Module B's forecast did not change any part's verdict, which Module A sets from the measured "
+                f"readings; {n} {'part carries' if n == 1 else 'parts carry'} an information note that the forecast exceeded the safety slope."
+            )
+        elif role == "current":
+            sentences.append("On this finished lot Module B's forecast counts toward a part's verdict (role: current).")
+        elif role == "tiered":
+            sentences.append(
+                "On this finished lot Module B's forecast counts toward a part's verdict only as REVIEW unless its interval's lower bound "
+                "also exceeds the safety slope (role: tiered)."
+            )
+        else:
+            sentences.append("On this finished lot Module B's forecast is not used for a part's verdict (role: off).")
+    return " ".join(sentences)
 
 
 @dataclass
@@ -123,6 +155,8 @@ class ReportData:
     analysis_history: list[AnalysisHistoryEntry]
     analysis_history_truncated: bool
     reviewer_entries: list[dict]
+    # Session I3: what this analysis used (Module A cut-offs from the FN:FP setting) and what Module B did on a finished lot. "" when neither applies.
+    analysis_settings_note: str = ""
 
 
 def _describe_diff(diff: dict | None) -> str:
@@ -292,4 +326,5 @@ def build_report_data(project_id: str) -> ReportData:
         analysis_history=history_entries,
         analysis_history_truncated=truncated,
         reviewer_entries=reviewer_entries,
+        analysis_settings_note=analysis_settings_note(results),
     )

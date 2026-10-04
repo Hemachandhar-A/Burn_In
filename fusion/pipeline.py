@@ -75,9 +75,12 @@ def run_full_pipeline(
             unit_by_parameter.setdefault(reading.parameter, reading.unit)
     
     a_results = []
+    module_a_cutoffs: dict[str, float] = {}
     if is_complete:
         # MODULE_A_SCORING (module_a/settings.py): None under the legacy "rank" mode (MODULE_A_SCORING=rank), i.e. the pre-demo-v2 call; the default is absolute (V1F).
-        scoring_config = module_a_scoring_config()
+        scoring_config = module_a_scoring_config(config.fn_fp_cost_ratio)
+        if scoring_config is not None:
+            module_a_cutoffs = {"review": scoring_config.review_threshold, "reject": scoring_config.reject_threshold}
         a_results = module_a_detect(frames) if scoring_config is None else module_a_detect(frames, scoring=scoring_config)
     
     # Severity for picking a part's worst frame and for ranking: s = -log10 p when absolute scoring supplies it
@@ -383,4 +386,5 @@ def run_full_pipeline(
         module_a_results=module_a_results,
         module_b_results=module_b_results,
         module_b_advisory_notes=advisory_notes,
+        module_a_cutoffs=module_a_cutoffs,
     )

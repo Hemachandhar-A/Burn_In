@@ -412,6 +412,10 @@ class AnalysisResults(BaseModel):
     # forecast exceeds the safety slope (including parts that are PASS). Empty under every other role and on an in-progress lot.
     # Default {} so older stored rows still parse.
     module_b_advisory_notes: dict[str, str] = {}
+    # Session I3 (additive, CONTRACT_CHANGES.md 2026-10-04): the Module A tier cut-offs this analysis used on the severity index s,
+    # {"review": ..., "reject": ...}, i.e. the values the Settings FN:FP ratio selected at the time. {} under rank scoring, on an
+    # in-progress lot (Module A did not run) and on older stored rows (those used the constants 2.956 / 3.419).
+    module_a_cutoffs: dict[str, float] = {}
 
 
 class LoginRequest(BaseModel):

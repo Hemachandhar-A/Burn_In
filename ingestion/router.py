@@ -37,6 +37,7 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile
 
 from contracts import AnalysisResults, LotDataset, LotUploadResponse, ScreeningConfig
 from fusion.pipeline import run_full_pipeline
+from identity.router import current_screening_config
 from generator.lot import generate_lot
 from ingestion import store
 from ingestion.merge import compute_status, merge_checkpoint
@@ -85,7 +86,7 @@ def _run_pipeline_and_persist(
     dataset: LotDataset, account_id: str, test_date: str | None = None
 ) -> None:
     _ensure_project(dataset, account_id, test_date)
-    results = run_full_pipeline(dataset, ScreeningConfig())
+    results = run_full_pipeline(dataset, current_screening_config())
     # AnalysisResults.insufficient_data_components (additive, CONTRACT_CHANGES.md 2026-09-30): the same
     # list LotUploadResponse carries, also stored so a dashboard reload (GET /lots/{lot_id}) sees it too.
     results = results.model_copy(
