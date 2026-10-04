@@ -375,14 +375,14 @@ def test_full_flow_across_routes(env):
     sharma = env["login"]("a.sharma", "1234")   # a fresh login, as the flow's first step
     mehta = env["login"]("r.mehta", "5678")
 
-    lot = LotSummaryResponse.model_validate(c.get(f"/lots/{GOLDEN_LOT_ID}", headers=sharma).json())
+    # The golden lot has exactly one REJECT part under the default (absolute) scoring - GOLDEN-045 - and earlier route
+    # checks already signed it off once, so the flow runs on the in-progress lot's early-REJECT part (Module B), whose
+    # worklist arithmetic is untouched; the golden lot is still the subject of the final DPA step.
+    lot = LotSummaryResponse.model_validate(c.get(f"/lots/{IN_PROGRESS_LOT_ID}", headers=sharma).json())
     flagged = {a.component_id: a.verdict for a in lot.assessments if a.verdict == "REJECT"}
-    assert GOLDEN_COMPONENT_ID in flagged
-
-    # Use the lot's other REJECT part (not the golden part, which earlier route checks touched) so the
-    # worklist arithmetic below is exact.
-    cid = next(k for k in flagged if k != GOLDEN_COMPONENT_ID)
-    part = PartDetailResponse.model_validate(c.get(f"/parts/{cid}?lot_id={GOLDEN_LOT_ID}", headers=sharma).json())
+    assert IN_PROGRESS_PART in flagged
+    cid, flow_lot = IN_PROGRESS_PART, IN_PROGRESS_LOT_ID
+    part = PartDetailResponse.model_validate(c.get(f"/parts/{cid}?lot_id={flow_lot}", headers=sharma).json())
     assert part.verdict == "REJECT" and part.disposition_history == []
     url = f"/parts/{cid}/disposition?project_id={part.project_id}&analysis_run_id={part.analysis_run_id}"
     body = {"verdict": "REJECT", "rationale": "flow test"}
@@ -394,10 +394,10 @@ def test_full_flow_across_routes(env):
     after_disp = WorklistResponse.model_validate(c.get("/settings/worklist", headers=sharma).json()).pending
     assert len(after_disp) > len(before) and {d.component_id for d in after_disp} >= {cid}
 
-    hist = PartDetailResponse.model_validate(c.get(f"/parts/{cid}?lot_id={GOLDEN_LOT_ID}", headers=sharma).json())
+    hist = PartDetailResponse.model_validate(c.get(f"/parts/{cid}?lot_id={flow_lot}", headers=sharma).json())
     assert {h.account_id for h in hist.disposition_history} == {"a.sharma", "r.mehta"}
 
-    out = c.post(f"/parts/{cid}/confirmed-outcome?lot_id={GOLDEN_LOT_ID}", headers=sharma,
+    out = c.post(f"/parts/{cid}/confirmed-outcome?lot_id={flow_lot}", headers=sharma,
                  json={"confirmed_outcome": "Confirmed Defective", "note": "flow"})
     assert out.status_code == 200
     after_outcome = WorklistResponse.model_validate(c.get("/settings/worklist", headers=sharma).json()).pending
