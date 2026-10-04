@@ -25,7 +25,7 @@ Accounts: `a.sharma` / `1234` and `r.mehta` / `5678`. On the Login screen pick t
 **Part A - the preloaded Complete lot (about 4 minutes)**
 
 1. Sign in as **A. Sharma**. **Project Browser** (left menu) lists both preloaded lots; click **DEMO-COMPLETE-01**.
-2. **Lot Dashboard**: verdict badge, `PDA: ...%`, `Flagged Parts`, the one-sentence summary, the metadata panel and the two
+2. **Lot Dashboard** (DEMO-COMPLETE-01 shows `HOLD`, PDA 3.90%, 4 of 77 flagged; Module B no longer decides a finished lot, so its list shows the same flagged parts ordered by drift risk): verdict badge, `PDA: ...%`, `Flagged Parts`, the one-sentence summary, the metadata panel and the two
    ranked lists (**By Outlier Severity** = Module A, **By Drift Risk** = Module B).
    Rank 1 (the most severe flagged part) is the first row of each list.
 3. Click **Generate DPA Work Order**: up to 3 parts, each with its reason.
