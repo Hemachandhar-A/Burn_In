@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Date | 2026-10-03 |
+| Date | 2026-10-04 |
 | Status | **Accepted for the build, with a pre-registered review trigger (section 9)** |
 | Decision owner | The Lead (this record was drafted by the assistant; the ratings are judgements the Lead must review) |
 | Related documents | `SCORING_COMPARISON.md` (all measurements), `decision_matrix.py` (the matrix, re-runnable), `SESSION_DECISIONS.md` |
@@ -202,3 +202,47 @@ The pre-registered system-level benchmark (`docs/SYSTEM_LEVEL_BENCHMARK.md`, com
 - Module B adds 0.161 per part to Module A alone (0.243 against 0.082).
 
 **The decision stands:** absolute scoring (V1F) becomes the default, because it makes the system cheaper at no cost in recall; the claims drawn from it are limited to what the tables support (`docs/PPT_NUMBERS.md`, "Module A scoring v2"). It does not show that the system beats a cost-tuned fixed delta, and it does not show that the Module B forecast leg is worth its false alarms; both are disclosed (`docs/DISCLOSURES.md` #38, #39).
+
+
+## 14. Lead notes after Session I2b (drafted by the assistant from the I2b report; the measured numbers in the Outcome section above govern)
+
+### 14.1 What was measured at system level (published protocol, 9,779 parts, 521 defective, flagged = part verdict is not PASS) **[M]**
+| Method | Flag rate | Recall | Cost per part [95% CI] |
+|---|---|---|---|
+| S-new: fused system with V1F (shipped as `demo-v2`) | 0.275 | 0.964 | 0.243 [0.212, 0.276] |
+| S-old: fused system with the previous scoring (`demo-v1.2`) | 0.353 | 0.956 | 0.326 [0.297, 0.355] |
+| A-new: Module A alone with V1F | 0.090 | 0.923 | 0.082 [0.069, 0.095] |
+| Fixed delta, cost-tuned | 0.072 | 0.979 | 0.031 [0.018, 0.047] |
+| Dynamic PAT, cost-tuned | 0.088 | 0.898 | 0.094 [0.078, 0.112] |
+
+Gate G-flip held (S-new is cheaper than S-old: 0.243 against 0.326, recall 0.964 against 0.956), so replacing the old scoring is confirmed at system level. T1 and T2 both did **not** fire.
+
+### 14.2 Corrections to this record
+1. **The fixed-delta baseline is relative, not absolute** **[M]** (`DeltaLimit.relative`, `harness/industry_baselines.py:161`: the allowance is a fraction of the part's own 0h reading, compared with every later checkpoint). Sections 6 and 8 treated its units as a weakness (C5 rated 2). Corrected: C5 = 3. The argument that V1F's scale-free thresholds are an advantage over a delta limit does **not** hold for this baseline.
+2. **The pre-registered triggers were incomplete.** T1 required a recall shortfall as well as a cost excess. The system's recall is within 0.015 of the tuned delta, so T1 could not fire although its cost is about eight times higher (0.243 against 0.031). "Neither fired" must not be read as "the system is competitive". The system's problem is false alarms, which T1 did not watch.
+3. **Transfer test** **[M]**: pooled cost per part on held-out families (leave-one-family-out): fixed delta 0.047, V1F 0.078, dynamic PAT 0.098; fixed delta wins 4 of 5 families; V1F is cheaper only on `different_noise_regime` (0.079 against 0.155, intervals overlap). The hypothesis that V1F's thresholds transfer better than a delta limit is not supported.
+4. **Dynamic PAT's tuned cut is 0.488 of its 6σ limit, about 2.9σ**, close to V1F's z-leg cut of 3.26σ. So V1F's z-leg is essentially a tuned DPAT; what V1F adds is the multivariate MCD leg (for 77 or more parts) **[M]**.
+
+### 14.3 New finding: Module B adds false alarms on finished lots
+From the table (derived **[V]** with the verified cost model): fusing Module B into the verdict of a finished lot raises the false-alarm rate on healthy parts from about 4.3% (A-new) to about 23.6% (S-new) and the flag rate from 9.0% to 27.5%. It buys about 21 additional caught defects (recall 0.923 to 0.964) at the price of about 1,782 additional false alarms: a marginal precision of about **1.2%**, against the **9.1%** (1/11) a flag needs to pay for itself under 10:1 costs (§3). On this synthetic data the fused finished-lot verdict is therefore not cost-effective.
+The spec states that Module A and Module B "do not run at the same moment in the real burn-in timeline": B's purpose is early rejection before 168h data exists, A screens the finished series **[S]** `context.md` line 469. The implementation still fuses both for finished lots, as the 6.2 table ("either module") reads.
+Caveats: B-driven flags on finished lots are not separated by tier here; the demo lots were chosen because they show 4 to 10 flags (readability), so they are not typical of the 27.5% average; Module B's behaviour on in-progress lots (its real use) is not benchmarked at all.
+
+### 14.4 Other regression found in I2b
+Under V1F the thresholds are fixed constants (REVIEW 2.956, REJECT 3.419). The Settings screen's **FN:FP cost ratio** no longer moves Module A's cut-offs (its explanatory text is now false), so the live cost-asymmetry control is partly dead. The PDA threshold and the false-negative ceiling still work.
+
+### 14.5 Revised matrix (`decision_matrix.py`, re-run)
+Changes to the ratings, each from §14.1 to §14.3: O1 C5 2 to 3 (delta is relative); O3 C1 3 to 4 (S-old recall 0.956); O3 C2 stays 1 (α about 32% [V]); O5 C2 3 to 1 (α about 23.6% [V]); O6 C2 2 to 1; new option **O7** (finished lots decided by V1F alone; Module B for unfinished lots) with O5's ratings except C2 = 3 (α ≈ 4.3% as A-new) and an estimated cost of 0.082 on finished lots **[V]**.
+| Weighting | First | Then |
+|---|---|---|
+| Base | O7 3.65 = O1 3.65 | O2 3.55, O6 3.50, **O5 3.45**, O4 3.25, O3 2.90 |
+| Detection-heavy | O1 3.95 | O7 3.60 |
+| Explainability-heavy | O7 3.85 | O6 3.80, O5 3.75 |
+| Real-world-heavy | O2 3.80 | O7 3.60 |
+| Synthetic score only | O1 4.60 | O7 = O4 3.60; O5 2.80 |
+Reading: the as-shipped system (O5) now ranks behind the by-phase design (O7) under every weighting, and the replacement of the old scoring (O3 last in all rows) stands. O1, O2 and O7 remain within noise of each other at base weights.
+
+### 14.6 Decision status
+- **Stands:** replace the old scoring with V1F (confirmed at system level).
+- **Revised:** the decision to ship "V1F + Module B fused on every lot" (O5) is **not** supported as the best design; the evidence favours deciding finished lots with V1F alone and using Module B for unfinished lots (O7), or tiering Module B so that only a confident exceedance rejects. Neither is built. `demo-v2` ships O5 and states this in its disclosures.
+- **Next experiment (pre-registered before running):** compare on validation seeds disjoint from the published protocol: (a) current fusion; (b) Module B REJECT only when `lower_bound_exceeds_safety_slope` (point exceedance gives WATCH); (c) Module B advisory on finished lots (not in the verdict); (d) Module A alone. Choose on validation by cost with a recall floor of 0.90; report once on the published protocol. Adopt only if the chosen variant's cost is lower than (a) with separated CIs.

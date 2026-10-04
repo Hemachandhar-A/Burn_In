@@ -1,6 +1,6 @@
 # Scoring comparison: current (percentile + max) vs V1 (absolute calibration + max)
 
-Recorded 2026-10-03. Repository state when written: main = `e1c249b`, tag `demo-v1.2`. V1 exists only as an off-by-default switch (branch `scoring-experiment`, merged into main with the default unchanged).
+Recorded 2026-10-04. Repository state when written: main = `e1c249b`, tag `demo-v1.2`. V1 exists only as an off-by-default switch (branch `scoring-experiment`, merged into main with the default unchanged).
 
 ## How to read this document
 

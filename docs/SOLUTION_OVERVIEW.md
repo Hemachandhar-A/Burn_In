@@ -1,6 +1,6 @@
 # Solution overview: from raw data to a decision, and the scoring decision
 
-Written 2026-10-03, before Session I2b. Tags: **[S]** spec, **[M]** measured by an agent on **synthetic** data, **[V]** arithmetic re-done by the assistant, **[J]** judgement, **[U]** unknown. Detail and evidence: `SCORING_COMPARISON.md`, `DECISION_RECORD_DETECTION_APPROACH.md`, `SESSION_DECISIONS.md`.
+Written 2026-10-04, before Session I2b. Tags: **[S]** spec, **[M]** measured by an agent on **synthetic** data, **[V]** arithmetic re-done by the assistant, **[J]** judgement, **[U]** unknown. Detail and evidence: `SCORING_COMPARISON.md`, `DECISION_RECORD_DETECTION_APPROACH.md`, `SESSION_DECISIONS.md`.
 
 ## 1. The decision
 
