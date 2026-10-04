@@ -409,3 +409,37 @@ The tuned delta limit also beat V1F at every setting of the 10-setting sweep, in
 
 ### 14.5 The comparison that decides it has not been run
 The shipped system is not Module A alone. Module B applies a calibrated drift-rate limit (the conformal 0.95 quantile of healthy drift per hour, `safety_slope`) to a forecast, and fusion rejects if either module crosses its REJECT level. That is a delta-style detector inside the system. The fair test is **system-level**: the fused verdict of Module A (V1F) plus Module B against a cost-tuned fixed delta, on the same lots. Until then, the stand-alone ranking (tuned delta first) must not be read as a ranking of the system.
+
+
+## 15. Adoption record (Session I2b, 2026-10-04): absolute scoring (V1F) is the default
+
+Appended after sections 1-14; nothing above is changed. Branch `adopt-v1f` (from `scoring-adoption` 4013ef7); the fallback `demo-v1.2` is untouched.
+
+### 15.1 Before / after anchors (synthetic generator; pipeline output, no DB)
+
+| Anchor | demo-v1.2 (rank, old seed) | demo-v2 (default absolute, new seed) | Same old seed under absolute |
+|---|---|---|---|
+| DEMO-COMPLETE-01 | seed 5: REJECT, PDA 0.0779, 15 of 77 flagged, top DEMO-COMPLETE-01-0004 | seed 2: REJECT, PDA 0.0779, 7 of 77 flagged (6 Module A REJECT), top DEMO-COMPLETE-01-0052 | seed 5: REJECT, PDA 0.0649, 6 flagged, top -0004 |
+| LIVE-01 (full lot) | seed 32: COMPLETE, REJECT, PDA 0.0649, 13 flagged | seed 2: COMPLETE, REJECT, PDA 0.0649, 7 flagged (at 0h+24h: LOT_AT_RISK, 1 Module B REJECT) | seed 32: REJECT, PDA 0.0779, 6 flagged |
+| DEMO-EARLY-01 | IN_PROGRESS, LOT_AT_RISK, PDA 0.1429, 11 flagged | unchanged (Module B only; Module A never runs in progress) | unchanged |
+| Golden fixture through `POST /lots` | HOLD, PDA 0.03896, 3 REJECT parts (GOLDEN-045 and two decoys) | ACCEPT, PDA 0.01299, GOLDEN-045 the only REJECT, rank 1 | n/a |
+
+New demo seeds were chosen by scanning seeds 1 to 80 with the same generator path as `POST /lots/demo`: `docs/evidence_data/adoption/system_level/scan_complete_seeds_1_80.txt` and `scan_live_seeds_1_80.txt`.
+Coincidence worth knowing: the PDA values 0.0779 and 0.0649 appear in both columns because they are 6/77 and 5/77, with different lots.
+
+### 15.2 The six tests that failed under absolute scoring, and how each was repaired
+
+| Test | Class | Old expectation | New expectation and why it is right |
+|---|---|---|---|
+| `test_g5_gate.py::test_row6_severity_cap_note_fires_for_both_reasons_with_distinct_wording` | D (test double) | stub `patched(frames)` | `patched(frames, **kwargs)`; the pipeline now passes `scoring=...`; the test's purpose (two cap-note wordings on GOLDEN-045) is independent of the mode |
+| `test_g5_routes.py::test_full_flow_across_routes` | B (decoys) | second REJECT part of the golden lot | the in-progress lot's Module B REJECT part; the flow tests route sequencing, not which detector flags |
+| `test_load_demo_lots.py::test_golden_lot_through_the_route_is_hold` | B | HOLD, 3 REJECT, 0.03 < PDA < 0.05 | `..._is_accept_by_default`: ACCEPT, PDA = 1/77, one REJECT (GOLDEN-045); the HOLD expectations live on in `..._is_hold_in_rank_mode` |
+| `test_text.py::test_explanation_summary_on_the_golden_lot` | B | "5 of 77 parts flagged, spread across ..." | "1 of 77 parts flagged, concentrated in leakage."; the old text is kept as a rank-mode test |
+| `test_live_lot_anchor.py::test_live_lot_three_uploads_anchor` | A (old numbers) | 13 flagged | 7 flagged (new LIVE seed); the legacy numbers are pinned in `test_anchors_both_modes.py` |
+| `test_config_check.py::test_pipeline_and_harness_live_path_agree_on_two_small_lots` | A | harness path without scoring | harness path with `module_a_scoring_config()`; parametrized over both modes |
+
+The golden test `tests/integration/test_golden_module_a.py` passed unedited (GOLDEN-045 is still flagged REJECT, rank 1). New tests: default-mode and rank-mode anchors (`test_anchors_both_modes.py`), mode-aware PDF text, MCD/ECOD view labels (Vitest and backend).
+
+### 15.3 System-level result and decision
+
+See `docs/SYSTEM_LEVEL_BENCHMARK.md`: G-flip holds (system cost per part 0.326 -> 0.243, recall 0.956 -> 0.964); T1 and T2 did not fire; Module B adds 0.161 per part to Module A alone. The default was flipped on that basis.

@@ -183,3 +183,22 @@ Worst-case regret is lowest for O6 (a union keeps the delta limit's strength in 
 |---|---|---|---|
 | Decision owner (Lead) | | Accept / Amend | |
 | Reviewer of the ratings | | Agree / Re-rate (attach edited `decision_matrix.py`) | |
+
+
+## Outcome of the system-level benchmark (Session I2b, 2026-10-04) - appended; nothing above is changed
+
+The pre-registered system-level benchmark (`docs/SYSTEM_LEVEL_BENCHMARK.md`, committed before the run; 9,779 synthetic parts, seed 2026) compared the whole fused system with absolute scoring (S-new) against the same system with the previous scoring (S-old), Module A alone (A-new) and the cost-tuned fixed delta (D-tuned) and dynamic PAT (P-tuned).
+
+| Method | Flag rate | Recall | Cost per part [95% CI] |
+|---|---|---|---|
+| S-new | 0.275 | 0.964 | 0.243 [0.212, 0.276] |
+| S-old | 0.353 | 0.956 | 0.326 [0.297, 0.355] |
+| A-new | 0.090 | 0.923 | 0.082 [0.069, 0.095] |
+| D-tuned | 0.072 | 0.979 | 0.031 [0.018, 0.047] |
+| P-tuned | 0.088 | 0.898 | 0.094 [0.078, 0.112] |
+
+- **G-flip fired in favour (holds):** cost(S-new) 0.243 is below cost(S-old) 0.326 + 0.01, and recall 0.964 is above 0.956 - 0.03.
+- **T1 did not fire:** the recall gap to D-tuned is 0.015 (needs more than 0.03). **T2 did not fire:** the system's cost is 0.212 above D-tuned. Result: **neither**; no layered-option follow-up is triggered by the pre-registered rule, but the numbers show the system is far from a tuned delta limit on false-alarm cost.
+- Module B adds 0.161 per part to Module A alone (0.243 against 0.082).
+
+**The decision stands:** absolute scoring (V1F) becomes the default, because it makes the system cheaper at no cost in recall; the claims drawn from it are limited to what the tables support (`docs/PPT_NUMBERS.md`, "Module A scoring v2"). It does not show that the system beats a cost-tuned fixed delta, and it does not show that the Module B forecast leg is worth its false alarms; both are disclosed (`docs/DISCLOSURES.md` #38, #39).
