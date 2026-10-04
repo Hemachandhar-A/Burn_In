@@ -1,0 +1,75 @@
+{
+  "absolute_review": {
+    "C1_recall_exceeds_static_limits_static_pat_dynamic_pat": {
+      "holds": true,
+      "breaks": []
+    },
+    "C2_cost_beats_static_limits": {
+      "holds": true,
+      "breaks": []
+    },
+    "C5_flag_rate_le_6pct_at_1pct_prevalence": {
+      "holds": true,
+      "value": 0.048917748917748916
+    },
+    "C6_flag_rate_le_8pct_on_clean_lots_at_noise_x2": {
+      "holds": true,
+      "value": 0.04495504495504495
+    },
+    "C7_cost_no_worse_than_current_by_more_than_0.03": {
+      "holds": true,
+      "breaks": [],
+      "difference_absolute_minus_current": {
+        "baseline": -0.13411255411255413,
+        "noise_x0.5": -0.13437229437229437,
+        "noise_x2": -0.1294372294372294,
+        "prev_1": -0.12813852813852813,
+        "prev_3": -0.112987012987013,
+        "prev_8": -0.21645021645021645,
+        "exp_low": -0.1359307359307359,
+        "exp_high": -0.13567099567099566,
+        "lot_30": -0.12133333333333333,
+        "lot_150": -0.1330222222222222
+      }
+    }
+  },
+  "absolute_reject": {
+    "C1_recall_exceeds_static_limits_static_pat_dynamic_pat": {
+      "holds": true,
+      "breaks": []
+    },
+    "C2_cost_beats_static_limits": {
+      "holds": true,
+      "breaks": []
+    },
+    "C5_flag_rate_le_6pct_at_1pct_prevalence": {
+      "holds": true,
+      "value": 0.034545454545454546
+    },
+    "C6_flag_rate_le_8pct_on_clean_lots_at_noise_x2": {
+      "holds": true,
+      "value": 0.04495504495504495
+    },
+    "C7_cost_no_worse_than_current_by_more_than_0.03": {
+      "holds": true,
+      "breaks": [],
+      "difference_absolute_minus_current": {
+        "baseline": -0.1412987012987013,
+        "noise_x0.5": -0.1419047619047619,
+        "noise_x2": -0.1413852813852814,
+        "prev_1": -0.14060606060606062,
+        "prev_3": -0.1226839826839827,
+        "prev_8": -0.2173160173160173,
+        "exp_low": -0.143030303030303,
+        "exp_high": -0.14242424242424243,
+        "lot_30": -0.12155555555555556,
+        "lot_150": -0.13435555555555556
+      }
+    }
+  },
+  "_context": {
+    "noise_x2_zero_defect_lots": 13,
+    "noise_x2_zero_defect_parts": 1001,
+    "noise_x2_healthy_part_flag_rate_review": 0.04373124829529957
+  }
+}

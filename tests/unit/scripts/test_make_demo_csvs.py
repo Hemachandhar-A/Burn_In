@@ -35,3 +35,15 @@ def test_files_parse_through_the_real_ingestion_parser(tmp_path):
     m.write_all(tmp_path)
     readings = parse_lot_csv((tmp_path / "full_lot.csv").read_bytes(), lot_id="X", **m.LIVE_META)
     assert len(readings) == 924
+
+
+def test_live_selection_rules_v2():
+    ok = {"seed": 1, "full_flagged": 6, "a_reject": 3, "full_verdict": "REJECT", "full_pda": 0.05,
+          "early_b_reject": 2, "early_verdict": "LOT_AT_RISK"}
+    assert m.qualifies(ok)
+    assert m.qualifies({**ok, "full_verdict": "HOLD"})
+    assert not m.qualifies({**ok, "full_verdict": "ACCEPT"})
+    assert not m.qualifies({**ok, "full_flagged": 3}) and not m.qualifies({**ok, "full_flagged": 11})
+    assert not m.qualifies({**ok, "early_b_reject": 0})
+    assert not m.qualifies({**ok, "early_verdict": "LOT_ON_TRACK"})
+    assert m.qualifies({**ok, "early_verdict": "STOP_RUN_RECOMMENDED"})

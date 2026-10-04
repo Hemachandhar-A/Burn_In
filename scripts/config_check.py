@@ -32,8 +32,10 @@ def config_check(n_lots: int = 5, *, seed: int = 2026, n_parts: int | None = Non
         pass
     live = _Set()
     live.lots = lots
+    # The same scoring configuration the app resolves (None in rank mode; V1F's ScoringConfig by default).
+    from module_a.settings import module_a_scoring_config
     harness_results = {(r.lot_id, r.component_id, r.parameter): r
-                       for r in scoring.run_module_a(live, pooled_reference=False)}
+                       for r in scoring.run_module_a(live, pooled_reference=False, scoring=module_a_scoring_config())}
 
     compared = 0
     max_abs = 0.0

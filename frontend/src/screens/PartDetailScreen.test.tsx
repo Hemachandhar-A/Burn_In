@@ -748,3 +748,43 @@ describe('units on every number a person reads (F24 Part 3)', () => {
     expect(screen.getByLabelText('Model vs physics disagreement')).toHaveTextContent('32.4')
   })
 })
+
+describe('explanation views are labelled by what drove the flag (demo-v2, absolute scoring)', () => {
+  // Absolute scoring (V1F) sets severity_log10p. Its flag comes from the robust-z leg and, for lots of 77+ parts, the MCD leg;
+  // ECOD never scores. The views must not read as drivers when they were not used.
+  const ABSOLUTE_77 = { ...MODULE_A, severity_log10p: 4.2, explainable_tags: { ...MODULE_A.explainable_tags, ecod: false } }
+  const ABSOLUTE_60 = {
+    ...ABSOLUTE_77,
+    mcd_distance: null,
+    explainable_tags: { robust_z: true, mcd: false, isolation_forest: false, ecod: false },
+  }
+
+  test('lot of 77+ parts: MCD stays a driver view, ECOD is labelled as not used for the flag', async () => {
+    setup('/parts/DUT-042', DETAIL({ module_a: ABSOLUTE_77 }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const mcd = screen.getByRole('region', { name: 'MCD parameter contribution' })
+    expect(within(mcd).getByText('D² = 28.4')).toBeInTheDocument()
+    expect(mcd).not.toHaveTextContent('not used for the flag')
+    const ecod = screen.getByRole('region', { name: 'ECOD dimension score' })
+    expect(ecod).toHaveTextContent('Distribution-free view (not used for the flag)')
+    expect(ecod).not.toHaveTextContent('O_score')
+  })
+
+  test('lot of 30-76 parts: the MCD card is labelled as a view not used at this lot size, with no D² chip', async () => {
+    setup('/parts/DUT-042', DETAIL({ module_a: ABSOLUTE_60 }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    const mcd = screen.getByRole('region', { name: 'MCD parameter contribution' })
+    expect(mcd).toHaveTextContent('Multivariate view (not used for the flag at this lot size)')
+    expect(mcd).not.toHaveTextContent('D²')
+    expect(screen.getByRole('region', { name: 'ECOD dimension score' })).toHaveTextContent(
+      'Distribution-free view (not used for the flag)',
+    )
+  })
+
+  test('legacy rank scoring (no severity_log10p): both views keep their original labels', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.getByText('O_score = 0.942')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/not used for the flag/)
+  })
+})

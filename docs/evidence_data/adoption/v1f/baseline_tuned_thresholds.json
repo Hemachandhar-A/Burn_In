@@ -1,0 +1,26 @@
+{
+  "static_limits": {
+    "tau": 0.4386231205778222,
+    "default_tau": 1.0,
+    "tuning_parts": 38500,
+    "tuning_defective": 2558
+  },
+  "fixed_delta": {
+    "tau": 2.0749600836866153,
+    "default_tau": 1.0,
+    "tuning_parts": 38500,
+    "tuning_defective": 2558
+  },
+  "static_pat": {
+    "tau": 0.5281739807285064,
+    "default_tau": 1.0,
+    "tuning_parts": 38500,
+    "tuning_defective": 2558
+  },
+  "dynamic_pat": {
+    "tau": 0.4880831123432982,
+    "default_tau": 1.0,
+    "tuning_parts": 38500,
+    "tuning_defective": 2558
+  }
+}

@@ -31,12 +31,14 @@ EARLY_META = {"part_number": "DEMO-PN", "manufacturer": "Northvale Semiconductor
 
 # LOT 2's generator seed: the smallest seed in 1..40 with >= 2 Module B REJECT parts, a forecast lot verdict of
 # LOT_AT_RISK or STOP_RUN_RECOMMENDED and <= 15 flagged parts (`--scan` prints the table this was chosen from).
-# DEMO-COMPLETE-01's generator seed: the smallest seed in 1..60 (`--scan-complete`) with a COMPLETE lot, <= 15 flagged
-# parts, >= 1 REJECT part scored by Module A with stored MCD and ECOD explanation rows, lot verdict HOLD/REJECT, PDA <= 0.15.
-# Seed 5 -> 15 flagged, 6 Module A REJECT, verdict REJECT, PDA 0.0779, top part DEMO-COMPLETE-01-0004 (iddq).
-COMPLETE_SEED = 5
-COMPLETE_SCAN_SEEDS = range(1, 61)
-COMPLETE_MAX_FLAGGED, COMPLETE_MAX_PDA = 15, 0.15
+# DEMO-COMPLETE-01's generator seed: the smallest seed in 1..80 (`--scan-complete`, absolute scoring) meeting the demo-v2
+# criteria above. Until demo-v1.2 (rank scoring) it was seed 5 -> 15 flagged, PDA 0.0779, top part DEMO-COMPLETE-01-0004.
+COMPLETE_SEED = 2  # demo-v2 scan 1..80 (absolute scoring): 7 flagged, 6 Module A REJECT, REJECT, PDA 0.0779, top -0052 (iddq)
+COMPLETE_SCAN_SEEDS = range(1, 81)
+# demo-v2 criteria (absolute scoring): a 77-part COMPLETE lot, REJECT/HOLD verdict, 4-10 flagged, >= 2 Module A REJECT,
+# the top-ranked part carries MCD and ECOD explanation rows and a sentence.
+COMPLETE_N_PARTS = 77
+COMPLETE_MIN_FLAGGED, COMPLETE_MAX_FLAGGED, COMPLETE_MIN_A_REJECT = 4, 10, 2
 EARLY_SEED = 1  # scan 2026-09-30: seed 1 -> 11 flagged, 11 Module B REJECT, LOT_AT_RISK
 SCAN_SEEDS = range(1, 41)
 MIN_B_REJECT, MAX_FLAGGED = 2, 15
@@ -82,26 +84,31 @@ def scan_complete_seed(seed: int) -> dict:
 
     top = min(flagged, key=lambda a: (a.module_a_rank, a.component_id)) if flagged else None
     d = results.disposition
-    return {"seed": seed, "status": dataset.status, "flagged": len(flagged), "a_reject": len(a_reject),
+    return {"seed": seed, "status": dataset.status, "n_parts": len(results.assessments), "flagged": len(flagged),
+            "a_reject": len(a_reject),
             "a_watch": sum(a.verdict == "WATCH" for a in results.assessments), "lot_verdict": d.verdict,
             "pda": d.pda_result, "top": top.component_id if top else "-",
             "worst": top.worst_parameter if top else "-", "top_rows": bool(top and has_rows(top)),
+            "top_sentence": bool(top and results.part_explanations.get(top.component_id)
+                                 and results.part_explanations[top.component_id].explanation_sentence),
             "any_reject_rows": any(has_rows(a) for a in a_reject)}
 
 
 def qualifies_complete(row: dict) -> bool:
-    return (row["status"] == "COMPLETE" and row["flagged"] <= COMPLETE_MAX_FLAGGED and row["any_reject_rows"]
-            and row["lot_verdict"] in ("HOLD", "REJECT") and row["pda"] <= COMPLETE_MAX_PDA)
+    return (row["status"] == "COMPLETE" and row["n_parts"] == COMPLETE_N_PARTS
+            and COMPLETE_MIN_FLAGGED <= row["flagged"] <= COMPLETE_MAX_FLAGGED
+            and row["a_reject"] >= COMPLETE_MIN_A_REJECT and row["top_rows"] and row["top_sentence"]
+            and row["lot_verdict"] in ("HOLD", "REJECT"))
 
 
 def scan_complete() -> int:
-    print("seed status   flagged A_REJECT A_WATCH verdict   pda    top                     worst      mcd+ecod qualifies")
+    print("seed status   n  flagged A_REJECT A_WATCH verdict   pda    top                     worst      mcd+ecod qualifies")
     chosen = None
     for seed in COMPLETE_SCAN_SEEDS:
         row = scan_complete_seed(seed)
         ok = qualifies_complete(row)
         chosen = chosen if chosen is not None or not ok else seed
-        print(f"{seed:>4} {row['status']:<9} {row['flagged']:>6} {row['a_reject']:>8} {row['a_watch']:>7} "
+        print(f"{seed:>4} {row['status']:<9} {row['n_parts']:>2} {row['flagged']:>6} {row['a_reject']:>8} {row['a_watch']:>7} "
               f"{row['lot_verdict']:<8} {row['pda']:.4f} {row['top']:<23} {row['worst']:<10} {str(row['top_rows']):<8} "
               f"{'YES' if ok else ''}")
     print(f"smallest qualifying seed: {chosen}")

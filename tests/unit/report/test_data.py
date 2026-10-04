@@ -287,3 +287,37 @@ def test_methodology_sentence_states_only_what_the_live_pipeline_executes():
     assert "combining a robust per-parameter z-score, Minimum Covariance Determinant (MCD) distance and an ECOD outlier score" in text
     assert "does not contribute in this build" in text
     assert "corroboration from an explainable detector (z-score or MCD)" in text
+
+
+def test_methodology_sentence_in_absolute_mode_names_only_the_legs_that_score(monkeypatch):
+    """demo-v2: the default is absolute scoring. The z-score leg (and the MCD leg for lots of 77+ parts) score; ECOD and the
+    Isolation Forest do NOT contribute; severity is an index, not a probability."""
+    from report.data import methodology_summary
+
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
+    text = methodology_summary()
+    assert text == methodology_summary("absolute")
+    assert "combining a robust per-parameter z-score, Minimum Covariance Determinant (MCD) distance and an ECOD outlier score" not in text
+    assert "ECOD" in text and "not used to score" in text
+    assert "Isolation Forest" in text and "does not contribute" in text
+    assert "tail probabilities" in text and "77 or more parts" in text
+    assert "index, not a probability" in text
+    assert "one in" not in text.lower()
+
+
+def test_methodology_sentence_in_rank_mode_is_the_legacy_text(monkeypatch):
+    from report.data import _METHODOLOGY_SUMMARY, methodology_summary
+
+    monkeypatch.setenv("MODULE_A_SCORING", "rank")
+    assert methodology_summary() == _METHODOLOGY_SUMMARY
+
+
+def test_report_data_carries_the_mode_aware_methodology(repository, monkeypatch):
+    from report import data
+
+    for mode in ("rank", "absolute"):
+        monkeypatch.setenv("MODULE_A_SCORING", mode)
+        _seed_project(repository, project_id=f"proj-{mode}", lot_id=f"L-{mode}")
+        repository.save_analysis_run(project_id=f"proj-{mode}", raw_data=_lot_dataset(lot_id=f"L-{mode}").model_dump(mode="json"),
+                                     results=_results())
+        assert data.build_report_data(f"proj-{mode}").methodology_summary == data.methodology_summary(mode)

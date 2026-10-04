@@ -247,9 +247,9 @@ def _gated_pipeline(monkeypatch, cap_reason: str):
     given capping state (real detect() for everything else)."""
     real_detect = pipeline_module.module_a_detect
 
-    def patched(frames):
+    def patched(frames, **kwargs):  # the pipeline passes scoring=... in the default (absolute) mode
         out = []
-        for r in real_detect(frames):
+        for r in real_detect(frames, **kwargs):
             if r.component_id == GOLDEN_COMPONENT_ID and r.parameter == "leakage":
                 if cap_reason == "explainability_gate":
                     r = r.model_copy(update={"severity_tier": "REJECT", "explainable_corroboration": False,
