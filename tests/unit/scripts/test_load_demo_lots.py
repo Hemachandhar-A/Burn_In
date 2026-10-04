@@ -63,6 +63,27 @@ def test_lot_contents_match_the_seed_scan(db):
     assert sum(a["verdict"] == "REJECT" for a in early["assessments"]) >= demo.MIN_B_REJECT
 
 
+def _row(**kw):
+    base = {"status": "COMPLETE", "n_parts": 77, "flagged": 6, "a_reject": 3, "a_watch": 3, "lot_verdict": "REJECT",
+            "pda": 0.05, "top": "X-0001", "worst": "iddq", "top_rows": True, "top_sentence": True, "any_reject_rows": True}
+    base.update(kw)
+    return base
+
+
+def test_complete_selection_rules_v2():
+    """demo-v2 criteria: COMPLETE, 77 parts, REJECT/HOLD lot, 4-10 flagged, >= 2 Module A REJECT, top part has MCD+ECOD rows + sentence."""
+    assert demo.qualifies_complete(_row())
+    assert not demo.qualifies_complete(_row(status="IN_PROGRESS"))
+    assert not demo.qualifies_complete(_row(n_parts=60))
+    assert not demo.qualifies_complete(_row(lot_verdict="ACCEPT"))
+    assert demo.qualifies_complete(_row(lot_verdict="HOLD"))
+    assert not demo.qualifies_complete(_row(flagged=3)) and not demo.qualifies_complete(_row(flagged=11))
+    assert demo.qualifies_complete(_row(flagged=4)) and demo.qualifies_complete(_row(flagged=10))
+    assert not demo.qualifies_complete(_row(a_reject=1))
+    assert not demo.qualifies_complete(_row(top_rows=False))
+    assert not demo.qualifies_complete(_row(top_sentence=False))
+
+
 def test_chosen_seeds_satisfy_their_selection_rules():
     assert demo.qualifies(demo.scan_seed(demo.EARLY_SEED))
     assert demo.qualifies_complete(demo.scan_complete_seed(demo.COMPLETE_SEED))

@@ -14,8 +14,16 @@ from pathlib import Path
 LIVE_LOT_ID = "LIVE-01"
 LIVE_META = {"part_number": "DEMO-PN", "manufacturer": "Northvale Semiconductor", "date_code": "2603"}
 # LIVE_SEED: chosen by `--scan` among seeds 1..LIVE_SCAN_MAX; see the README / session report for the table and why.
-LIVE_SEED = 32  # scan 1..40: no seed has 3-8 flagged (floor 13); fewest flagged (13), then most early B REJECT (2): full lot REJECT, PDA 0.0649, 5 Module A REJECT; at 0h+24h LOT_AT_RISK
-LIVE_SCAN_MAX = 40
+LIVE_SEED = 2  # demo-v2 scan 1..80 (absolute scoring), smallest qualifying: full lot REJECT, PDA 0.0649, 7 flagged, 5 Module A REJECT; at 0h+24h LOT_AT_RISK with 1 Module B REJECT
+LIVE_SCAN_MAX = 80
+# demo-v2 criteria (absolute scoring): the full lot ends COMPLETE with verdict REJECT/HOLD and 4-10 flagged parts; at 0h+24h the
+# early forecast has >= 1 Module B REJECT and a LOT_AT_RISK / STOP_RUN_RECOMMENDED verdict.
+LIVE_MIN_FLAGGED, LIVE_MAX_FLAGGED = 4, 10
+
+
+def qualifies(row: dict) -> bool:
+    return (row["full_verdict"] in ("REJECT", "HOLD") and LIVE_MIN_FLAGGED <= row["full_flagged"] <= LIVE_MAX_FLAGGED
+            and row["early_b_reject"] >= 1 and row["early_verdict"] in ("LOT_AT_RISK", "STOP_RUN_RECOMMENDED"))
 OUT_DIR = Path(__file__).resolve().parent.parent / "demo_data"
 FILES = {
     "live_0h_24h.csv": (0, 24),
@@ -77,11 +85,11 @@ def scan_seed(seed: int) -> dict:
 
 
 def scan() -> int:
-    print("seed full_flagged A_REJECT full_verdict full_pda early_B_REJECT early_verdict")
+    print("seed full_flagged A_REJECT full_verdict full_pda early_B_REJECT early_verdict qualifies")
     for seed in range(1, LIVE_SCAN_MAX + 1):
         r = scan_seed(seed)
         print(f"{seed:>4} {r['full_flagged']:>12} {r['a_reject']:>8} {r['full_verdict']:<12} {r['full_pda']:.4f} "
-              f"{r['early_b_reject']:>13} {r['early_verdict']}", flush=True)
+              f"{r['early_b_reject']:>13} {r['early_verdict']} {'YES' if qualifies(r) else ''}", flush=True)
     return 0
 
 

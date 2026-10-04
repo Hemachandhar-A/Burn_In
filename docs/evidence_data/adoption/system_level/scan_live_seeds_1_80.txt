@@ -1,0 +1,81 @@
+seed full_flagged A_REJECT full_verdict full_pda early_B_REJECT early_verdict qualifies
+   1           13       12 REJECT       0.1558             4 LOT_AT_RISK 
+   2            7        5 REJECT       0.0649             1 LOT_AT_RISK YES
+   3           12       12 REJECT       0.1558            19 LOT_AT_RISK 
+   4            4        4 REJECT       0.0519             0 LOT_ON_TRACK 
+   5            5        4 REJECT       0.0519             3 LOT_AT_RISK YES
+   6           15       14 REJECT       0.1818            16 STOP_RUN_RECOMMENDED 
+   7            5        4 REJECT       0.0519             2 LOT_AT_RISK YES
+   8            3        2 HOLD         0.0260             1 LOT_AT_RISK 
+   9            9        8 REJECT       0.1039             3 LOT_AT_RISK YES
+  10           31       31 REJECT       0.4026            23 STOP_RUN_RECOMMENDED 
+  11            8        7 REJECT       0.0909             2 LOT_AT_RISK YES
+  12           10        7 REJECT       0.0909             1 LOT_AT_RISK YES
+  13            7        7 REJECT       0.0909             7 STOP_RUN_RECOMMENDED YES
+  14            9        7 REJECT       0.0909             4 LOT_AT_RISK YES
+  15           27       26 REJECT       0.3377            26 LOT_AT_RISK 
+  16           51       51 REJECT       0.6623            55 STOP_RUN_RECOMMENDED 
+  17           14       12 REJECT       0.1558            16 STOP_RUN_RECOMMENDED 
+  18           14       13 REJECT       0.1688             8 LOT_AT_RISK 
+  19           22       21 REJECT       0.2727            20 LOT_AT_RISK 
+  20            6        6 REJECT       0.0779             6 LOT_AT_RISK YES
+  21           11       10 REJECT       0.1299             1 LOT_AT_RISK 
+  22           45       44 REJECT       0.5714            48 STOP_RUN_RECOMMENDED 
+  23           13       13 REJECT       0.1688             5 LOT_AT_RISK 
+  24            7        7 REJECT       0.0909             5 LOT_AT_RISK YES
+  25           11       11 REJECT       0.1429             7 LOT_AT_RISK 
+  26           10       10 REJECT       0.1299            10 LOT_AT_RISK YES
+  27           16       14 REJECT       0.1818            13 LOT_AT_RISK 
+  28           37       36 REJECT       0.4675            33 STOP_RUN_RECOMMENDED 
+  29            4        3 HOLD         0.0390             1 LOT_AT_RISK YES
+  30           27       25 REJECT       0.3247            16 LOT_AT_RISK 
+  31           14       10 REJECT       0.1299             6 STOP_RUN_RECOMMENDED 
+  32            6        6 REJECT       0.0779             2 LOT_AT_RISK YES
+  33           30       24 REJECT       0.3117            20 STOP_RUN_RECOMMENDED 
+  34           12       11 REJECT       0.1429             8 LOT_AT_RISK 
+  35            9        9 REJECT       0.1169             2 LOT_AT_RISK YES
+  36           14       12 REJECT       0.1558             6 LOT_AT_RISK 
+  37           15       15 REJECT       0.1948            11 STOP_RUN_RECOMMENDED 
+  38           17       17 REJECT       0.2208             7 LOT_AT_RISK 
+  39           13       13 REJECT       0.1688             1 LOT_AT_RISK 
+  40           13        9 REJECT       0.1169             6 LOT_AT_RISK 
+  41            7        7 REJECT       0.0909             7 LOT_AT_RISK YES
+  42           22       22 REJECT       0.2857            14 LOT_AT_RISK 
+  43            7        7 REJECT       0.0909             3 LOT_AT_RISK YES
+  44            6        5 REJECT       0.0649             2 LOT_AT_RISK YES
+  45           10        9 REJECT       0.1169             5 LOT_AT_RISK YES
+  46           12       12 REJECT       0.1558            15 LOT_AT_RISK 
+  47            8        4 REJECT       0.0519             1 LOT_AT_RISK YES
+  48            8        8 REJECT       0.1039             4 LOT_AT_RISK YES
+  49            8        8 REJECT       0.1039             5 LOT_AT_RISK YES
+  50            9        8 REJECT       0.1039             5 LOT_AT_RISK YES
+  51           19       19 REJECT       0.2468            25 STOP_RUN_RECOMMENDED 
+  52           19       17 REJECT       0.2208             6 LOT_AT_RISK 
+  53           10        7 REJECT       0.0909             5 LOT_AT_RISK YES
+  54           19       17 REJECT       0.2208            18 STOP_RUN_RECOMMENDED 
+  55            8        7 REJECT       0.0909             6 LOT_AT_RISK YES
+  56            9        8 REJECT       0.1039             9 STOP_RUN_RECOMMENDED YES
+  57           15       10 REJECT       0.1299             8 LOT_AT_RISK 
+  58           12       10 REJECT       0.1299             7 LOT_AT_RISK 
+  59           28       26 REJECT       0.3377            32 STOP_RUN_RECOMMENDED 
+  60           14       13 REJECT       0.1688            16 STOP_RUN_RECOMMENDED 
+  61           15       11 REJECT       0.1429             8 LOT_AT_RISK 
+  62           10        9 REJECT       0.1169             9 LOT_AT_RISK YES
+  63           13       12 REJECT       0.1558            13 LOT_AT_RISK 
+  64           23       23 REJECT       0.2987            24 STOP_RUN_RECOMMENDED 
+  65            4        4 REJECT       0.0519             2 LOT_AT_RISK YES
+  66           15       11 REJECT       0.1429             2 LOT_AT_RISK 
+  67           20       18 REJECT       0.2338            15 LOT_AT_RISK 
+  68           13       12 REJECT       0.1558             7 LOT_AT_RISK 
+  69            5        2 HOLD         0.0260             1 LOT_AT_RISK YES
+  70            9        9 REJECT       0.1169             2 LOT_AT_RISK YES
+  71           35       34 REJECT       0.4416            38 STOP_RUN_RECOMMENDED 
+  72            8        7 REJECT       0.0909            10 LOT_AT_RISK YES
+  73            3        3 ACCEPT       0.0390             2 LOT_AT_RISK 
+  74            5        3 HOLD         0.0390             2 LOT_AT_RISK YES
+  75            9        7 REJECT       0.0909             4 LOT_AT_RISK YES
+  76           10        9 REJECT       0.1169             3 LOT_AT_RISK YES
+  77           18       17 REJECT       0.2208            15 STOP_RUN_RECOMMENDED 
+  78            7        6 REJECT       0.0779             4 LOT_AT_RISK YES
+  79            9        9 REJECT       0.1169             2 LOT_AT_RISK YES
+  80           70       70 REJECT       0.9091            68 STOP_RUN_RECOMMENDED 
