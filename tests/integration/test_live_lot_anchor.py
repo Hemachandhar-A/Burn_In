@@ -29,7 +29,8 @@ def db(tmp_path, monkeypatch):
     store.clear()
 
 
-def test_live_lot_three_uploads_anchor(db):
+def test_live_lot_three_uploads_anchor(db, monkeypatch):
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)  # the anchor is the default (absolute) scoring's number
     from fastapi.testclient import TestClient
 
     from api.main import app
