@@ -660,6 +660,9 @@ function PartDetailForComponent({
       {data.severity_cap_note && (
         <NoteCard title="Explainability Gate Severity-Cap Applied" text={data.severity_cap_note} />
       )}
+      {data.module_b_advisory_note && (
+        <NoteCard title="Module B Forecast (Information Only)" text={data.module_b_advisory_note} />
+      )}
       {data.unavailable_forecast_note && (
         <NoteCard title="Drift Prediction Unavailable" text={data.unavailable_forecast_note} />
       )}

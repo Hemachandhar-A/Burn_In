@@ -329,6 +329,21 @@ describe('Part Detail screen (E6 screen 4)', () => {
     expect(screen.queryByText('Drift Prediction Unavailable')).toBeNull()
   })
 
+  test('a finished-lot Module B forecast note shows as information, and only when present', async () => {
+    setup()
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.queryByText('Module B Forecast (Information Only)')).toBeNull()
+  })
+
+  test('an information-only Module B note on a finished lot is shown with its text', async () => {
+    const note =
+      'Module B forecast (information only): predicted 168h drift for leakage exceeds the calibrated safety slope by 22%. This lot is finished, so the verdict is set by Module A on the measured readings; the forecast did not change it.'
+    setup('/parts/DUT-042', DETAIL({ module_b_advisory_note: note }))
+    await screen.findByRole('heading', { level: 1, name: 'Leakage Current' })
+    expect(screen.getByText('Module B Forecast (Information Only)')).toBeInTheDocument()
+    expect(screen.getByText(note)).toBeInTheDocument()
+  })
+
   test('a capped severity, a stale run and an unavailable forecast each show their own note, and the note replaces only the forecast part of the chart', async () => {
     setup(
       '/parts/DUT-042',
