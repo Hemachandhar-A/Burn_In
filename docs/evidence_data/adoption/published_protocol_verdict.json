@@ -1,0 +1,21 @@
+{
+  "R1_cost_review_le_0.22": {
+    "value": 0.08211473565804274,
+    "holds": true
+  },
+  "R2_recall_review_ge_0.75": {
+    "value": 0.9232245681381958,
+    "holds": true
+  },
+  "R3_no_family_cost_up_by_more_than_0.03": {
+    "cost_difference_absolute_minus_current_live": {
+      "altered_correlation": -0.12608225108225107,
+      "baseline": -0.11845730027548208,
+      "different_noise_regime": -0.1155844155844156,
+      "higher_defect_prevalence": -0.4588744588744589,
+      "wider_drift_exponent": -0.1414656771799629
+    },
+    "holds": true
+  },
+  "R4": "measured by tests/integration/test_adoption_absolute.py; see ADOPTION_RESULT.md"
+}

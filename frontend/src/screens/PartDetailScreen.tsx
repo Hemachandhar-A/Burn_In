@@ -113,7 +113,15 @@ function ContributionBar({
 /** `mcd_contributions[].contribution` is a raw per-parameter squared-Mahalanobis term (they sum
  * to the part's D²), not a percentage - normalized here for the bar width, a display computation
  * over already-real numbers, not composed explanation text. */
-function McdCard({ dSquared, rows }: { dSquared: number | null; rows: MCDContributionRow[] }) {
+function McdCard({
+  dSquared,
+  rows,
+  usedForFlag,
+}: {
+  dSquared: number | null
+  rows: MCDContributionRow[]
+  usedForFlag: boolean
+}) {
   if (rows.length === 0) return null
   const total = rows.reduce((sum, r) => sum + Math.max(0, r.contribution), 0)
   return (
@@ -122,10 +130,12 @@ function McdCard({ dSquared, rows }: { dSquared: number | null; rows: MCDContrib
         <div>
           <h2 className="card-title">MCD Parameter Contribution</h2>
           <p className="card-subtitle">
-            Minimum Covariance Determinant (Mahalanobis distance share)
+            {usedForFlag
+              ? 'Minimum Covariance Determinant (Mahalanobis distance share)'
+              : 'Multivariate view (not used for the flag at this lot size)'}
           </p>
         </div>
-        <span className="chip mono">D² = {fmt(dSquared)}</span>
+        {usedForFlag && <span className="chip mono">D² = {fmt(dSquared)}</span>}
       </header>
       <div className="contribution-list">
         {rows.map((row) => (
@@ -141,7 +151,15 @@ function McdCard({ dSquared, rows }: { dSquared: number | null; rows: MCDContrib
   )
 }
 
-function EcodCard({ oScore, rows }: { oScore: number | null; rows: EcodDimensionRow[] }) {
+function EcodCard({
+  oScore,
+  rows,
+  usedForFlag,
+}: {
+  oScore: number | null
+  rows: EcodDimensionRow[]
+  usedForFlag: boolean
+}) {
   if (rows.length === 0) return null
   const max = Math.max(...rows.map((r) => r.score), 0.01)
   return (
@@ -149,9 +167,13 @@ function EcodCard({ oScore, rows }: { oScore: number | null; rows: EcodDimension
       <header className="card-header">
         <div>
           <h2 className="card-title">ECOD Dimension Score</h2>
-          <p className="card-subtitle">Empirical Cumulative Distribution Outlier Detection</p>
+          <p className="card-subtitle">
+            {usedForFlag
+              ? 'Empirical Cumulative Distribution Outlier Detection'
+              : 'Distribution-free view (not used for the flag)'}
+          </p>
         </div>
-        <span className="chip mono">O_score = {fmt(oScore)}</span>
+        {usedForFlag && <span className="chip mono">O_score = {fmt(oScore)}</span>}
       </header>
       <div className="contribution-list">
         {rows.map((row) => (
@@ -597,6 +619,11 @@ function PartDetailForComponent({
   const mcdRows = data.explanation?.mcd_contributions ?? []
   const ecodRows = data.explanation?.ecod_dimensions ?? []
   const shapRows = data.explanation?.shap_contributions ?? []
+  // Absolute scoring (V1F) sets severity_log10p: the flag then comes from the robust-z leg and, for lots of 77+ parts, the MCD leg
+  // (explainable_tags.mcd); ECOD never scores. Legacy rank scoring has no severity_log10p and uses every detector.
+  const absoluteScoring = data.module_a?.severity_log10p != null
+  const mcdUsedForFlag = !absoluteScoring || Boolean(data.module_a?.explainable_tags?.mcd)
+  const ecodUsedForFlag = !absoluteScoring
 
   return (
     <section className="screen part-detail">
@@ -746,8 +773,8 @@ function PartDetailForComponent({
       ) : (
         (mcdRows.length > 0 || ecodRows.length > 0) && (
           <div className="contribution-grid">
-            <McdCard dSquared={data.module_a.mcd_distance} rows={mcdRows} />
-            <EcodCard oScore={data.module_a.ecod_score} rows={ecodRows} />
+            <McdCard dSquared={data.module_a.mcd_distance} rows={mcdRows} usedForFlag={mcdUsedForFlag} />
+            <EcodCard oScore={data.module_a.ecod_score} rows={ecodRows} usedForFlag={ecodUsedForFlag} />
           </div>
         )
       )}

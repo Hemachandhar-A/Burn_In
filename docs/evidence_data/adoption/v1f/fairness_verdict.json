@@ -1,0 +1,46 @@
+{
+  "static_limits": {
+    "V1F_cost": [
+      0.08211473565804274,
+      0.06922742611718989,
+      0.09602464464669189
+    ],
+    "tuned_cost": 0.326516003681358,
+    "default_cost": 0.5112997238981491,
+    "cheaper_than_tuned_F_R6 (V1F cost CI hi < tuned cost)": true,
+    "cheaper_than_default (V1F CI hi < default cost)": true
+  },
+  "fixed_delta": {
+    "V1F_cost": [
+      0.08211473565804274,
+      0.06922742611718989,
+      0.09602464464669189
+    ],
+    "tuned_cost": 0.030677983433888945,
+    "default_cost": 0.18641987933326515,
+    "cheaper_than_tuned_F_R6 (V1F cost CI hi < tuned cost)": false,
+    "cheaper_than_default (V1F CI hi < default cost)": true
+  },
+  "static_pat": {
+    "V1F_cost": [
+      0.08211473565804274,
+      0.06922742611718989,
+      0.09602464464669189
+    ],
+    "tuned_cost": 0.3719194191635137,
+    "default_cost": 0.3387871970549136,
+    "cheaper_than_tuned_F_R6 (V1F cost CI hi < tuned cost)": true,
+    "cheaper_than_default (V1F CI hi < default cost)": true
+  },
+  "dynamic_pat": {
+    "V1F_cost": [
+      0.08211473565804274,
+      0.06922742611718989,
+      0.09602464464669189
+    ],
+    "tuned_cost": 0.09397688925247981,
+    "default_cost": 0.21873402188362817,
+    "cheaper_than_tuned_F_R6 (V1F cost CI hi < tuned cost)": false,
+    "cheaper_than_default (V1F CI hi < default cost)": true
+  }
+}

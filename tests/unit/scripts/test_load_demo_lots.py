@@ -63,12 +63,33 @@ def test_lot_contents_match_the_seed_scan(db):
     assert sum(a["verdict"] == "REJECT" for a in early["assessments"]) >= demo.MIN_B_REJECT
 
 
+def _row(**kw):
+    base = {"status": "COMPLETE", "n_parts": 77, "flagged": 6, "a_reject": 3, "a_watch": 3, "lot_verdict": "REJECT",
+            "pda": 0.05, "top": "X-0001", "worst": "iddq", "top_rows": True, "top_sentence": True, "any_reject_rows": True}
+    base.update(kw)
+    return base
+
+
+def test_complete_selection_rules_v2():
+    """demo-v2 criteria: COMPLETE, 77 parts, REJECT/HOLD lot, 4-10 flagged, >= 2 Module A REJECT, top part has MCD+ECOD rows + sentence."""
+    assert demo.qualifies_complete(_row())
+    assert not demo.qualifies_complete(_row(status="IN_PROGRESS"))
+    assert not demo.qualifies_complete(_row(n_parts=60))
+    assert not demo.qualifies_complete(_row(lot_verdict="ACCEPT"))
+    assert demo.qualifies_complete(_row(lot_verdict="HOLD"))
+    assert not demo.qualifies_complete(_row(flagged=3)) and not demo.qualifies_complete(_row(flagged=11))
+    assert demo.qualifies_complete(_row(flagged=4)) and demo.qualifies_complete(_row(flagged=10))
+    assert not demo.qualifies_complete(_row(a_reject=1))
+    assert not demo.qualifies_complete(_row(top_rows=False))
+    assert not demo.qualifies_complete(_row(top_sentence=False))
+
+
 def test_chosen_seeds_satisfy_their_selection_rules():
     assert demo.qualifies(demo.scan_seed(demo.EARLY_SEED))
     assert demo.qualifies_complete(demo.scan_complete_seed(demo.COMPLETE_SEED))
 
 
-def test_golden_lot_through_the_route_is_hold(db):
+def _golden_through_route(db, expect):
     import csv
     import io
 
@@ -90,7 +111,7 @@ def test_golden_lot_through_the_route_is_hold(db):
     assert up.status_code == 200
     lot = client.get("/lots/GOLDEN-T", headers=h).json()
     d = lot["disposition"]
-    assert d["verdict"] == "HOLD" and 0.03 < d["pda_result"] < 0.05
+    expect(d, lot)
     print("golden through POST /lots:", d["verdict"], d["pda_result"], "REJECT parts:",
           sum(a["verdict"] == "REJECT" for a in lot["assessments"]))
     # F24 T3: the uA->nA scale problem (leakage, 1000x the generator's scale) no longer produces a Module B verdict:
@@ -109,4 +130,27 @@ def test_golden_lot_through_the_route_is_hold(db):
     assert len(leak) == 77 and all(r.forecast_unavailable and r.unavailable_reason for r in leak)
     assert not any(r.exceeds_safety_slope for r in b)
     print("golden Module B REJECTs:", sum(bool(r.exceeds_safety_slope) for r in b), "leakage unavailable:", len(leak))
-    assert sum(a["verdict"] == "REJECT" for a in lot["assessments"]) == 3  # PDA 3/77, from Module A
+    return lot
+
+
+def test_golden_lot_through_the_route_is_accept_by_default(db, monkeypatch):
+    """demo-v2 (absolute scoring): GOLDEN-045 is the only REJECT; the decoys no longer flag, so 1/77 = 0.01299 < 0.05: ACCEPT."""
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
+
+    def expect(d, lot):
+        rejects = [a["component_id"] for a in lot["assessments"] if a["verdict"] == "REJECT"]
+        assert rejects == ["GOLDEN-045"]
+        assert d["verdict"] == "ACCEPT" and d["pda_result"] == pytest.approx(1 / 77)
+
+    _golden_through_route(db, expect)
+
+
+def test_golden_lot_through_the_route_is_hold_in_rank_mode(db, monkeypatch):
+    """Legacy path (MODULE_A_SCORING=rank): the decoys flag too, 3/77 REJECT parts, PDA in (0.03, 0.05): HOLD."""
+    monkeypatch.setenv("MODULE_A_SCORING", "rank")
+
+    def expect(d, lot):
+        assert d["verdict"] == "HOLD" and 0.03 < d["pda_result"] < 0.05
+        assert sum(a["verdict"] == "REJECT" for a in lot["assessments"]) == 3  # PDA 3/77, from Module A
+
+    _golden_through_route(db, expect)

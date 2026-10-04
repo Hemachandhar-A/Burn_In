@@ -56,8 +56,8 @@ Accounts: `a.sharma` / `1234` and `r.mehta` / `5678`. On the Login screen pick t
    Module A list ("Module A runs when the lot is Complete.").
 9. **Ingest** again, same metadata (Lot ID `LIVE-01`); under **Add Checkpoint Reading** click **Select file**, choose
    `live_96h.csv`, **Commit Batch** -> "Checkpoint merged ... IN_PROGRESS, 693 readings"; the dashboard shows the forecast
-   refreshed (2 flagged, PDA 2.60% -> 3 flagged, PDA 3.90%).
-10. Same again with `live_168h.csv` -> "COMPLETE, 924 readings": the dashboard becomes `REJECT`, PDA 6.49%, 13 of 77
+   refreshed (1 flagged, PDA 1.30% -> 2 flagged, PDA 2.60%).
+10. Same again with `live_168h.csv` -> "COMPLETE, 924 readings": the dashboard becomes `REJECT`, PDA 6.49%, 7 of 77
     flagged, and the **By Outlier Severity** (Module A) list appears; the dashboard shows the new result straight away.
 11. **Generate Report** (top right of the dashboard) downloads `RPT-<id>.pdf` (about 29 KB, 8 pages).
 12. **History** lists Ingest, Checkpoint Added, Analysis Run, Disposition and Timing Flag rows.

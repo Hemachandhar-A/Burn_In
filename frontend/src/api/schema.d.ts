@@ -718,6 +718,8 @@ export interface components {
             robust_z: number;
             /** Severity Cap Reason */
             severity_cap_reason: string | null;
+            /** Severity Log10P */
+            severity_log10p?: number | null;
             /**
              * Severity Tier
              * @enum {string}

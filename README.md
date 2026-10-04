@@ -34,6 +34,22 @@ bash scripts/dev.sh              # backend with --reload, plus `npm run dev` on 
 
 **Tests:** `uv run pytest` (backend), `cd frontend && npm test -- --run && npx tsc -b` (frontend).
 
+## Module A scoring (from demo-v2) and what to say if asked
+
+Module A's default scoring is **absolute (V1F)**: a robust z-score leg and, for lots of 77 or more parts, a multivariate (MCD) leg are turned into
+tail probabilities; a part's severity is `s = -log10 p` of its most extreme leg; REVIEW at `s >= 2.956`, REJECT at `s >= 3.419`. **`s` is an index, not a
+probability.** The isolation forest and ECOD contribute **no live score** (the forest needs earlier lots the app does not pass in; ECOD needs a reference the app does
+not supply). The previous scoring (within-lot percentile) is still available: `MODULE_A_SCORING=rank`. Details: `docs/PPT_NUMBERS.md`, `docs/DISCLOSURES.md` #36-#45,
+`docs/SYSTEM_LEVEL_BENCHMARK.md`. All numbers are synthetic.
+
+- **"Why not just a delta limit?"** On this synthetic data a cost-tuned fixed delta costs less than Module A alone (0.031 against 0.082 per part), because the generator's
+  defects are drifts and the harness delta limit is relative to the part's own 0h reading. The system's case is the explanation for every flag, lot-relative scores that
+  need no per-parameter allowance, a multivariate view and a 168h forecast; the whole system is not cheaper than a tuned delta limit (cost 0.243 per part).
+- **"Is the severity a probability?"** No, an index used to rank parts and apply two tuned cutoffs.
+- **"Does it work on real data?"** Not tested. Shadow mode and recalibration on the customer's history are the recommended first steps.
+- **"Does it see across lots?"** Module B's safety slope is calibrated across lots. The cross-lot isolation forest is designed and benchmarked but **not active in the app**
+  (`docs/CROSS_LOT_ROADMAP.md`).
+
 ## Where things are
 
 - Rehearsal click path (live upload of `demo_data/*.csv`): `demo_data/README.md`. Scripted version:

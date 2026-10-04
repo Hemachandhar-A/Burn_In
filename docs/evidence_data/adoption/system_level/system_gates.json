@@ -1,0 +1,20 @@
+{
+  "G_flip": {
+    "holds": true,
+    "cost_new": 0.24286736885162083,
+    "cost_old": 0.32590244401268026,
+    "recall_new": 0.963531669865643,
+    "recall_old": 0.9558541266794626
+  },
+  "T1": {
+    "fired": false,
+    "recall_gap_vs_D_tuned": 0.015355086372360827,
+    "cost_gap_vs_D_tuned": 0.21218938541773188,
+    "CIs_separated": false
+  },
+  "T2": {
+    "fired": false,
+    "cost_gap_vs_D_tuned": 0.21218938541773188
+  },
+  "module_B_effect_cost_Snew_minus_Anew": 0.16075263319357808
+}

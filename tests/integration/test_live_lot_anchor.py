@@ -1,5 +1,7 @@
 """F24 regression anchor: LIVE-01 uploaded as the three demo files (POST /lots, then two POST checkpoints) ends
-COMPLETE, REJECT, PDA 0.0649, 13 flagged - the numbers the live demo shows."""
+COMPLETE, REJECT, PDA 0.0649, 7 flagged - the numbers the live demo shows under the default (absolute, V1F) scoring.
+Class A (demo-v2): until demo-v1.2 this was seed 32 under rank scoring, 13 flagged; that legacy anchor is pinned in
+tests/integration/test_anchors_both_modes.py (MODULE_A_SCORING=rank, seed 32)."""
 from pathlib import Path
 
 import pytest
@@ -27,7 +29,8 @@ def db(tmp_path, monkeypatch):
     store.clear()
 
 
-def test_live_lot_three_uploads_anchor(db):
+def test_live_lot_three_uploads_anchor(db, monkeypatch):
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)  # the anchor is the default (absolute) scoring's number
     from fastapi.testclient import TestClient
 
     from api.main import app
@@ -49,4 +52,4 @@ def test_live_lot_three_uploads_anchor(db):
     lot = client.get("/lots/LIVE-01", headers=h).json()
     d = lot["disposition"]
     assert d["status"] == "COMPLETE" and d["verdict"] == "REJECT" and d["pda_result"] == pytest.approx(0.0649, abs=5e-5)
-    assert sum(a["verdict"] != "PASS" for a in lot["assessments"]) == 13
+    assert sum(a["verdict"] != "PASS" for a in lot["assessments"]) == 7

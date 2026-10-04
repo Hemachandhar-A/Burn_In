@@ -221,13 +221,25 @@ def _assessment(cid, verdict, worst_parameter, lot_id="L1"):
     )
 
 
-def test_explanation_summary_on_the_golden_lot():
-    """Real numbers from the golden pipeline (harness.golden.run_golden_pipeline): 77 parts, 5
+def test_explanation_summary_on_the_golden_lot(monkeypatch):
+    """Default (absolute, demo-v2) scoring: GOLDEN-045 is the only flagged part of the 77, and it is a REJECT, so the
+    summary is "concentrated in leakage" and has no "crossing REVIEW only" clause."""
+    from harness.golden import run_golden_pipeline
+
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)
+    result = run_golden_pipeline()
+    summary = explanation_summary(result.assessments, result.insufficient_data_components)
+    assert summary == "1 of 77 parts flagged, concentrated in leakage."
+
+
+def test_explanation_summary_on_the_golden_lot_rank_mode(monkeypatch):
+    """Legacy path (MODULE_A_SCORING=rank). Real numbers from the golden pipeline: 77 parts, 5
     flagged (2 WATCH, 3 REJECT), worst_parameter counts iddq=2, prop_delay=2, leakage=1 - no
     parameter holds more than half of the 5 flagged parts, so B2's breakdown wording applies:
     spread across every parameter, ordered by count descending then name ascending."""
     from harness.golden import run_golden_pipeline
 
+    monkeypatch.setenv("MODULE_A_SCORING", "rank")
     result = run_golden_pipeline()
     summary = explanation_summary(result.assessments, result.insufficient_data_components)
     assert summary == (

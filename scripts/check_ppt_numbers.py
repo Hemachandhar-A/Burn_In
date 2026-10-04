@@ -11,6 +11,48 @@ import pandas as pd
 P18 = Path(__file__).resolve().parents[1] / "harness" / "results" / "p18"
 
 
+ADOPT = Path(__file__).resolve().parents[1] / "docs" / "evidence_data" / "adoption"
+
+
+def print_v2() -> None:
+    """demo-v2 numbers (absolute scoring V1F): fairness table, system-level benchmark, clean-lot flag by size, sweep verdicts."""
+    import json
+
+    fair = pd.read_csv(ADOPT / "v1f" / "fairness_table.csv")
+    print("\n[v1f/fairness_table.csv] method | n_flagged | flag_rate | recall [ci] | precision | cost_per_part [ci]")
+    for _, r in fair.iterrows():
+        tau = f" tau={r.tau:.3f}" if pd.notna(r.tau) else ""
+        print(f"{r.method:40s}{tau} {int(r.n_flagged)} {r.flag_rate:.3f} {r.recall:.3f} [{r.recall_ci_lo:.3f}, {r.recall_ci_hi:.3f}] "
+              f"{r.precision:.3f} {r.cost_per_part:.3f} [{r.cost_per_part_ci_lo:.3f}, {r.cost_per_part_ci_hi:.3f}]")
+    taus = json.loads((ADOPT / "v1f" / "baseline_tuned_thresholds.json").read_text())
+    print("cost-tuned cuts (score >= tau; 1.0 = default):", {k: round(v["tau"], 3) for k, v in taus.items()})
+
+    sysd = ADOPT / "system_level"
+    head = pd.read_csv(sysd / "system_headline.csv")
+    print("\n[system_level/system_headline.csv] method | n_flagged | flag_rate | recall [ci] | precision | false_alarms | missed | cost [ci]")
+    for _, r in head.iterrows():
+        print(f"{r.method:36s} {int(r.n_flagged)} {r.flag_rate:.3f} {r.recall:.3f} [{r.recall_ci_lo:.3f}, {r.recall_ci_hi:.3f}] "
+              f"{r.precision:.3f} {int(r.false_alarms)} {int(r.missed)} {r.cost_per_part:.3f} [{r.cost_per_part_ci_lo:.3f}, {r.cost_per_part_ci_hi:.3f}]")
+    fam = pd.read_csv(sysd / "system_per_family.csv")
+    print("system cost per part by family:")
+    print(fam.pivot(index="family", columns="method", values="cost_per_part").round(3).to_string())
+    print("gates:", json.dumps(json.loads((sysd / "system_gates.json").read_text())))
+
+    fr4 = pd.read_csv(ADOPT / "v1f" / "fr4_table.csv")
+    print("\n[v1f/fr4_table.csv] clean-lot flag rate by lot size n | flag_rate [ci]")
+    for _, r in fr4.iterrows():
+        print(f"{int(r.n)} {r.flag_rate:.4f} [{r.ci_lo:.3f}, {r.ci_hi:.3f}]")
+
+    claims = json.loads((ADOPT / "v1f" / "sweep" / "claims__live_absolute.json").read_text())
+    print("\n[v1f/sweep/claims__live_absolute.json] sweep verdicts (10 settings)")
+    for tier, cl in claims.items():
+        if tier.startswith('_'):
+            continue
+        print(tier, {k.split("_")[0]: v["holds"] for k, v in cl.items()},
+              "C5", round(cl["C5_flag_rate_le_6pct_at_1pct_prevalence"]["value"], 3),
+              "C6", round(cl["C6_flag_rate_le_8pct_on_clean_lots_at_noise_x2"]["value"], 3))
+
+
 def main() -> None:
     head = pd.read_csv(P18 / "headline.csv").set_index("method")
     n_parts = int(head["n_parts"].iloc[0])
@@ -54,6 +96,7 @@ def main() -> None:
     print(f"target coverage: {sorted(mb.target_coverage.unique())}")
     worst = mb.loc[mb.coverage.idxmin()]
     print(f"lowest-coverage cell: {worst.family} / {worst.parameter} / {worst.horizon} = {worst.coverage:.3f}")
+    print_v2()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+{
+  "n": 50,
+  "lots": 100,
+  "parts": 5000,
+  "seed": 7102,
+  "flag_rate": 0.0284,
+  "ci_lo": 0.0232,
+  "ci_hi": 0.0336,
+  "criterion_le_0.05": true
+}
