@@ -1,0 +1,95 @@
+VALIDATION: 38500 parts, 500 lots, 2492 defective; lots per family:
+family
+altered_correlation         100
+baseline                    100
+different_noise_regime      100
+higher_defect_prevalence    100
+wider_drift_exponent        100
+
+== validation, flagged = not PASS
+     variant  n_parts  n_defective  n_flagged  flag_rate  recall  recall_ci_lo  recall_ci_hi  precision  false_alarms  missed  cost_per_part  cost_per_part_ci_lo  cost_per_part_ci_hi
+ (a) current    38500         2492       9986      0.259   0.968         0.961         0.975      0.242          7573      79          0.217                0.201                0.233
+  (b) tiered    38500         2492       9986      0.259   0.968         0.961         0.975      0.242          7573      79          0.217                0.201                0.233
+(c) advisory    38500         2492       3793      0.099   0.916         0.901         0.930      0.602          1510     209          0.094                0.084                0.105
+     (d) off    38500         2492       3793      0.099   0.916         0.901         0.930      0.602          1510     209          0.094                0.084                0.105
+
+== validation, flagged = REJECT only
+     variant  n_parts  n_defective  n_flagged  flag_rate  recall  recall_ci_lo  recall_ci_hi  precision  false_alarms  missed  cost_per_part  cost_per_part_ci_lo  cost_per_part_ci_hi
+ (a) current    38500         2492       9439      0.245   0.963         0.956         0.971      0.254          7039      92          0.207                0.191                0.223
+  (b) tiered    38500         2492       5572      0.145   0.948         0.939         0.957      0.424          3210     130          0.117                0.107                0.127
+(c) advisory    38500         2492       2972      0.077   0.874         0.858         0.889      0.733           793     313          0.102                0.090                0.115
+     (d) off    38500         2492       2972      0.077   0.874         0.858         0.889      0.733           793     313          0.102                0.090                0.115
+
+== validation per-family cost per part (not PASS)
+                          (a) current  (b) tiered  (c) advisory  (d) off
+altered_correlation             0.190       0.190         0.080    0.080
+baseline                        0.163       0.163         0.074    0.074
+different_noise_regime          0.385       0.385         0.080    0.080
+higher_defect_prevalence        0.178       0.178         0.156    0.156
+wider_drift_exponent            0.169       0.169         0.077    0.077
+
+== validation lot-level verdicts (descriptive)
+        (a) current  (b) tiered  (c) advisory  (d) off
+REJECT          476         459           359      359
+HOLD             15          35           100      100
+ACCEPT            9           6            41       41
+
+== DECISION (pre-registered rule, validation only)
+{
+  "chosen": "off",
+  "adopt": true,
+  "separated_from_current": true,
+  "candidates": [
+    "current",
+    "tiered",
+    "advisory",
+    "off"
+  ],
+  "within_tie": [
+    "advisory",
+    "off"
+  ],
+  "chosen_cost": 0.09350649350649351,
+  "chosen_ci": [
+    0.0835577922077922,
+    0.1046
+  ],
+  "current_cost": 0.21722077922077923,
+  "current_ci": [
+    0.20135,
+    0.23324740259740262
+  ]
+}
+
+PUBLISHED PROTOCOL: 9779 parts, 127 lots, 521 defective
+
+== published protocol (seed 2026), flagged = not PASS
+     variant  n_parts  n_defective  n_flagged  flag_rate  recall  recall_ci_lo  recall_ci_hi  precision  false_alarms  missed  cost_per_part  cost_per_part_ci_lo  cost_per_part_ci_hi
+ (a) current     9779          521       2687      0.275   0.964         0.947         0.980      0.187          2185      19          0.243                0.212                0.276
+  (b) tiered     9779          521       2687      0.275   0.964         0.947         0.980      0.187          2185      19          0.243                0.212                0.276
+(c) advisory     9779          521        884      0.090   0.923         0.902         0.945      0.544           403      40          0.082                0.069                0.096
+     (d) off     9779          521        884      0.090   0.923         0.902         0.945      0.544           403      40          0.082                0.069                0.096
+
+== published protocol (seed 2026), flagged = REJECT only
+     variant  n_parts  n_defective  n_flagged  flag_rate  recall  recall_ci_lo  recall_ci_hi  precision  false_alarms  missed  cost_per_part  cost_per_part_ci_lo  cost_per_part_ci_hi
+ (a) current     9779          521       2545      0.260   0.954         0.936         0.973      0.195          2048      24          0.234                0.202                0.268
+  (b) tiered     9779          521       1422      0.145   0.948         0.930         0.968      0.347           928      27          0.123                0.101                0.147
+(c) advisory     9779          521        672      0.069   0.889         0.865         0.915      0.689           209      58          0.081                0.064                0.098
+     (d) off     9779          521        672      0.069   0.889         0.865         0.915      0.689           209      58          0.081                0.064                0.098
+
+== published per-family cost per part (not PASS)
+                          (a) current  (b) tiered  (c) advisory  (d) off
+altered_correlation             0.207       0.207         0.072    0.072
+baseline                        0.200       0.200         0.074    0.074
+different_noise_regime          0.377       0.377         0.094    0.094
+higher_defect_prevalence        0.258       0.258         0.137    0.137
+wider_drift_exponent            0.174       0.174         0.064    0.064
+
+== published lot-level verdicts (descriptive)
+        (a) current  (b) tiered  (c) advisory  (d) off
+ACCEPT            0           0            14       14
+HOLD              5          11            27       27
+REJECT          122         116            86       86
+
+== QA visibility (published protocol): parts flagged in (a) and PASS under off: 1803 (21 defective, 1782 clean)
+   of those with Module A tier != PASS: 0; with A tier PASS (flagged by B alone): 1803

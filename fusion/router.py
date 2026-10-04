@@ -130,6 +130,7 @@ def get_part_detail(
         confidence_qualifier=confidence_qualifier_text,
         severity_cap_note=severity_cap_note_text,
         unavailable_forecast_note=unavailable_forecast_note_text,
+        module_b_advisory_note=results.module_b_advisory_notes.get(component_id),
         staleness_note=staleness_note_text,
         disposition_history=disposition_history,
         confirmed_outcomes=confirmed_outcomes,

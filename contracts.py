@@ -407,6 +407,15 @@ class AnalysisResults(BaseModel):
     # parameter is that component's worst_parameter - never re-run the pipeline to reconstruct one.
     module_a_results: dict[str, ModuleAResult] = {}
     module_b_results: dict[str, ModuleBResult] = {}
+    # Session I3 (additive, CONTRACT_CHANGES.md 2026-10-04): under MODULE_B_FINISHED_LOT_ROLE=advisory a COMPLETE lot's verdicts
+    # come from Module A alone; this carries, keyed by component_id, the information-only note for each part whose Module B
+    # forecast exceeds the safety slope (including parts that are PASS). Empty under every other role and on an in-progress lot.
+    # Default {} so older stored rows still parse.
+    module_b_advisory_notes: dict[str, str] = {}
+    # Session I3 (additive, CONTRACT_CHANGES.md 2026-10-04): the Module A tier cut-offs this analysis used on the severity index s,
+    # {"review": ..., "reject": ...}, i.e. the values the Settings FN:FP ratio selected at the time. {} under rank scoring, on an
+    # in-progress lot (Module A did not run) and on older stored rows (those used the constants 2.956 / 3.419).
+    module_a_cutoffs: dict[str, float] = {}
 
 
 class LoginRequest(BaseModel):
@@ -465,6 +474,9 @@ class PartDetailResponse(BaseModel):
     confidence_qualifier: str  # E4 steps 5-6
     severity_cap_note: str | None  # E4 step 8 - worded per which capping reason applied
     unavailable_forecast_note: str | None  # E4 step 9
+    # Additive (Session I3, CONTRACT_CHANGES.md 2026-10-04): information-only Module B forecast note of a finished lot under the
+    # advisory role (AnalysisResults.module_b_advisory_notes[component_id]); None otherwise and on older stored rows.
+    module_b_advisory_note: str | None = None
     staleness_note: str | None  # E4 step 10
     disposition_history: list[DispositionRecord]
     confirmed_outcomes: list[ConfirmedOutcomeRecord]

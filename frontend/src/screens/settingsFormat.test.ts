@@ -15,7 +15,8 @@ describe('fromInputValue (P1.12 edge-case review)', () => {
     ['12', 12],
     ['12:1', 12],
     [' 12 : 1 ', 12],
-    ['.5', 0.5],
+    ['50', 50],
+    ['2', 2],
     ['7.', 7],
     ['2.25', 2.25],
   ])('ratio %j -> %j', (input, expected) => {
@@ -59,13 +60,20 @@ describe('fromInputValue (P1.12 edge-case review)', () => {
     for (const value of [0.05, 0.055, 0.05125, 0.0333, 0.1, 1]) {
       expect(fromInputValue('pda_threshold', toInputValue('pda_threshold', value))).toBe(value)
     }
-    for (const value of [10, 12.5, 3.125, 0.75]) {
+    for (const value of [10, 12.5, 3.125, 2.5]) {
       expect(fromInputValue('fn_fp_cost_ratio', toInputValue('fn_fp_cost_ratio', value))).toBe(
         value,
       )
     }
   })
 })
+
+  test.each(['1.99', '.5', '1', '0', '50.01', '51', '100', '1000'])(
+    'ratio %j is outside the supported 2:1 to 50:1 range -> null (the backend answers 400 there)',
+    (input) => {
+      expect(fromInputValue('fn_fp_cost_ratio', input)).toBeNull()
+    },
+  )
 
 describe('display formatting', () => {
   test('percentages keep the precision they need', () => {

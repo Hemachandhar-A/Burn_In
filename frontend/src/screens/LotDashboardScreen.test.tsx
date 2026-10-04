@@ -30,6 +30,8 @@ type SummaryOverrides = Partial<Pick<LotSummaryResponse, 'assessments' | 'dispos
 const SUMMARY = (overrides: SummaryOverrides = {}): LotSummaryResponse => ({
   module_a_results: {},
   module_b_results: {},
+  module_a_cutoffs: {},
+  module_b_advisory_notes: {},
   part_explanations: {},
   explanation_summary: '2 of 77 parts flagged, concentrated in leakage current.',
   insufficient_data_components: [],

@@ -41,7 +41,8 @@ def test_loads_both_lots_then_second_run_skips(db, capsys):
     assert "loaded" not in second
 
 
-def test_lot_contents_match_the_seed_scan(db):
+def test_lot_contents_match_the_seed_scan(db, monkeypatch):
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)  # the seeds were chosen under the default (absolute) scoring
     from fastapi.testclient import TestClient
 
     from api.main import app
@@ -84,7 +85,8 @@ def test_complete_selection_rules_v2():
     assert not demo.qualifies_complete(_row(top_sentence=False))
 
 
-def test_chosen_seeds_satisfy_their_selection_rules():
+def test_chosen_seeds_satisfy_their_selection_rules(monkeypatch):
+    monkeypatch.delenv("MODULE_A_SCORING", raising=False)  # the seeds were chosen under the default (absolute) scoring
     assert demo.qualifies(demo.scan_seed(demo.EARLY_SEED))
     assert demo.qualifies_complete(demo.scan_complete_seed(demo.COMPLETE_SEED))
 

@@ -10,6 +10,7 @@ from module_a.detect import detect as module_a_detect
 from module_a.settings import module_a_scoring_config
 from module_b.predictor import predict as module_b_predict, synthetic_models as module_b_synthetic_models, TRAINED_PARAMETERS
 from fusion.gate import compute_part_verdict
+from fusion.settings import module_b_finished_lot_role
 from ingestion.quality import check_missing_checkpoints
 from explain.cache import ExplainCache
 from explain.zscore import build_zscore_table
@@ -18,7 +19,7 @@ from explain.ecod import explain_ecod
 from explain.shap_b import explain_module_b
 from explain.text import (
     explanation_sentence, confidence_qualifier, explanation_summary as build_explanation_summary,
-    severity_cap_note, unavailable_forecast_note,
+    severity_cap_note, unavailable_forecast_note, module_b_advisory_note,
 )
 
 def _build_trajectory(frame: FeatureFrame, unit: str | None = None) -> list[TrajectoryPoint]:
@@ -74,9 +75,12 @@ def run_full_pipeline(
             unit_by_parameter.setdefault(reading.parameter, reading.unit)
     
     a_results = []
+    module_a_cutoffs: dict[str, float] = {}
     if is_complete:
         # MODULE_A_SCORING (module_a/settings.py): None under the legacy "rank" mode (MODULE_A_SCORING=rank), i.e. the pre-demo-v2 call; the default is absolute (V1F).
-        scoring_config = module_a_scoring_config()
+        scoring_config = module_a_scoring_config(config.fn_fp_cost_ratio)
+        if scoring_config is not None:
+            module_a_cutoffs = {"review": scoring_config.review_threshold, "reject": scoring_config.reject_threshold}
         a_results = module_a_detect(frames) if scoring_config is None else module_a_detect(frames, scoring=scoring_config)
     
     # Severity for picking a part's worst frame and for ranking: s = -log10 p when absolute scoring supplies it
@@ -150,6 +154,10 @@ def run_full_pipeline(
     failures = 0
     lower_bound_failures = 0
     total_parts = len(component_ids)
+    # Module B's role in a part verdict: only a COMPLETE lot uses the configured role (fusion/settings.py); an in-progress lot is
+    # Module B's own screen and always behaves as "current".
+    b_role = module_b_finished_lot_role() if is_complete else "current"
+    advisory_notes: dict[str, str] = {}
 
     for cid in sorted(component_ids):
         # find the frame with the worst parameter?
@@ -159,12 +167,18 @@ def run_full_pipeline(
         a_res = a_by_comp.get(cid)
         b_res = b_by_comp.get(cid)
 
-        verdict, cap_reason, _ = compute_part_verdict(a_res, b_res)
+        verdict, cap_reason, _ = compute_part_verdict(a_res, b_res, b_role=b_role)
         cap_reason_by_cid[cid] = cap_reason
 
-        if verdict == "REJECT" or (b_res and b_res.exceeds_safety_slope):
+        # A finished lot counts the part's own verdict (under role "current" a B-exceeding part is REJECT anyway); an
+        # in-progress lot counts any Module B exceedance, as before.
+        if verdict == "REJECT" or (is_forecast and b_res and b_res.exceeds_safety_slope):
             failures += 1
-            
+        if b_role == "advisory":
+            note = module_b_advisory_note(b_res)
+            if note is not None:
+                advisory_notes[cid] = note
+
         if is_forecast:
             if b_res and b_res.lower_bound_exceeds_safety_slope is True:
                 lower_bound_failures += 1
@@ -175,9 +189,9 @@ def run_full_pipeline(
         worst_parameter = comp_frames[0].parameter
         if a_res and a_res.severity_tier != "PASS":
             worst_parameter = a_res.parameter
-        elif b_res and b_res.exceeds_safety_slope:
+        elif b_res and b_res.exceeds_safety_slope and b_role not in ("advisory", "off"):
             worst_parameter = b_res.parameter
-            
+
         actual_168h = None
         if is_complete:
             # find actual 168h for worst_parameter
@@ -371,4 +385,6 @@ def run_full_pipeline(
         explanation_summary=explanation_summary,
         module_a_results=module_a_results,
         module_b_results=module_b_results,
+        module_b_advisory_notes=advisory_notes,
+        module_a_cutoffs=module_a_cutoffs,
     )

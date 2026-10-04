@@ -49,14 +49,22 @@ def module_a_scoring() -> str:
     return value
 
 
-def module_a_scoring_config():
-    """The `scoring` argument for module_a.detect.detect: None for "rank" (the unchanged default path)."""
+def module_a_scoring_config(fn_fp_cost_ratio: float | None = None):
+    """The `scoring` argument for module_a.detect.detect: None for "rank" (the unchanged default path).
+
+    In absolute mode the tier cut-offs follow the Settings FN:FP ratio (module_a/fnfp.py); None or the default ratio 10 gives the
+    constants above exactly. Rank mode ignores the ratio (its cut-offs come from config/harness_thresholds.yaml)."""
     if module_a_scoring() == "rank":
         return None
     from module_a.scoring import ScoringConfig
 
+    review, reject = ABSOLUTE_REVIEW_THRESHOLD, ABSOLUTE_REJECT_THRESHOLD
+    if fn_fp_cost_ratio is not None:
+        from module_a.fnfp import thresholds_for_ratio
+
+        review, reject = thresholds_for_ratio(fn_fp_cost_ratio)
     return ScoringConfig(calibration="absolute", combination="max",
-                         review_threshold=ABSOLUTE_REVIEW_THRESHOLD, reject_threshold=ABSOLUTE_REJECT_THRESHOLD,
+                         review_threshold=review, reject_threshold=reject,
                          display_s0=DISPLAY_S0, mcd_min_parts=MCD_MIN_PARTS_ABSOLUTE)
 
 
@@ -66,10 +74,11 @@ def display_transform(s: float, s0: float = DISPLAY_S0) -> float:
     return min(-math.expm1(-s / s0), _T_CEILING)
 
 
-def severity_index_phrase(s: float | None) -> str | None:
+def severity_index_phrase(s: float | None, review_threshold: float | None = None) -> str | None:
     """Calibration-agnostic reading of s = -log10 p: the index and the flag threshold, with no probability or 'one in N'
     claim (session I2c: V1's p-values are not calibrated; the thresholds act as tuned severity cutoffs near 77 parts).
     None when there is no s (rank mode)."""
     if s is None:
         return None
-    return f"severity index {s:.1f}; flag threshold {ABSOLUTE_REVIEW_THRESHOLD:.2f}"
+    threshold = ABSOLUTE_REVIEW_THRESHOLD if review_threshold is None else review_threshold  # the cut-off the analysis used (module_a_cutoffs)
+    return f"severity index {s:.1f}; flag threshold {threshold:.2f}"

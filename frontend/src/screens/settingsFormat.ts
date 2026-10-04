@@ -17,6 +17,10 @@ export function isSettingField(value: unknown): value is SettingField {
   return typeof value === 'string' && (SETTING_FIELDS as readonly string[]).includes(value)
 }
 
+/** The supported FN:FP ratio range; matches module_a/fnfp.py (the backend answers 400 outside it). */
+export const FN_FP_RATIO_MIN = 2
+export const FN_FP_RATIO_MAX = 50
+
 /** The cost ratio is shown as `N:1`; the two rates are fractions on the wire, shown as percent. */
 export function isRatio(field: SettingField): boolean {
   return field === 'fn_fp_cost_ratio'
@@ -61,7 +65,7 @@ export function fromInputValue(field: SettingField, input: string): number | nul
   if (!/^(\d+\.?\d*|\.\d+)$/.test(text)) return null
   const n = Number(text)
   if (!Number.isFinite(n) || n <= 0) return null
-  if (isRatio(field)) return n
+  if (isRatio(field)) return n >= FN_FP_RATIO_MIN && n <= FN_FP_RATIO_MAX ? n : null
   if (n > 100) return null
   // Rounded so 5.5 -> 0.055 exactly, not 0.05499999999999999. A percentage so small that it
   // rounds to 0 is rejected here rather than sent as 0.

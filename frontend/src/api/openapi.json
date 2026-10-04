@@ -507,12 +507,28 @@
             "title": "Insufficient Data Components",
             "type": "array"
           },
+          "module_a_cutoffs": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Module A Cutoffs",
+            "type": "object"
+          },
           "module_a_results": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ModuleAResult"
             },
             "default": {},
             "title": "Module A Results",
+            "type": "object"
+          },
+          "module_b_advisory_notes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Module B Advisory Notes",
             "type": "object"
           },
           "module_b_results": {
@@ -977,6 +993,17 @@
                 "type": "null"
               }
             ]
+          },
+          "module_b_advisory_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module B Advisory Note"
           },
           "project_id": {
             "anyOf": [

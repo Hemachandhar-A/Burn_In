@@ -33,7 +33,7 @@ EARLY_META = {"part_number": "DEMO-PN", "manufacturer": "Northvale Semiconductor
 # LOT_AT_RISK or STOP_RUN_RECOMMENDED and <= 15 flagged parts (`--scan` prints the table this was chosen from).
 # DEMO-COMPLETE-01's generator seed: the smallest seed in 1..80 (`--scan-complete`, absolute scoring) meeting the demo-v2
 # criteria above. Until demo-v1.2 (rank scoring) it was seed 5 -> 15 flagged, PDA 0.0779, top part DEMO-COMPLETE-01-0004.
-COMPLETE_SEED = 2  # demo-v2 scan 1..80 (absolute scoring): 7 flagged, 6 Module A REJECT, REJECT, PDA 0.0779, top -0052 (iddq)
+COMPLETE_SEED = 2  # demo-v2.1 scan 1..80 (Module B no longer decides a finished lot): 4 flagged, 3 Module A REJECT, HOLD, PDA 0.0390, top -0052 (iddq); demo-v2 (Module B counted) was 7 flagged, REJECT, PDA 0.0779
 COMPLETE_SCAN_SEEDS = range(1, 81)
 # demo-v2 criteria (absolute scoring): a 77-part COMPLETE lot, REJECT/HOLD verdict, 4-10 flagged, >= 2 Module A REJECT,
 # the top-ranked part carries MCD and ECOD explanation rows and a sentence.

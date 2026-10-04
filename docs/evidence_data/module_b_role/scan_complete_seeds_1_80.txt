@@ -1,0 +1,82 @@
+seed status   n  flagged A_REJECT A_WATCH verdict   pda    top                     worst      mcd+ecod qualifies
+   1 COMPLETE  77      8        8       0 REJECT   0.1039 DEMO-COMPLETE-01-0015   iddq       True     YES
+   2 COMPLETE  77      4        3       1 HOLD     0.0390 DEMO-COMPLETE-01-0052   iddq       True     YES
+   3 COMPLETE  77      7        5       2 REJECT   0.0649 DEMO-COMPLETE-01-0044   iddq       True     YES
+   4 COMPLETE  77      8        7       1 REJECT   0.0909 DEMO-COMPLETE-01-0012   iddq       True     YES
+   5 COMPLETE  77      5        4       1 REJECT   0.0519 DEMO-COMPLETE-01-0004   iddq       True     YES
+   6 COMPLETE  77      5        4       1 REJECT   0.0519 DEMO-COMPLETE-01-0051   iddq       True     YES
+   7 COMPLETE  77      4        3       1 HOLD     0.0390 DEMO-COMPLETE-01-0054   iddq       True     YES
+   8 COMPLETE  77      3        2       1 HOLD     0.0260 DEMO-COMPLETE-01-0061   iddq       True     
+   9 COMPLETE  77      5        4       1 REJECT   0.0519 DEMO-COMPLETE-01-0065   iddq       True     YES
+  10 COMPLETE  77      6        5       1 REJECT   0.0649 DEMO-COMPLETE-01-0055   iddq       True     YES
+  11 COMPLETE  77      6        4       2 REJECT   0.0519 DEMO-COMPLETE-01-0034   iddq       True     YES
+  12 COMPLETE  77     11        6       5 REJECT   0.0779 DEMO-COMPLETE-01-0041   iddq       True     
+  13 COMPLETE  77      6        2       4 HOLD     0.0260 DEMO-COMPLETE-01-0024   iddq       True     YES
+  14 COMPLETE  77      3        3       0 ACCEPT   0.0390 DEMO-COMPLETE-01-0045   iddq       True     
+  15 COMPLETE  77     10        9       1 REJECT   0.1169 DEMO-COMPLETE-01-0064   iddq       True     YES
+  16 COMPLETE  77      5        5       0 REJECT   0.0649 DEMO-COMPLETE-01-0060   iddq       True     YES
+  17 COMPLETE  77      6        2       4 HOLD     0.0260 DEMO-COMPLETE-01-0007   iddq       True     YES
+  18 COMPLETE  77      4        4       0 REJECT   0.0519 DEMO-COMPLETE-01-0047   iddq       True     YES
+  19 COMPLETE  77      9        7       2 REJECT   0.0909 DEMO-COMPLETE-01-0023   iddq       True     YES
+  20 COMPLETE  77      5        5       0 REJECT   0.0649 DEMO-COMPLETE-01-0031   iddq       True     YES
+  21 COMPLETE  77      4        3       1 HOLD     0.0390 DEMO-COMPLETE-01-0038   iddq       True     YES
+  22 COMPLETE  77      5        5       0 REJECT   0.0649 DEMO-COMPLETE-01-0021   iddq       True     YES
+  23 COMPLETE  77      7        4       3 REJECT   0.0519 DEMO-COMPLETE-01-0060   iddq       True     YES
+  24 COMPLETE  77      4        4       0 REJECT   0.0519 DEMO-COMPLETE-01-0047   iddq       True     YES
+  25 COMPLETE  77      9        4       5 REJECT   0.0519 DEMO-COMPLETE-01-0070   iddq       True     YES
+  26 COMPLETE  77     12        8       4 REJECT   0.1039 DEMO-COMPLETE-01-0009   iddq       True     
+  27 COMPLETE  77      8        6       2 REJECT   0.0779 DEMO-COMPLETE-01-0059   iddq       True     YES
+  28 COMPLETE  77      7        5       2 REJECT   0.0649 DEMO-COMPLETE-01-0054   iddq       True     YES
+  29 COMPLETE  77      1        1       0 ACCEPT   0.0130 DEMO-COMPLETE-01-0017   iddq       True     
+  30 COMPLETE  77      5        3       2 HOLD     0.0390 DEMO-COMPLETE-01-0032   iddq       True     YES
+  31 COMPLETE  77      7        6       1 REJECT   0.0779 DEMO-COMPLETE-01-0046   iddq       True     YES
+  32 COMPLETE  77      6        4       2 REJECT   0.0519 DEMO-COMPLETE-01-0007   iddq       True     YES
+  33 COMPLETE  77      2        2       0 ACCEPT   0.0260 DEMO-COMPLETE-01-0066   iddq       True     
+  34 COMPLETE  77      4        4       0 REJECT   0.0519 DEMO-COMPLETE-01-0010   iddq       True     YES
+  35 COMPLETE  77      2        2       0 ACCEPT   0.0260 DEMO-COMPLETE-01-0018   iddq       True     
+  36 COMPLETE  77     11        6       5 REJECT   0.0779 DEMO-COMPLETE-01-0044   iddq       True     
+  37 COMPLETE  77      5        5       0 REJECT   0.0649 DEMO-COMPLETE-01-0011   iddq       True     YES
+  38 COMPLETE  77      5        5       0 REJECT   0.0649 DEMO-COMPLETE-01-0036   iddq       True     YES
+  39 COMPLETE  77      8        4       4 REJECT   0.0519 DEMO-COMPLETE-01-0041   iddq       True     YES
+  40 COMPLETE  77      6        4       2 REJECT   0.0519 DEMO-COMPLETE-01-0068   iddq       True     YES
+  41 COMPLETE  77      4        1       3 HOLD     0.0130 DEMO-COMPLETE-01-0022   iddq       True     
+  42 COMPLETE  77      9        6       3 REJECT   0.0779 DEMO-COMPLETE-01-0048   iddq       True     YES
+  43 COMPLETE  77      4        2       2 HOLD     0.0260 DEMO-COMPLETE-01-0033   iddq       True     YES
+  44 COMPLETE  77      6        5       1 REJECT   0.0649 DEMO-COMPLETE-01-0061   iddq       True     YES
+  45 COMPLETE  77      4        3       1 HOLD     0.0390 DEMO-COMPLETE-01-0008   iddq       True     YES
+  46 COMPLETE  77      5        3       2 HOLD     0.0390 DEMO-COMPLETE-01-0004   iddq       True     YES
+  47 COMPLETE  77     12        9       3 REJECT   0.1169 DEMO-COMPLETE-01-0002   iddq       True     
+  48 COMPLETE  77      2        2       0 ACCEPT   0.0260 DEMO-COMPLETE-01-0072   iddq       True     
+  49 COMPLETE  77     11        6       5 REJECT   0.0779 DEMO-COMPLETE-01-0049   iddq       True     
+  50 COMPLETE  77      5        4       1 REJECT   0.0519 DEMO-COMPLETE-01-0008   iddq       True     YES
+  51 COMPLETE  77      4        2       2 HOLD     0.0260 DEMO-COMPLETE-01-0032   iddq       True     YES
+  52 COMPLETE  77      9        7       2 REJECT   0.0909 DEMO-COMPLETE-01-0048   iddq       True     YES
+  53 COMPLETE  77     12        9       3 REJECT   0.1169 DEMO-COMPLETE-01-0059   iddq       True     
+  54 COMPLETE  77      9        7       2 REJECT   0.0909 DEMO-COMPLETE-01-0025   iddq       True     YES
+  55 COMPLETE  77      1        1       0 ACCEPT   0.0130 DEMO-COMPLETE-01-0053   leakage    True     
+  56 COMPLETE  77      7        6       1 REJECT   0.0779 DEMO-COMPLETE-01-0057   iddq       True     YES
+  57 COMPLETE  77      6        5       1 REJECT   0.0649 DEMO-COMPLETE-01-0001   iddq       True     YES
+  58 COMPLETE  77      1        0       1 HOLD     0.0000 DEMO-COMPLETE-01-0002   iddq       True     
+  59 COMPLETE  77      9        6       3 REJECT   0.0779 DEMO-COMPLETE-01-0076   iddq       True     YES
+  60 COMPLETE  77      9        8       1 REJECT   0.1039 DEMO-COMPLETE-01-0003   iddq       True     YES
+  61 COMPLETE  77      6        4       2 REJECT   0.0519 DEMO-COMPLETE-01-0043   iddq       True     YES
+  62 COMPLETE  77      2        1       1 HOLD     0.0130 DEMO-COMPLETE-01-0016   iddq       True     
+  63 COMPLETE  77      2        1       1 HOLD     0.0130 DEMO-COMPLETE-01-0072   leakage    True     
+  64 COMPLETE  77      8        8       0 REJECT   0.1039 DEMO-COMPLETE-01-0035   iddq       True     YES
+  65 COMPLETE  77     10        8       2 REJECT   0.1039 DEMO-COMPLETE-01-0022   iddq       True     YES
+  66 COMPLETE  77      2        0       2 HOLD     0.0000 DEMO-COMPLETE-01-0039   leakage    True     
+  67 COMPLETE  77      6        5       1 REJECT   0.0649 DEMO-COMPLETE-01-0073   iddq       True     YES
+  68 COMPLETE  77     12       10       2 REJECT   0.1299 DEMO-COMPLETE-01-0069   iddq       True     
+  69 COMPLETE  77      7        5       2 REJECT   0.0649 DEMO-COMPLETE-01-0003   iddq       True     YES
+  70 COMPLETE  77      9        7       2 REJECT   0.0909 DEMO-COMPLETE-01-0000   iddq       True     YES
+  71 COMPLETE  77      4        4       0 REJECT   0.0519 DEMO-COMPLETE-01-0011   iddq       True     YES
+  72 COMPLETE  77      1        1       0 ACCEPT   0.0130 DEMO-COMPLETE-01-0050   iddq       True     
+  73 COMPLETE  77      6        5       1 REJECT   0.0649 DEMO-COMPLETE-01-0034   iddq       True     YES
+  74 COMPLETE  77      9        8       1 REJECT   0.1039 DEMO-COMPLETE-01-0062   iddq       True     YES
+  75 COMPLETE  77      3        3       0 ACCEPT   0.0390 DEMO-COMPLETE-01-0048   iddq       True     
+  76 COMPLETE  77      2        2       0 ACCEPT   0.0260 DEMO-COMPLETE-01-0050   leakage    True     
+  77 COMPLETE  77      4        3       1 HOLD     0.0390 DEMO-COMPLETE-01-0018   iddq       True     YES
+  78 COMPLETE  77      9        8       1 REJECT   0.1039 DEMO-COMPLETE-01-0049   iddq       True     YES
+  79 COMPLETE  77      5        2       3 HOLD     0.0260 DEMO-COMPLETE-01-0006   iddq       True     YES
+  80 COMPLETE  77      4        2       2 HOLD     0.0260 DEMO-COMPLETE-01-0043   iddq       True     YES
+smallest qualifying seed: 1
