@@ -626,3 +626,12 @@ Every entry above whose last Status is OPEN (or PARTIALLY RESOLVED with no later
 - **Meaning of `combined_severity` under absolute scoring:** still in [0, 1), now `T(s) = 1 - exp(-s / 5)` (a monotone display transform, clamped below 1.0), not a percentile. Rank mode is unchanged. `HarnessThresholds` and `config/harness_thresholds.yaml` are NOT changed: the V1 thresholds (REVIEW 2.956, REJECT 3.419, tuned on tuning seed 6101) live in `module_a/settings.py`.
 - **Default behaviour:** `MODULE_A_SCORING` unset or `rank` -> `fusion/pipeline.py` calls `module_a_detect(frames, scoring=None)`, the pre-existing code path. API responses for rank-mode results carry `"severity_log10p": null` as the only difference.
 - **Frontend:** the generated client (`frontend/src/api/openapi.json`, `schema.d.ts`) gains the optional field when regenerated; no screen reads it.
+
+## 2026-10-04 Lead (session I3) - Module B finished-lot role and FN:FP control, additive fields only
+- **Additive fields (all defaulted, so older stored rows and clients still parse):** `AnalysisResults.module_b_advisory_notes: dict[str, str] = {}` (component_id -> information-only Module B note, filled only under the `advisory` role on a COMPLETE lot);
+  `AnalysisResults.module_a_cutoffs: dict[str, float] = {}` (`{"review": s, "reject": s}`: the Module A cut-offs that analysis used; `{}` under rank scoring, on an in-progress lot and on rows stored before this change, which used 2.956 / 3.419);
+  `PartDetailResponse.module_b_advisory_note: str | None = None`. Generated client regenerated (`frontend/src/api/openapi.json`, `schema.d.ts`).
+- **New setting `MODULE_B_FINISHED_LOT_ROLE`** (`fusion/settings.py`, environment, read on every call): `current | tiered | advisory | off`, default `advisory`; applies only to COMPLETE lots (`docs/MODULE_B_ROLE_EXPERIMENT.md`).
+  `fusion.gate.compute_part_verdict(a, b, *, b_role="current")` gains the keyword; the default is today's behaviour.
+- **Settings now reach the analysis.** `ingestion/router.py` ran every analysis with `ScreeningConfig()` (the defaults), so NO signed-off Settings change (`fn_fp_cost_ratio`, `pda_threshold`) ever affected an analysis; it now uses `identity.router.current_screening_config()`. `module_a_scoring_config(fn_fp_cost_ratio)` selects the cut-offs from `module_a/fnfp.py`.
+  `POST /settings/propose` answers 400 for `fn_fp_cost_ratio` outside 2 to 50.

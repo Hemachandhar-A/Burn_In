@@ -63,3 +63,44 @@ what the lot dashboard and PDF show).
 
 ## Appended deviations
 (none yet)
+
+## RESULT (run 2026-10-04; data: docs/evidence_data/module_b_role/; script: scripts/module_b_role_experiment.py)
+
+Nothing in the pre-registration was changed after the run. CHECK passed first: offline variant (a) equals `fusion.run_full_pipeline` on 385 of 385 parts (the first lot of each family, seed 7301).
+Validation: seeds 7301-7305, 500 lots (100 per family), 38,500 parts, 2,492 defective. Published protocol: seed 2026, 127 lots, 9,779 parts, 521 defective (the same lots as the system-level benchmark; its (a) and (d) rows equal that benchmark's S-new and A-new rows exactly).
+Cost = (10 x missed + false alarms) / parts; 95% CIs by bootstrap over lots (1000 reps).
+
+### Validation, flagged = not PASS
+| Variant | Flag rate | Recall [95% CI] | Precision | False alarms | Missed | Cost/part [95% CI] |
+|---|---|---|---|---|---|---|
+| (a) current | 0.259 | 0.968 [0.961, 0.975] | 0.242 | 7,573 | 79 | 0.217 [0.201, 0.233] |
+| (b) tiered | 0.259 | 0.968 [0.961, 0.975] | 0.242 | 7,573 | 79 | 0.217 [0.201, 0.233] |
+| (c) advisory | 0.099 | 0.916 [0.901, 0.930] | 0.602 | 1,510 | 209 | 0.094 [0.084, 0.105] |
+| (d) off | 0.099 | 0.916 [0.901, 0.930] | 0.602 | 1,510 | 209 | 0.094 [0.084, 0.105] |
+
+(b) equals (a) under "not PASS" because a B-only REVIEW is still WATCH, a flagged part; the two differ in the tier (REJECT only, below). Validation, flagged = REJECT only: (a) flag 0.245, recall 0.963, cost 0.207 [0.191, 0.223];
+(b) 0.145, 0.948, 0.117 [0.107, 0.127]; (c) and (d) 0.077, 0.874, 0.102 [0.090, 0.115].
+Per-family cost (not PASS) (a)/(b)/(c)=(d): altered correlation 0.190/0.190/0.080; baseline 0.163/0.163/0.074; different noise regime 0.385/0.385/0.080; higher defect prevalence 0.178/0.178/0.156; wider drift exponent 0.169/0.169/0.077.
+Lot-level verdicts (descriptive, 500 lots): (a) REJECT 476, HOLD 15, ACCEPT 9; (b) 459/35/6; (c)=(d) 359/100/41.
+
+### Decision (rule applied to the validation table only)
+All four variants have recall >= 0.90. Lowest cost: (c) = (d) 0.0935. (c) and (d) are within 0.005, so the tie goes to the simpler, (d) (as stated in advance, the shipped default is then `advisory`: identical verdicts, forecast shown). The chosen variant's cost CI [0.0836, 0.1046] is entirely below (a)'s [0.2014, 0.2332]: separated. **ADOPT.**
+Not free: on validation the chosen variant misses 209 defective parts against 79 for (a) (recall 0.916 against 0.968), and 130 more defects reach a finished-lot verdict of PASS; in exchange 6,063 fewer false alarms. At 10:1 that is cheaper; at a cost ratio of about 47:1 the order would reverse (marginal precision of the extra flags is 130 / 6,193 = 2.1%, a flag pays for itself at 1 / (ratio + 1)).
+
+### Published protocol (seed 2026), evaluated once, no re-selection
+| Variant | Flagged = | Flag rate | Recall [95% CI] | Precision | False alarms | Missed | Cost/part [95% CI] |
+|---|---|---|---|---|---|---|---|
+| (a) current | not PASS | 0.275 | 0.964 [0.947, 0.980] | 0.187 | 2,185 | 19 | 0.243 [0.212, 0.276] |
+| (d) off = (c) | not PASS | 0.090 | 0.923 [0.902, 0.945] | 0.544 | 403 | 40 | 0.082 [0.069, 0.096] |
+| (a) current | REJECT only | 0.260 | 0.954 [0.936, 0.973] | 0.195 | 2,048 | 24 | 0.234 [0.202, 0.268] |
+| (d) off = (c) | REJECT only | 0.069 | 0.889 [0.865, 0.915] | 0.689 | 209 | 58 | 0.081 [0.064, 0.098] |
+Per-family cost (not PASS), (a) against (d): altered correlation 0.207 / 0.072; baseline 0.200 / 0.074; different noise regime 0.377 / 0.094; higher defect prevalence 0.258 / 0.137; wider drift exponent 0.174 / 0.064.
+The chosen variant is cheaper in every family on both protocols. (b) on the published protocol: not PASS identical to (a); REJECT only flag 0.145, recall 0.948, cost 0.123 [0.101, 0.147].
+Published lot-level verdicts (127 lots): (a) REJECT 122, HOLD 5, ACCEPT 0; (d) REJECT 86, HOLD 27, ACCEPT 14.
+
+### QA visibility
+On the published protocol 1,803 parts are flagged in (a) and PASS under the chosen variant: 21 defective, 1,782 clean. All 1,803 had Module A tier PASS, i.e. they were flagged by Module B alone. A QA user still sees Module B on them: Part Detail shows the forecast, interval and drift (as before) and, new, an information note
+("Module B forecast (information only) ... the forecast did not change it") on every finished-lot part whose forecast exceeds the safety slope; the PDF's methodology section states the role and the number of parts carrying such a note. The lot dashboard's flagged count and the lot verdict no longer include them (a part whose only flag was Module B's is PASS).
+
+## Appended deviations
+(none)
