@@ -49,7 +49,7 @@ app.include_router(identity_router)
 app.include_router(capa_router)
 
 
-@app.get("/health", tags=["meta"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["meta"])  # HEAD: uptime monitors (deploy-demo)
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
