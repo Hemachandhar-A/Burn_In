@@ -107,6 +107,10 @@ export function LoginScreen() {
             ))}
           </fieldset>
 
+          <p className="login-intro" data-testid="access-pins">
+            Evaluation access: A. Sharma (Quality Engineer), PIN 1234. R. Mehta (Reliability Engineer), PIN 5678.
+          </p>
+
           <label className="field-label" htmlFor={ids.pin}>
             PIN
           </label>

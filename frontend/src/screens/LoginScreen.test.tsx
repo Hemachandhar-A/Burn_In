@@ -38,6 +38,11 @@ describe('Login screen (E6 screen 1)', () => {
     expect(screen.getByRole('radio', { name: /R\. Mehta.*Reliability Engineer/ })).not.toBeChecked()
   })
 
+  test('states the PIN for each account on the page', () => {
+    renderLogin(fakeServer({}).fetch)
+    expect(screen.getByTestId('access-pins')).toHaveTextContent(/Sharma.*1234.*Mehta.*5678/)
+  })
+
   test('the PIN is a labelled, masked field', () => {
     renderLogin(fakeServer({}).fetch)
     expect(pin()).toHaveAttribute('type', 'password')
