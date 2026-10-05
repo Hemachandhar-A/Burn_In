@@ -107,9 +107,11 @@ export function LoginScreen() {
             ))}
           </fieldset>
 
-          <p className="login-intro" data-testid="access-pins">
-            Evaluation access: A. Sharma (Quality Engineer), PIN 1234. R. Mehta (Reliability Engineer), PIN 5678.
-          </p>
+          <div className="login-intro" data-testid="access-pins">
+            <p style={{ margin: 0 }}>Evaluation access</p>
+            <p style={{ margin: '4px 0 0' }}>A. Sharma, Quality Engineer: PIN 1234</p>
+            <p style={{ margin: '4px 0 0' }}>R. Mehta, Reliability Engineer: PIN 5678</p>
+          </div>
 
           <label className="field-label" htmlFor={ids.pin}>
             PIN
